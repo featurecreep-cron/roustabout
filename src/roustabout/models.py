@@ -73,6 +73,7 @@ class DockerEnvironment:
     containers: tuple[ContainerInfo, ...]
     generated_at: str
     docker_version: str
+    warnings: tuple[str, ...] = ()
 
 
 def make_container(
@@ -134,10 +135,12 @@ def make_environment(
     containers: list[ContainerInfo] | tuple[ContainerInfo, ...],
     generated_at: str,
     docker_version: str,
+    warnings: list[str] | tuple[str, ...] = (),
 ) -> DockerEnvironment:
     """Construct a DockerEnvironment with containers sorted by name."""
     return DockerEnvironment(
         containers=tuple(sorted(containers, key=lambda c: c.name)),
         generated_at=generated_at,
         docker_version=docker_version,
+        warnings=tuple(warnings),
     )

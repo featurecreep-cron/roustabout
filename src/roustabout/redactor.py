@@ -6,6 +6,7 @@ The redacted DockerEnvironment can be safely logged, diffed, or stored.
 
 from __future__ import annotations
 
+import dataclasses
 import re
 
 from roustabout.models import ContainerInfo, DockerEnvironment, make_container, make_environment
@@ -61,29 +62,9 @@ def _redact_container(
         for key, value in container.env
     ]
 
-    return make_container(
-        name=container.name,
-        id=container.id,
-        status=container.status,
-        image=container.image,
-        image_id=container.image_id,
-        image_digest=container.image_digest,
-        ports=container.ports,
-        mounts=container.mounts,
-        networks=container.networks,
-        env=redacted_env,
-        labels=container.labels,
-        health=container.health,
-        compose_project=container.compose_project,
-        compose_service=container.compose_service,
-        compose_config_files=container.compose_config_files,
-        restart_count=container.restart_count,
-        created=container.created,
-        started_at=container.started_at,
-        command=container.command,
-        entrypoint=container.entrypoint,
-        oom_killed=container.oom_killed,
-    )
+    kwargs = {f.name: getattr(container, f.name) for f in dataclasses.fields(container)}
+    kwargs["env"] = redacted_env
+    return make_container(**kwargs)
 
 
 def _should_redact(key: str, value: str, patterns: tuple[str, ...]) -> bool:

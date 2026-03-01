@@ -205,3 +205,55 @@ class TestOOMKilled:
         env = collect(mock_docker_client)
         redis = next(c for c in env.containers if c.name == "redis-cache")
         assert redis.oom_killed is True
+
+
+class TestDeletedImage:
+    """S3: container.image can be None when the image has been deleted."""
+
+    def test_deleted_image_uses_config_fallback(self):
+        container = _make_minimal_container(name="/deleted-img")
+        container.image = None  # simulate deleted image
+        client = _make_client(container)
+        env = collect(client)
+        c = env.containers[0]
+        assert c.image == "img:latest"  # falls back to Config.Image
+        assert c.image_id == "unknown"
+        assert c.image_digest is None
+
+
+class TestMalformedPort:
+    def test_malformed_port_key_skipped(self):
+        container = _make_minimal_container(
+            ports={
+                "notaport/tcp": [{"HostIp": "0.0.0.0", "HostPort": "9999"}],
+                "80/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8080"}],
+            }
+        )
+        client = _make_client(container)
+        env = collect(client)
+        assert len(env.containers[0].ports) == 1
+        assert env.containers[0].ports[0].container_port == 80
+
+
+class TestMalformedHealth:
+    def test_health_dict_without_status_key(self):
+        container = _make_minimal_container()
+        container.attrs["State"]["Health"] = {}  # Health present but no Status
+        client = _make_client(container)
+        env = collect(client)
+        assert env.containers[0].health is None
+
+
+class TestContainerErrorHandling:
+    def test_container_error_skipped_with_warning(self):
+        good = _make_minimal_container(name="/good")
+        bad = MagicMock()
+        bad.name = "bad"
+        bad.attrs = None  # will cause AttributeError on .get()
+
+        client = _make_client(good, bad)
+        env = collect(client)
+        assert len(env.containers) == 1
+        assert env.containers[0].name == "good"
+        assert len(env.warnings) == 1
+        assert "bad" in env.warnings[0]

@@ -119,3 +119,19 @@ class TestMakeEnvironment:
             containers=[c1, c2], generated_at="2026-01-01T00:00:00Z", docker_version="25.0"
         )
         assert [c.name for c in env.containers] == ["alpha", "zebra"]
+
+    def test_warnings_defaults_to_empty_tuple(self):
+        env = make_environment(
+            containers=[], generated_at="2026-01-01T00:00:00Z", docker_version="25.0"
+        )
+        assert env.warnings == ()
+
+    def test_warnings_passed_through(self):
+        env = make_environment(
+            containers=[],
+            generated_at="2026-01-01T00:00:00Z",
+            docker_version="25.0",
+            warnings=["container 'foo' skipped: inspection failed"],
+        )
+        assert len(env.warnings) == 1
+        assert "foo" in env.warnings[0]

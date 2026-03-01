@@ -109,8 +109,8 @@ def _make_mock_container(
             "Image": image_tags[0] if image_tags else image_id,
             "Env": list(env),
             "Labels": all_labels,
-            "Cmd": command.split() if command else None,
-            "Entrypoint": entrypoint.split() if entrypoint else None,
+            "Cmd": [command] if command else None,
+            "Entrypoint": [entrypoint] if entrypoint else None,
         },
         "NetworkSettings": {
             "Ports": ports,

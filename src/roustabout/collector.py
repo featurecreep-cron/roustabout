@@ -6,6 +6,7 @@ a DockerEnvironment with sorted, frozen model instances.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -22,11 +23,29 @@ if TYPE_CHECKING:
 
     from roustabout.models import ContainerInfo, DockerEnvironment
 
+logger = logging.getLogger(__name__)
+
 
 def collect(client: docker.DockerClient) -> DockerEnvironment:
-    """Snapshot the entire Docker environment into model objects."""
+    """Snapshot the entire Docker environment into model objects.
+
+    Does NOT catch DockerException from client.containers.list() — if the
+    daemon is unreachable, that's a hard failure the caller must handle.
+    Per-container failures are caught and reported as warnings.
+    """
     raw_containers = client.containers.list(all=True)
-    containers = [_collect_container(c) for c in raw_containers]
+
+    containers: list[ContainerInfo] = []
+    warnings: list[str] = []
+
+    for raw in raw_containers:
+        try:
+            containers.append(_collect_container(raw))
+        except Exception as exc:
+            name = getattr(raw, "name", "unknown")
+            msg = f"container '{name}' skipped: {exc}"
+            logger.warning(msg)
+            warnings.append(msg)
 
     version_info = client.version()
 
@@ -34,6 +53,7 @@ def collect(client: docker.DockerClient) -> DockerEnvironment:
         containers=containers,
         generated_at=datetime.now(timezone.utc).isoformat(),
         docker_version=version_info.get("Version", "unknown"),
+        warnings=warnings,
     )
 
 
@@ -44,44 +64,39 @@ def _collect_container(container) -> ContainerInfo:
     state = attrs.get("State", {})
     network_settings = attrs.get("NetworkSettings", {})
 
-    # Name: strip leading /
+    # docker-py sometimes retains the API's leading slash on container names
     name = container.name
     if name.startswith("/"):
         name = name[1:]
 
-    # Image info
+    # container.image is None when the image has been deleted
     image = container.image
-    image_tag = image.tags[0] if image.tags else config.get("Image", "unknown")
-    image_id = image.id
-    repo_digests = image.attrs.get("RepoDigests", [])
-    image_digest = repo_digests[0] if repo_digests else None
+    if image is not None:
+        image_tag = image.tags[0] if image.tags else config.get("Image", "unknown")
+        image_id = image.id
+        repo_digests = image.attrs.get("RepoDigests", [])
+        image_digest = repo_digests[0] if repo_digests else None
+    else:
+        image_tag = config.get("Image", "unknown")
+        image_id = "unknown"
+        image_digest = None
 
-    # Ports from NetworkSettings.Ports (runtime truth)
+    # NetworkSettings.Ports reflects actual runtime bindings, not just EXPOSE
     ports = _collect_ports(network_settings.get("Ports") or {})
-
-    # Mounts
     mounts = _collect_mounts(attrs.get("Mounts") or [])
-
-    # Networks
     networks = _collect_networks(network_settings.get("Networks") or {})
-
-    # Environment variables
     env = _parse_env(config.get("Env") or [])
 
-    # Labels
     raw_labels = config.get("Labels") or {}
     labels = list(raw_labels.items())
 
-    # Health
     health_info = state.get("Health")
-    health = health_info["Status"] if health_info else None
+    health = health_info.get("Status") if health_info else None
 
-    # Compose metadata
     compose_project = raw_labels.get("com.docker.compose.project")
     compose_service = raw_labels.get("com.docker.compose.service")
     compose_config = raw_labels.get("com.docker.compose.project.config_files")
 
-    # Command / entrypoint
     cmd = config.get("Cmd")
     command = " ".join(cmd) if cmd else None
     ep = config.get("Entrypoint")
@@ -113,16 +128,19 @@ def _collect_container(container) -> ContainerInfo:
 
 
 def _collect_ports(ports_dict: dict) -> list[PortBinding]:
-    """Parse NetworkSettings.Ports into PortBinding objects."""
-    result = []
-    for port_proto, bindings in ports_dict.items():
-        if not bindings:
+    port_bindings = []
+    for port_proto, host_bindings in ports_dict.items():
+        if not host_bindings:
             continue
         parts = port_proto.split("/")
-        container_port = int(parts[0])
+        try:
+            container_port = int(parts[0])
+        except ValueError:
+            logger.warning("Skipping malformed port key: %s", port_proto)
+            continue
         protocol = parts[1] if len(parts) > 1 else "tcp"
-        for binding in bindings:
-            result.append(
+        for binding in host_bindings:
+            port_bindings.append(
                 PortBinding(
                     container_port=container_port,
                     protocol=protocol,
@@ -130,11 +148,10 @@ def _collect_ports(ports_dict: dict) -> list[PortBinding]:
                     host_port=binding.get("HostPort", ""),
                 )
             )
-    return result
+    return port_bindings
 
 
 def _collect_mounts(mounts_list: list[dict]) -> list[MountInfo]:
-    """Parse Mounts array into MountInfo objects."""
     return [
         MountInfo(
             source=m.get("Source", ""),
@@ -147,18 +164,17 @@ def _collect_mounts(mounts_list: list[dict]) -> list[MountInfo]:
 
 
 def _collect_networks(networks_dict: dict) -> list[NetworkMembership]:
-    """Parse NetworkSettings.Networks into NetworkMembership objects."""
-    result = []
+    memberships = []
     for net_name, net_info in networks_dict.items():
         aliases = net_info.get("Aliases") or []
-        result.append(
+        memberships.append(
             NetworkMembership(
                 name=net_name,
                 ip_address=net_info.get("IPAddress", ""),
                 aliases=tuple(sorted(aliases)),
             )
         )
-    return result
+    return memberships
 
 
 def _parse_env(env_list: list[str]) -> list[tuple[str, str]]:
@@ -166,11 +182,11 @@ def _parse_env(env_list: list[str]) -> list[tuple[str, str]]:
 
     Handles values containing = signs correctly.
     """
-    result = []
+    pairs = []
     for entry in env_list:
         if "=" in entry:
             key, _, value = entry.partition("=")
-            result.append((key, value))
+            pairs.append((key, value))
         else:
-            result.append((entry, ""))
-    return result
+            pairs.append((entry, ""))
+    return pairs

@@ -1,8 +1,16 @@
 """Tests for roustabout redactor."""
 
+import dataclasses
+
 import pytest
 
-from roustabout.models import make_container, make_environment
+from roustabout.models import (
+    MountInfo,
+    NetworkMembership,
+    PortBinding,
+    make_container,
+    make_environment,
+)
 from roustabout.redactor import REDACTED, redact
 
 
@@ -137,6 +145,55 @@ class TestMultipleContainers:
         result = redact(env)
         for c in result.containers:
             assert dict(c.env)["API_KEY"] == REDACTED
+
+
+class TestFieldPreservation:
+    """S1: Verify redaction preserves all ContainerInfo fields (not just env)."""
+
+    def test_all_fields_preserved_after_redaction(self):
+        container = make_container(
+            name="full-test",
+            id="abc123",
+            status="running",
+            image="nginx:1.25",
+            image_id="sha256:abcdef",
+            image_digest="nginx@sha256:deadbeef",
+            ports=[PortBinding(container_port=80, protocol="tcp", host_ip="0.0.0.0", host_port="8080")],
+            mounts=[MountInfo(source="/host", destination="/container", mode="rw", type="bind")],
+            networks=[NetworkMembership(name="frontend", ip_address="10.0.0.1", aliases=("web",))],
+            env=[("SECRET_KEY", "hunter2"), ("SAFE_VAR", "hello")],
+            labels=[("app.version", "1.0")],
+            health="healthy",
+            compose_project="myproject",
+            compose_service="web",
+            compose_config_files="/opt/docker-compose.yml",
+            restart_count=3,
+            created="2026-01-01T00:00:00Z",
+            started_at="2026-01-01T00:00:05Z",
+            command="nginx -g daemon off",
+            entrypoint="/docker-entrypoint.sh",
+            oom_killed=True,
+        )
+        env = make_environment(
+            containers=[container],
+            generated_at="2026-01-01T00:00:00Z",
+            docker_version="25.0",
+        )
+        result = redact(env)
+        redacted = result.containers[0]
+
+        # Every field except env should be identical
+        for field in dataclasses.fields(container):
+            if field.name == "env":
+                continue
+            assert getattr(redacted, field.name) == getattr(container, field.name), (
+                f"Field '{field.name}' changed during redaction"
+            )
+
+        # Env should be redacted for SECRET_KEY, preserved for SAFE_VAR
+        env_dict = dict(redacted.env)
+        assert env_dict["SECRET_KEY"] == REDACTED
+        assert env_dict["SAFE_VAR"] == "hello"
 
 
 class TestImmutability:

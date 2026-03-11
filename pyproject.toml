@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roustabout"
-version = "0.1.0"
-description = "Generate structured markdown documentation of a Docker environment"
+version = "0.3.0"
+description = "Docker environment documentation, security auditing, and safe MCP server"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
     { name = "Cron", email = "cron@featurecreep.dev" },
     { name = "Chris", email = "chris@featurecreep.dev" },
 ]
-keywords = ["docker", "documentation", "compose", "markdown"]
+keywords = ["docker", "documentation", "compose", "markdown", "security", "mcp"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -27,6 +27,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mcp = [
+    "mcp[cli]>=1.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.12",
@@ -34,6 +37,7 @@ dev = [
 
 [project.scripts]
 roustabout = "roustabout.cli:main"
+roustabout-mcp = "roustabout.mcp_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

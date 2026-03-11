@@ -11,7 +11,7 @@ from roustabout.models import (
     make_container,
     make_environment,
 )
-from roustabout.redactor import REDACTED, redact
+from roustabout.redactor import DEFAULT_PATTERNS, REDACTED, is_secret_key, redact, resolve_patterns
 
 
 def _env_container(env_pairs, name="test"):
@@ -65,36 +65,43 @@ class TestUrlHandling:
 
     def test_redacts_database_url_with_credentials(self):
         """Pattern match (database_url) + _url suffix + credentials present → redact."""
-        env = _env_environment([
-            ("DATABASE_URL", "postgresql://user:pass@localhost:5432/db"),
-        ])
+        env = _env_environment(
+            [
+                ("DATABASE_URL", "postgresql://user:pass@localhost:5432/db"),
+            ]
+        )
         result = redact(env)
         assert dict(result.containers[0].env)["DATABASE_URL"] == REDACTED
 
     def test_preserves_url_matching_pattern_without_credentials(self):
         """Pattern match (auth) + _url suffix + no credentials → preserve."""
-        env = _env_environment([
-            ("AUTH_CALLBACK_URL", "https://example.com/callback"),
-        ])
+        env = _env_environment(
+            [
+                ("AUTH_CALLBACK_URL", "https://example.com/callback"),
+            ]
+        )
         result = redact(env)
         assert (
-            dict(result.containers[0].env)["AUTH_CALLBACK_URL"]
-            == "https://example.com/callback"
+            dict(result.containers[0].env)["AUTH_CALLBACK_URL"] == "https://example.com/callback"
         )
 
     def test_catch_all_redacts_any_url_with_embedded_creds(self):
         """No pattern match, but _url suffix + credentials → redact (catch-all)."""
-        env = _env_environment([
-            ("REDIS_URL", "redis://default:mypassword@redis:6379/0"),
-        ])
+        env = _env_environment(
+            [
+                ("REDIS_URL", "redis://default:mypassword@redis:6379/0"),
+            ]
+        )
         result = redact(env)
         assert dict(result.containers[0].env)["REDIS_URL"] == REDACTED
 
     def test_preserves_safe_url_with_no_pattern_match(self):
         """No pattern match + _url suffix + no credentials → preserve."""
-        env = _env_environment([
-            ("DOCS_URL", "https://docs.example.com/api"),
-        ])
+        env = _env_environment(
+            [
+                ("DOCS_URL", "https://docs.example.com/api"),
+            ]
+        )
         result = redact(env)
         assert dict(result.containers[0].env)["DOCS_URL"] == "https://docs.example.com/api"
 
@@ -118,10 +125,12 @@ class TestNoFalsePositives:
 
 class TestCustomPatterns:
     def test_custom_patterns_replace_defaults(self):
-        env = _env_environment([
-            ("MY_CUSTOM_FIELD", "sensitive"),
-            ("DB_PASSWORD", "also_sensitive"),
-        ])
+        env = _env_environment(
+            [
+                ("MY_CUSTOM_FIELD", "sensitive"),
+                ("DB_PASSWORD", "also_sensitive"),
+            ]
+        )
         result = redact(env, patterns=("custom_field",))
         env_dict = dict(result.containers[0].env)
         assert env_dict["MY_CUSTOM_FIELD"] == REDACTED
@@ -158,7 +167,9 @@ class TestFieldPreservation:
             image="nginx:1.25",
             image_id="sha256:abcdef",
             image_digest="nginx@sha256:deadbeef",
-            ports=[PortBinding(container_port=80, protocol="tcp", host_ip="0.0.0.0", host_port="8080")],
+            ports=[
+                PortBinding(container_port=80, protocol="tcp", host_ip="0.0.0.0", host_port="8080")
+            ],
             mounts=[MountInfo(source="/host", destination="/container", mode="rw", type="bind")],
             networks=[NetworkMembership(name="frontend", ip_address="10.0.0.1", aliases=("web",))],
             env=[("SECRET_KEY", "hunter2"), ("SAFE_VAR", "hello")],
@@ -202,3 +213,73 @@ class TestImmutability:
         result = redact(env)
         assert dict(env.containers[0].env)["DB_PASSWORD"] == "secret"
         assert dict(result.containers[0].env)["DB_PASSWORD"] == REDACTED
+
+
+class TestResolvePatterns:
+    def test_no_custom_returns_defaults(self):
+        result = resolve_patterns()
+        assert result == DEFAULT_PATTERNS
+
+    def test_empty_custom_returns_defaults(self):
+        result = resolve_patterns(())
+        assert result == DEFAULT_PATTERNS
+
+    def test_custom_extends_defaults(self):
+        result = resolve_patterns(("conn_string", "dsn"))
+        assert result[: len(DEFAULT_PATTERNS)] == DEFAULT_PATTERNS
+        assert "conn_string" in result
+        assert "dsn" in result
+
+    def test_duplicates_not_added(self):
+        result = resolve_patterns(("password", "secret"))
+        assert result == DEFAULT_PATTERNS
+
+    def test_case_insensitive_dedup(self):
+        result = resolve_patterns(("PASSWORD", "Secret"))
+        assert result == DEFAULT_PATTERNS
+
+    def test_custom_only_adds_new(self):
+        result = resolve_patterns(("password", "new_pattern"))
+        assert len(result) == len(DEFAULT_PATTERNS) + 1
+        assert result[-1] == "new_pattern"
+
+
+class TestIsSecretKey:
+    def test_password_key_is_secret(self):
+        assert is_secret_key("DB_PASSWORD", "hunter2", DEFAULT_PATTERNS)
+
+    def test_safe_key_is_not_secret(self):
+        assert not is_secret_key("NGINX_HOST", "example.com", DEFAULT_PATTERNS)
+
+    def test_url_with_credentials_is_secret(self):
+        assert is_secret_key(
+            "DATABASE_URL",
+            "postgresql://user:pass@localhost/db",
+            DEFAULT_PATTERNS,
+        )
+
+    def test_url_without_credentials_is_not_secret(self):
+        assert not is_secret_key(
+            "AUTH_CALLBACK_URL",
+            "https://example.com/callback",
+            DEFAULT_PATTERNS,
+        )
+
+    def test_catch_all_url_with_credentials(self):
+        assert is_secret_key(
+            "REDIS_URL",
+            "redis://default:pass@redis:6379/0",
+            DEFAULT_PATTERNS,
+        )
+
+
+class TestWarningsPreserved:
+    def test_redact_preserves_warnings(self):
+        env = make_environment(
+            containers=[_env_container([("DB_PASSWORD", "secret")])],
+            generated_at="2026-01-01T00:00:00Z",
+            docker_version="25.0",
+            warnings=["container 'broken' skipped: timeout"],
+        )
+        result = redact(env)
+        assert result.warnings == ("container 'broken' skipped: timeout",)

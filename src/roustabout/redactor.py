@@ -30,6 +30,26 @@ DEFAULT_PATTERNS: tuple[str, ...] = (
 _CREDENTIAL_URL_RE = re.compile(r"://[^@]+@")
 
 
+def resolve_patterns(
+    custom: tuple[str, ...] = (),
+    defaults: tuple[str, ...] = DEFAULT_PATTERNS,
+) -> tuple[str, ...]:
+    """Merge custom patterns with defaults. Custom extends, never replaces.
+
+    Args:
+        custom: Additional patterns from user config.
+        defaults: Base patterns (normally DEFAULT_PATTERNS).
+
+    Returns:
+        Combined tuple with defaults first, then any new custom patterns.
+    """
+    if not custom:
+        return defaults
+    seen = {p.lower() for p in defaults}
+    extra = tuple(p for p in custom if p.lower() not in seen)
+    return defaults + extra
+
+
 def redact(
     env: DockerEnvironment,
     patterns: tuple[str, ...] | None = None,
@@ -49,6 +69,7 @@ def redact(
         containers=containers,
         generated_at=env.generated_at,
         docker_version=env.docker_version,
+        warnings=env.warnings,
     )
 
 
@@ -58,7 +79,7 @@ def _redact_container(
 ) -> ContainerInfo:
     """Redact env vars in a single container."""
     redacted_env = [
-        (key, REDACTED if _should_redact(key, value, patterns) else value)
+        (key, REDACTED if is_secret_key(key, value, patterns) else value)
         for key, value in container.env
     ]
 
@@ -67,8 +88,8 @@ def _redact_container(
     return make_container(**kwargs)
 
 
-def _should_redact(key: str, value: str, patterns: tuple[str, ...]) -> bool:
-    """Determine if a key-value pair should be redacted.
+def is_secret_key(key: str, value: str, patterns: tuple[str, ...]) -> bool:
+    """Check if a key-value pair contains a secret worth redacting.
 
     Two mechanisms:
     1. Pattern match: if a pattern substring appears in the key, redact —

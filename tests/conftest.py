@@ -8,14 +8,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from roustabout.models import (
-    ContainerInfo,
     MountInfo,
     NetworkMembership,
     PortBinding,
     make_container,
     make_environment,
 )
-
 
 # ---------------------------------------------------------------------------
 # Mock Docker API container attrs — mirrors docker-py's container.attrs
@@ -45,6 +43,8 @@ def _make_mock_container(
     command="nginx -g 'daemon off;'",
     entrypoint="/docker-entrypoint.sh",
     oom_killed=False,
+    user="",
+    restart_policy_name="always",
 ):
     """Build a mock container object matching docker-py's Container interface."""
     if ports is None:
@@ -111,6 +111,10 @@ def _make_mock_container(
             "Labels": all_labels,
             "Cmd": [command] if command else None,
             "Entrypoint": [entrypoint] if entrypoint else None,
+            "User": user,
+        },
+        "HostConfig": {
+            "RestartPolicy": {"Name": restart_policy_name},
         },
         "NetworkSettings": {
             "Ports": ports,
@@ -305,7 +309,9 @@ def sample_container_info():
             ),
         ],
         networks=[
-            NetworkMembership(name="frontend", ip_address="172.18.0.2", aliases=("nginx", "proxy")),
+            NetworkMembership(
+                name="frontend", ip_address="172.18.0.2", aliases=("nginx", "proxy")
+            ),
             NetworkMembership(name="backend", ip_address="172.18.1.2", aliases=()),
         ],
         env=[

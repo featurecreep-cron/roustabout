@@ -102,6 +102,12 @@ def _collect_container(container) -> ContainerInfo:
     ep = config.get("Entrypoint")
     entrypoint = " ".join(ep) if ep else None
 
+    user = config.get("User") or None
+
+    host_config = attrs.get("HostConfig", {})
+    restart_info = host_config.get("RestartPolicy", {})
+    restart_policy = restart_info.get("Name") or None
+
     return make_container(
         name=name,
         id=container.short_id,
@@ -124,6 +130,8 @@ def _collect_container(container) -> ContainerInfo:
         command=command,
         entrypoint=entrypoint,
         oom_killed=state.get("OOMKilled", False),
+        user=user,
+        restart_policy=restart_policy,
     )
 
 

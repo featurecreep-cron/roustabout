@@ -159,7 +159,9 @@ def _render_container(
     # Labels (excluding compose-internal)
     if show_labels and c.labels:
         filtered = [
-            (k, v) for k, v in c.labels if not any(k.startswith(p) for p in _COMPOSE_LABEL_PREFIXES)
+            (k, v)
+            for k, v in c.labels
+            if not any(k.startswith(p) for p in _COMPOSE_LABEL_PREFIXES)
         ]
         if filtered:
             lines.append("#### Labels")

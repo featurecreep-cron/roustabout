@@ -1,0 +1,20 @@
+services:
+  cronbox:
+    build:
+      context: .
+      args:
+        AUTHORIZED_KEY: ${AUTHORIZED_KEY}
+        DOCKER_GID: ${DOCKER_GID:-984}
+    ports:
+      - "2223:2222"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - cronbox-home:/home/cron
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  cronbox-home:

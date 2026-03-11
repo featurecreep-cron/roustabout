@@ -1,0 +1,14 @@
+Port 2222
+HostKey /etc/cronbox/ssh_host_ed25519_key
+PidFile /etc/cronbox/sshd.pid
+
+UsePAM no
+StrictModes no
+
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+ChallengeResponseAuthentication no
+
+X11Forwarding no
+PrintMotd no

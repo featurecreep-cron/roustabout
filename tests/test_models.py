@@ -3,7 +3,6 @@
 import pytest
 
 from roustabout.models import (
-    ContainerInfo,
     MountInfo,
     NetworkMembership,
     PortBinding,
@@ -39,7 +38,9 @@ class TestMakeContainerSorting:
             image="img",
             image_id="sha256:123",
             ports=[
-                PortBinding(container_port=443, protocol="tcp", host_ip="0.0.0.0", host_port="443"),
+                PortBinding(
+                    container_port=443, protocol="tcp", host_ip="0.0.0.0", host_port="443"
+                ),
                 PortBinding(container_port=53, protocol="udp", host_ip="0.0.0.0", host_port="53"),
                 PortBinding(container_port=53, protocol="tcp", host_ip="0.0.0.0", host_port="53"),
                 PortBinding(container_port=80, protocol="tcp", host_ip="0.0.0.0", host_port="80"),

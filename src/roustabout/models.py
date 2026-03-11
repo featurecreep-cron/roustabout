@@ -7,7 +7,6 @@ All collections are sorted at construction time.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -48,22 +47,24 @@ class ContainerInfo:
     status: str
     image: str
     image_id: str
-    image_digest: Optional[str]
+    image_digest: str | None
     ports: tuple[PortBinding, ...]
     mounts: tuple[MountInfo, ...]
     networks: tuple[NetworkMembership, ...]
     env: tuple[tuple[str, str], ...]
     labels: tuple[tuple[str, str], ...]
-    health: Optional[str]
-    compose_project: Optional[str]
-    compose_service: Optional[str]
-    compose_config_files: Optional[str]
+    health: str | None
+    compose_project: str | None
+    compose_service: str | None
+    compose_config_files: str | None
     restart_count: int
     created: str
     started_at: str
-    command: Optional[str]
-    entrypoint: Optional[str]
+    command: str | None
+    entrypoint: str | None
     oom_killed: bool
+    user: str | None
+    restart_policy: str | None
 
 
 @dataclass(frozen=True)
@@ -83,22 +84,24 @@ def make_container(
     status: str,
     image: str,
     image_id: str,
-    image_digest: Optional[str] = None,
+    image_digest: str | None = None,
     ports: list[PortBinding] | tuple[PortBinding, ...] = (),
     mounts: list[MountInfo] | tuple[MountInfo, ...] = (),
     networks: list[NetworkMembership] | tuple[NetworkMembership, ...] = (),
     env: list[tuple[str, str]] | tuple[tuple[str, str], ...] = (),
     labels: list[tuple[str, str]] | tuple[tuple[str, str], ...] = (),
-    health: Optional[str] = None,
-    compose_project: Optional[str] = None,
-    compose_service: Optional[str] = None,
-    compose_config_files: Optional[str] = None,
+    health: str | None = None,
+    compose_project: str | None = None,
+    compose_service: str | None = None,
+    compose_config_files: str | None = None,
     restart_count: int = 0,
     created: str = "",
     started_at: str = "",
-    command: Optional[str] = None,
-    entrypoint: Optional[str] = None,
+    command: str | None = None,
+    entrypoint: str | None = None,
     oom_killed: bool = False,
+    user: str | None = None,
+    restart_policy: str | None = None,
 ) -> ContainerInfo:
     """Construct a ContainerInfo with sorted collections.
 
@@ -116,7 +119,7 @@ def make_container(
         mounts=tuple(sorted(mounts, key=lambda m: m.destination)),
         networks=tuple(sorted(networks, key=lambda n: n.name)),
         env=tuple(sorted(env, key=lambda e: e[0])),
-        labels=tuple(sorted(labels, key=lambda l: l[0])),
+        labels=tuple(sorted(labels, key=lambda lbl: lbl[0])),
         health=health,
         compose_project=compose_project,
         compose_service=compose_service,
@@ -127,6 +130,8 @@ def make_container(
         command=command,
         entrypoint=entrypoint,
         oom_killed=oom_killed,
+        user=user,
+        restart_policy=restart_policy,
     )
 
 

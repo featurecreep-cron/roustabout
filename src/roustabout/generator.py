@@ -145,6 +145,24 @@ def _service_name(container: ContainerInfo) -> str:
     return name.lower().replace(".", "-")
 
 
+def _is_default_network_mode(mode: str) -> bool:
+    """Check if a network mode is a default that shouldn't be emitted."""
+    if mode in ("bridge", "default"):
+        return True
+    # Compose creates {project}_default networks — these are the default behavior
+    if mode.endswith("_default"):
+        return True
+    return False
+
+
+def _is_auto_hostname(hostname: str) -> bool:
+    """Check if a hostname is auto-generated (container ID fragment)."""
+    # Docker auto-generates hostnames as 12-char hex strings from the container ID
+    import re
+
+    return bool(re.fullmatch(r"[0-9a-f]{12}", hostname))
+
+
 def _build_service(c: ContainerInfo) -> CommentedMap:
     """Build a compose service definition from a ContainerInfo."""
     svc = CommentedMap()
@@ -164,7 +182,7 @@ def _build_service(c: ContainerInfo) -> CommentedMap:
     if c.init:
         svc["init"] = True
 
-    if c.network_mode and c.network_mode not in ("bridge", "default"):
+    if c.network_mode and not _is_default_network_mode(c.network_mode):
         # Handle container:X network mode → service:X in compose
         if c.network_mode.startswith("container:"):
             ref_container = c.network_mode.split(":", 1)[1]
@@ -172,10 +190,10 @@ def _build_service(c: ContainerInfo) -> CommentedMap:
         else:
             svc["network_mode"] = c.network_mode
 
-    if c.hostname:
+    if c.hostname and not _is_auto_hostname(c.hostname):
         svc["hostname"] = c.hostname
 
-    if c.runtime:
+    if c.runtime and c.runtime not in ("runc",):
         svc["runtime"] = c.runtime
 
     if c.pid_mode and c.pid_mode != "":
@@ -212,7 +230,7 @@ def _build_service(c: ContainerInfo) -> CommentedMap:
         svc["tmpfs"] = list(c.tmpfs)
 
     # Networks (skip if using network_mode)
-    if not (c.network_mode and c.network_mode not in ("bridge", "default")):
+    if not (c.network_mode and not _is_default_network_mode(c.network_mode)):
         nets = _build_networks(c)
         if nets:
             svc["networks"] = nets

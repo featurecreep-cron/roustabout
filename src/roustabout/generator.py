@@ -11,19 +11,8 @@ from io import StringIO
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
+from roustabout.constants import COMPOSE_LABEL_PREFIXES, IMAGE_LABEL_PREFIXES
 from roustabout.models import ContainerInfo, DockerEnvironment
-
-# Labels managed by compose or baked into images — exclude from generated output
-_COMPOSE_LABEL_PREFIXES = (
-    "com.docker.compose.",
-    "com.docker.desktop.",
-)
-
-# Image metadata labels — always baked in, never user-set
-_IMAGE_LABEL_PREFIXES = (
-    "org.opencontainers.image.",
-    "org.label-schema.",
-)
 
 # Default Docker networks that shouldn't be declared in top-level networks:
 _DEFAULT_NETWORKS = {"bridge", "host", "none"}
@@ -339,8 +328,8 @@ def _build_service(
     user_labels = [
         (k, v)
         for k, v in c.labels
-        if not any(k.startswith(p) for p in _COMPOSE_LABEL_PREFIXES)
-        and not any(k.startswith(p) for p in _IMAGE_LABEL_PREFIXES)
+        if not any(k.startswith(p) for p in COMPOSE_LABEL_PREFIXES)
+        and not any(k.startswith(p) for p in IMAGE_LABEL_PREFIXES)
     ]
     if user_labels:
         labels = CommentedMap()
@@ -402,12 +391,12 @@ def _build_service(
         deploy["resources"] = resources
         svc["deploy"] = deploy
 
-    # Command and entrypoint
+    # Command and entrypoint — use list form to preserve argument boundaries
     if c.entrypoint:
-        svc["entrypoint"] = c.entrypoint
+        svc["entrypoint"] = list(c.entrypoint) if len(c.entrypoint) > 1 else c.entrypoint[0]
 
     if c.command:
-        svc["command"] = c.command
+        svc["command"] = list(c.command) if len(c.command) > 1 else c.command[0]
 
     return svc
 

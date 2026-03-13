@@ -120,7 +120,7 @@ def set_finding_state(
 
 
 def apply_state(
-    findings: list,
+    findings: list[object],
     state_entries: dict[str, StateEntry],
 ) -> list[tuple[object, StateEntry | None]]:
     """Annotate findings with their state.

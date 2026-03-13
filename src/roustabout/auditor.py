@@ -7,6 +7,7 @@ All checks are deterministic and independently testable.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -33,13 +34,18 @@ _SENSITIVE_IMAGE_PATTERNS = (
     "portainer",
 )
 
-# Host paths that should not be bind-mounted into containers
+# Host paths that should not be bind-mounted into containers.
+# These flag on exact match AND subdirectory mounts.
 _SENSITIVE_HOST_PATHS = (
     "/etc",
     "/root",
     "/home",
     "/var/run/docker.sock",  # handled separately by docker-socket check
 )
+
+# These paths flag only on exact match (not subdirectories).
+# /home is here because homelabbers commonly mount /home/user/docker/* for data.
+_SENSITIVE_EXACT_ONLY = {"/home"}
 
 # Specific files under sensitive paths that are safe to mount (read-only, no secrets)
 _SAFE_MOUNT_EXCEPTIONS = (
@@ -48,6 +54,16 @@ _SAFE_MOUNT_EXCEPTIONS = (
     "/etc/hosts",
     "/etc/resolv.conf",
 )
+
+# Dangerous capabilities that warrant auditing
+_DANGEROUS_CAPS = {
+    "SYS_ADMIN": "mount namespace access — nearly equivalent to privileged mode",
+    "NET_ADMIN": "full control over host networking",
+    "SYS_PTRACE": "can trace any process — allows container escape techniques",
+    "DAC_OVERRIDE": "bypasses file permission checks",
+    "SYS_RAWIO": "raw I/O access to hardware devices",
+    "SYS_MODULE": "can load kernel modules",
+}
 
 
 class Severity(Enum):
@@ -101,8 +117,10 @@ def audit(
     for container in env.containers:
         findings.extend(_check_docker_socket(container))
         findings.extend(_check_privileged_mode(container))
+        findings.extend(_check_dangerous_capabilities(container))
         findings.extend(_check_sensitive_host_mounts(container))
         findings.extend(_check_host_network(container))
+        findings.extend(_check_pid_mode(container))
         findings.extend(_check_secrets_in_env(container, active_patterns))
         findings.extend(_check_sensitive_port_binding(container))
         findings.extend(_check_no_health_check(container))
@@ -129,20 +147,13 @@ def _apply_severity_overrides(findings: list[Finding], overrides: dict[str, str]
     for f in findings:
         new_level = overrides.get(f.category)
         if new_level and new_level in _SEVERITY_MAP:
-            f = Finding(
-                severity=_SEVERITY_MAP[new_level],
-                category=f.category,
-                container=f.container,
-                explanation=f.explanation,
-                fix=f.fix,
-                detail=f.detail,
-            )
+            f = dataclasses.replace(f, severity=_SEVERITY_MAP[new_level])
         result.append(f)
     return result
 
 
 def _check_docker_socket(c: ContainerInfo) -> list[Finding]:
-    """Check #1: Docker socket mounted — full host control."""
+    """Check: Docker socket mounted — full host control."""
     for mount in c.mounts:
         if mount.destination == "/var/run/docker.sock" or mount.source == "/var/run/docker.sock":
             return [
@@ -160,7 +171,7 @@ def _check_docker_socket(c: ContainerInfo) -> list[Finding]:
 
 
 def _check_privileged_mode(c: ContainerInfo) -> list[Finding]:
-    """Check #11: Container running in privileged mode."""
+    """Check: Container running in privileged mode."""
     if not c.privileged:
         return []
     return [
@@ -177,8 +188,31 @@ def _check_privileged_mode(c: ContainerInfo) -> list[Finding]:
     ]
 
 
+def _check_dangerous_capabilities(c: ContainerInfo) -> list[Finding]:
+    """Check: Container granted dangerous Linux capabilities."""
+    if c.privileged:
+        return []  # already caught by privileged-mode check
+    findings = []
+    for cap in c.cap_add:
+        cap_upper = cap.upper()
+        if cap_upper in _DANGEROUS_CAPS:
+            findings.append(
+                Finding(
+                    severity=Severity.WARNING,
+                    category="dangerous-capability",
+                    container=c.name,
+                    explanation=f"Container has `{cap_upper}` capability: "
+                    f"{_DANGEROUS_CAPS[cap_upper]}.",
+                    fix=f"Remove `{cap_upper}` from `cap_add:` unless the container "
+                    f"specifically requires it. Check the image documentation.",
+                    detail=cap_upper,
+                )
+            )
+    return findings
+
+
 def _check_sensitive_host_mounts(c: ContainerInfo) -> list[Finding]:
-    """Check #12: Sensitive host paths mounted into container."""
+    """Check: Sensitive host paths mounted into container."""
     # Docker socket is already caught by check #1 — skip it here
     findings = []
     for mount in c.mounts:
@@ -191,7 +225,12 @@ def _check_sensitive_host_mounts(c: ContainerInfo) -> list[Finding]:
         for sensitive in _SENSITIVE_HOST_PATHS:
             if sensitive == "/var/run/docker.sock":
                 continue  # handled by docker-socket check
-            if source == sensitive or source.startswith(sensitive + "/"):
+            # Some paths only flag on exact match, not subdirectories
+            if sensitive in _SENSITIVE_EXACT_ONLY:
+                is_match = source == sensitive
+            else:
+                is_match = source == sensitive or source.startswith(sensitive + "/")
+            if is_match:
                 findings.append(
                     Finding(
                         severity=Severity.WARNING,
@@ -211,7 +250,7 @@ def _check_sensitive_host_mounts(c: ContainerInfo) -> list[Finding]:
 
 
 def _check_host_network(c: ContainerInfo) -> list[Finding]:
-    """Check #13: Container using host network mode."""
+    """Check: Container using host network mode."""
     if c.status != "running":
         return []
     if c.network_mode != "host":
@@ -229,11 +268,30 @@ def _check_host_network(c: ContainerInfo) -> list[Finding]:
     ]
 
 
+def _check_pid_mode(c: ContainerInfo) -> list[Finding]:
+    """Check: Container using host PID namespace."""
+    if c.status != "running":
+        return []
+    if c.pid_mode != "host":
+        return []
+    return [
+        Finding(
+            severity=Severity.WARNING,
+            category="host-pid",
+            container=c.name,
+            explanation="Container shares the host PID namespace. It can see and signal "
+            "all processes on the host.",
+            fix="Remove `pid: host` unless the container specifically requires "
+            "visibility into host processes.",
+        )
+    ]
+
+
 def _check_secrets_in_env(
     c: ContainerInfo,
     patterns: tuple[str, ...],
 ) -> list[Finding]:
-    """Check #2: Secrets visible in environment variables."""
+    """Check: Secrets visible in environment variables."""
     findings = []
     for key, value in c.env:
         if not value or value == "[REDACTED]":
@@ -255,7 +313,7 @@ def _check_secrets_in_env(
 
 
 def _check_sensitive_port_binding(c: ContainerInfo) -> list[Finding]:
-    """Check #3: Database/admin ports bound to all interfaces."""
+    """Check: Database/admin ports bound to all interfaces."""
     image_lower = c.image.lower()
     is_sensitive = any(p in image_lower for p in _SENSITIVE_IMAGE_PATTERNS)
     if not is_sensitive:
@@ -281,7 +339,7 @@ def _check_sensitive_port_binding(c: ContainerInfo) -> list[Finding]:
 
 
 def _check_no_health_check(c: ContainerInfo) -> list[Finding]:
-    """Check #4: No health check configured."""
+    """Check: No health check configured."""
     if c.status != "running":
         return []
     if c.health is None:
@@ -300,7 +358,7 @@ def _check_no_health_check(c: ContainerInfo) -> list[Finding]:
 
 
 def _check_running_as_root(c: ContainerInfo) -> list[Finding]:
-    """Check #5: Running as root with elevated access.
+    """Check: Running as root with elevated access.
 
     Most containers run as root — that alone is info-level noise. But root
     combined with the Docker socket is already caught as critical. Root with
@@ -334,8 +392,8 @@ def _check_running_as_root(c: ContainerInfo) -> list[Finding]:
 
 
 def _check_restart_loops(c: ContainerInfo) -> list[Finding]:
-    """Check #6: Container has restarted excessively."""
-    if c.restart_count > 5:
+    """Check: Container has restarted excessively."""
+    if c.restart_count > 25:
         return [
             Finding(
                 severity=Severity.WARNING,
@@ -351,7 +409,7 @@ def _check_restart_loops(c: ContainerInfo) -> list[Finding]:
 
 
 def _check_oom_killed(c: ContainerInfo) -> list[Finding]:
-    """Check #7: Container was OOM killed."""
+    """Check: Container was OOM killed."""
     if c.oom_killed:
         return [
             Finding(
@@ -367,10 +425,13 @@ def _check_oom_killed(c: ContainerInfo) -> list[Finding]:
 
 
 def _check_flat_networking(env: DockerEnvironment) -> list[Finding]:
-    """Check #8: All containers on the same network."""
+    """Check: All containers on the same network (across multiple compose projects)."""
     running = [c for c in env.containers if c.status == "running"]
     if len(running) < 3:
         return []
+
+    # Collect compose projects to understand if flat networking is intentional
+    projects = {c.compose_project for c in running if c.compose_project}
 
     # Collect all networks used by running containers
     network_members: dict[str, list[str]] = {}
@@ -378,27 +439,37 @@ def _check_flat_networking(env: DockerEnvironment) -> list[Finding]:
         for n in c.networks:
             network_members.setdefault(n.name, []).append(c.name)
 
-    # Check if there's one network that contains all running containers
+    # Only flag if containers from multiple compose projects share a network,
+    # or if standalone containers share a network with everything else.
+    # A single compose project with all services on one network is normal.
     for net_name, members in network_members.items():
-        if len(members) == len(running) and net_name != "host":
-            return [
-                Finding(
-                    severity=Severity.INFO,
-                    category="flat-network",
-                    container="(all)",
-                    explanation=f"All {len(running)} running containers share the "
-                    f"`{net_name}` network. This means every container can reach every "
-                    f"other container.",
-                    fix="Create separate networks for services that need to communicate. "
-                    "Containers that don't need to talk to each other shouldn't share a "
-                    "network.",
-                )
-            ]
+        if net_name == "host":
+            continue
+        if len(members) < len(running):
+            continue
+
+        # All containers share this network — check if it's multi-project
+        if len(projects) <= 1 and all(c.compose_project for c in running):
+            continue  # single compose project, this is expected behavior
+
+        return [
+            Finding(
+                severity=Severity.INFO,
+                category="flat-network",
+                container="(all)",
+                explanation=f"All {len(running)} running containers share the "
+                f"`{net_name}` network. This means every container can reach every "
+                f"other container.",
+                fix="Create separate networks for services that need to communicate. "
+                "Containers that don't need to talk to each other shouldn't share a "
+                "network.",
+            )
+        ]
     return []
 
 
 def _check_no_restart_policy(c: ContainerInfo) -> list[Finding]:
-    """Check #9: No restart policy configured."""
+    """Check: No restart policy configured."""
     if c.status != "running":
         return []
     if c.restart_policy is None or c.restart_policy == "no":
@@ -416,116 +487,24 @@ def _check_no_restart_policy(c: ContainerInfo) -> list[Finding]:
 
 
 def _check_stale_images(c: ContainerInfo) -> list[Finding]:
-    """Check #10: Using :latest tag with no pinned digest."""
+    """Check: Using :latest or untagged image with no pinned digest."""
     if c.status != "running":
         return []
-    if ":latest" in c.image and c.image_digest is None:
+    image = c.image
+    # Catch both ":latest" and untagged images (e.g. "postgres" with no ":")
+    is_latest = ":latest" in image
+    is_untagged = ":" not in image and "/" not in image.split(":")[-1]
+    if (is_latest or is_untagged) and c.image_digest is None:
+        tag_desc = ":latest" if is_latest else "no version tag"
         return [
             Finding(
                 severity=Severity.INFO,
                 category="stale-image",
                 container=c.name,
-                explanation=f"Image `{c.image}` uses the `:latest` tag with no pinned "
+                explanation=f"Image `{image}` uses {tag_desc} with no pinned "
                 f"digest. You cannot verify which version is actually running.",
                 fix="Pin to a specific version tag (e.g. `nginx:1.25-alpine`) or use "
                 "image digests.",
             )
         ]
     return []
-
-
-def render_findings(
-    findings: list[Finding],
-    state_entries: dict | None = None,
-    hide_accepted: bool = False,
-) -> str:
-    """Render audit findings as structured markdown.
-
-    Args:
-        findings: List of findings from audit().
-        state_entries: Optional dict mapping finding keys to StateEntry objects.
-        hide_accepted: If True, suppress accepted and false-positive findings.
-    """
-    from roustabout.state import FindingState, apply_state
-
-    if state_entries is None:
-        state_entries = {}
-
-    annotated = apply_state(findings, state_entries)
-
-    # Separate actionable from dismissed
-    _suppressed_states = {FindingState.ACCEPTED, FindingState.FALSE_POSITIVE}
-    if hide_accepted:
-        annotated = [
-            (f, s) for f, s in annotated if s is None or s.state not in _suppressed_states
-        ]
-
-    if not annotated:
-        return "# Security Audit\n\nNo findings.\n"
-
-    actionable = [(f, s) for f, s in annotated if s is None or s.state not in _suppressed_states]
-    dismissed = [(f, s) for f, s in annotated if s is not None and s.state in _suppressed_states]
-
-    lines = ["# Security Audit", ""]
-
-    # Summary counts
-    all_findings = [f for f, _ in annotated]
-    critical = [f for f in all_findings if f.severity == Severity.CRITICAL]
-    warnings = [f for f in all_findings if f.severity == Severity.WARNING]
-    infos = [f for f in all_findings if f.severity == Severity.INFO]
-
-    summary = (
-        f"**{len(all_findings)} findings:** "
-        f"{len(critical)} critical, {len(warnings)} warning, {len(infos)} info"
-    )
-    if dismissed:
-        summary += f" ({len(actionable)} actionable, {len(dismissed)} accepted)"
-    lines.append(summary)
-    lines.append("")
-
-    # Summary table
-    lines.append("| Container | Category | Severity | Status |")
-    lines.append("|-----------|----------|----------|--------|")
-    for finding, state in annotated:
-        status = "Open"
-        if state is not None:
-            status = state.state.value.title()
-        lines.append(
-            f"| {finding.container} | {finding.category} "
-            f"| {finding.severity.value.title()} | {status} |"
-        )
-    lines.append("")
-
-    # Table of contents
-    lines.append("## Contents")
-    lines.append("")
-    for sev_label in ("Critical", "Warning", "Info"):
-        sev_findings = [(f, s) for f, s in annotated if f.severity.value.title() == sev_label]
-        if sev_findings:
-            lines.append(f"- [{sev_label} ({len(sev_findings)})](#{sev_label.lower()})")
-    lines.append("")
-
-    # Findings by severity
-    current_severity = None
-    for finding, state in annotated:
-        if finding.severity != current_severity:
-            current_severity = finding.severity
-            lines.append(f"## {current_severity.value.title()}")
-            lines.append("")
-
-        state_label = ""
-        if state is not None:
-            state_label = f" [{state.state.value.upper()}]"
-        lines.append(f"### {finding.container} — {finding.category}{state_label}")
-        lines.append("")
-        lines.append(finding.explanation)
-        lines.append("")
-        if state is not None:
-            label = "Accepted" if state.state == FindingState.ACCEPTED else "False positive"
-            lines.append(f"**{label}:** {state.reason}")
-            lines.append("")
-        else:
-            lines.append(f"**Fix:** {finding.fix}")
-            lines.append("")
-
-    return "\n".join(lines) + "\n"

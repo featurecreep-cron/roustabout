@@ -49,8 +49,8 @@ def _full_environment():
         compose_config_files="/opt/docker-compose.yml",
         created="2026-02-01T10:00:00Z",
         started_at="2026-02-01T10:00:05Z",
-        command="nginx -g 'daemon off;'",
-        entrypoint="/docker-entrypoint.sh",
+        command=["nginx", "-g", "daemon off;"],
+        entrypoint=["/docker-entrypoint.sh"],
     )
 
     postgres = make_container(
@@ -73,7 +73,7 @@ def _full_environment():
         compose_config_files="/opt/docker-compose.yml",
         created="2026-02-01T10:00:00Z",
         started_at="2026-02-01T10:00:03Z",
-        command="postgres",
+        command=["postgres"],
     )
 
     watchtower = make_container(
@@ -96,8 +96,8 @@ def _full_environment():
         env=[("WATCHTOWER_CLEANUP", "true")],
         created="2026-02-01T10:00:00Z",
         started_at="2026-02-01T10:00:01Z",
-        command="--cleanup",
-        entrypoint="/watchtower",
+        command=["--cleanup"],
+        entrypoint=["/watchtower"],
     )
 
     stopped = make_container(
@@ -189,7 +189,7 @@ class TestContainerSections:
     def test_metadata_fields(self):
         output = render(_full_environment())
         assert "**OOM Killed:** yes" in output
-        assert "**Command:** `nginx -g 'daemon off;'`" in output
+        assert "**Command:** `nginx -g daemon off;`" in output
         assert "**Entrypoint:** `/docker-entrypoint.sh`" in output
         assert "**Restart count:** 0" in output
 

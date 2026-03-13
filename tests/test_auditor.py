@@ -1,10 +1,10 @@
 """Tests for the security auditor."""
 
+from roustabout.audit_renderer import render_findings
 from roustabout.auditor import (
     Finding,
     Severity,
     audit,
-    render_findings,
 )
 from roustabout.models import (
     MountInfo,
@@ -216,25 +216,25 @@ class TestRunningAsRoot:
 
 class TestRestartLoops:
     def test_high_restart_count(self):
-        env = _env(restart_count=10)
+        env = _env(restart_count=30)
         findings = audit(env)
         f = _find(findings, "restart-loop")
         assert f is not None
         assert f.severity == Severity.WARNING
-        assert "10" in f.explanation
+        assert "30" in f.explanation
 
     def test_normal_restart_count(self):
-        env = _env(restart_count=2)
+        env = _env(restart_count=10)
         findings = audit(env)
         assert _find(findings, "restart-loop") is None
 
-    def test_boundary_value_5(self):
-        env = _env(restart_count=5)
+    def test_boundary_value_25(self):
+        env = _env(restart_count=25)
         findings = audit(env)
         assert _find(findings, "restart-loop") is None
 
-    def test_boundary_value_6(self):
-        env = _env(restart_count=6)
+    def test_boundary_value_26(self):
+        env = _env(restart_count=26)
         findings = audit(env)
         assert _find(findings, "restart-loop") is not None
 
@@ -539,6 +539,95 @@ class TestSortOrder:
         severity_order = {Severity.CRITICAL: 0, Severity.WARNING: 1, Severity.INFO: 2}
         severity_values = [severity_order[s] for s in severities]
         assert severity_values == sorted(severity_values)
+
+
+class TestDangerousCapabilities:
+    def test_sys_admin_detected(self):
+        env = _env(cap_add=["SYS_ADMIN"])
+        findings = audit(env)
+        f = _find(findings, "dangerous-capability")
+        assert f is not None
+        assert f.severity == Severity.WARNING
+        assert "SYS_ADMIN" in f.explanation
+
+    def test_net_admin_detected(self):
+        env = _env(cap_add=["NET_ADMIN"])
+        findings = audit(env)
+        f = _find(findings, "dangerous-capability")
+        assert f is not None
+
+    def test_safe_cap_clean(self):
+        env = _env(cap_add=["NET_BIND_SERVICE"])
+        findings = audit(env)
+        assert _find(findings, "dangerous-capability") is None
+
+    def test_privileged_skips_cap_check(self):
+        env = _env(privileged=True, cap_add=["SYS_ADMIN"])
+        findings = audit(env)
+        assert _find(findings, "dangerous-capability") is None
+        assert _find(findings, "privileged-mode") is not None
+
+    def test_multiple_dangerous_caps(self):
+        env = _env(cap_add=["SYS_ADMIN", "NET_ADMIN", "NET_BIND_SERVICE"])
+        findings = audit(env)
+        caps = _find_all(findings, "dangerous-capability")
+        assert len(caps) == 2
+
+
+class TestHostPid:
+    def test_host_pid_detected(self):
+        env = _env(pid_mode="host")
+        findings = audit(env)
+        f = _find(findings, "host-pid")
+        assert f is not None
+        assert f.severity == Severity.WARNING
+
+    def test_no_pid_mode_clean(self):
+        env = _env(pid_mode=None)
+        findings = audit(env)
+        assert _find(findings, "host-pid") is None
+
+    def test_stopped_host_pid_skipped(self):
+        env = _env(status="exited", pid_mode="host")
+        findings = audit(env)
+        assert _find(findings, "host-pid") is None
+
+
+class TestStaleImagesUntagged:
+    def test_untagged_image_detected(self):
+        env = _env(image="postgres", image_digest=None)
+        findings = audit(env)
+        f = _find(findings, "stale-image")
+        assert f is not None
+        assert "no version tag" in f.explanation
+
+    def test_tagged_image_clean(self):
+        env = _env(image="postgres:16-alpine")
+        findings = audit(env)
+        assert _find(findings, "stale-image") is None
+
+
+class TestSensitiveMountHomeSubdir:
+    def test_home_subdir_not_flagged(self):
+        """Standard homelab data paths under /home should NOT be flagged."""
+        env = _env(
+            mounts=[
+                MountInfo(
+                    source="/home/user/docker/jellyfin/config",
+                    destination="/config",
+                    mode="rw",
+                    type="bind",
+                )
+            ]
+        )
+        findings = audit(env)
+        assert _find(findings, "sensitive-mount") is None
+
+    def test_bare_home_still_flagged(self):
+        env = _env(mounts=[MountInfo(source="/home", destination="/data", mode="rw", type="bind")])
+        findings = audit(env)
+        f = _find(findings, "sensitive-mount")
+        assert f is not None
 
 
 class TestRenderFindings:

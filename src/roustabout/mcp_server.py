@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from roustabout.auditor import audit, render_findings
+from roustabout.audit_renderer import render_findings
+from roustabout.auditor import audit
 from roustabout.collector import collect
 from roustabout.config import load_config
 from roustabout.connection import connect
@@ -28,14 +29,19 @@ def _load_cfg():
     try:
         return load_config()
     except (FileNotFoundError, ValueError):
-        return load_config(None)
+        from roustabout.config import Config
+
+        return Config()
 
 
 def _collect_redacted():
     """Collect and redact the Docker environment using config patterns."""
     cfg = _load_cfg()
     client = connect(cfg.docker_host)
-    env = collect(client)
+    try:
+        env = collect(client)
+    finally:
+        client.close()
     patterns = resolve_patterns(cfg.redact_patterns)
     return redact(env, patterns=patterns), cfg
 
@@ -72,7 +78,10 @@ def docker_audit() -> str:
     try:
         cfg = _load_cfg()
         client = connect(cfg.docker_host)
-        env = collect(client)
+        try:
+            env = collect(client)
+        finally:
+            client.close()
     except Exception as exc:
         return f"Error: Cannot connect to Docker: {exc}"
     findings = audit(env, patterns=cfg.redact_patterns)
@@ -118,26 +127,9 @@ def docker_networks() -> str:
     except Exception as exc:
         return f"Error: Cannot connect to Docker: {exc}"
 
-    network_members: dict[str, list[str]] = {}
-    for c in env.containers:
-        for n in c.networks:
-            network_members.setdefault(n.name, []).append(c.name)
+    from roustabout.renderer import render_network_topology
 
-    if not network_members:
-        return "No networks found."
-
-    lines = ["# Docker Networks", ""]
-    for net_name in sorted(network_members.keys()):
-        members = sorted(network_members[net_name])
-        lines.append(f"## {net_name}")
-        lines.append("")
-        count = len(members)
-        lines.append(f"{count} container{'s' if count != 1 else ''}:")
-        for member in members:
-            lines.append(f"- {member}")
-        lines.append("")
-
-    return "\n".join(lines) + "\n"
+    return render_network_topology(env)
 
 
 @mcp.tool()

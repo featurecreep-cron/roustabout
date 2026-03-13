@@ -174,3 +174,45 @@ class TestAuditCommand:
             result = runner.invoke(main, ["audit"])
             assert result.exit_code != 0
             assert "Cannot connect to Docker" in result.output
+
+
+class TestGenerateCommand:
+    def test_generate_outputs_yaml(self, runner, mock_docker_env):
+        result = runner.invoke(main, ["generate"])
+        assert result.exit_code == 0
+        assert "services:" in result.output
+        assert "nginx" in result.output
+
+    def test_generate_with_output_file(self, runner, mock_docker_env, tmp_path):
+        out_file = tmp_path / "compose.yml"
+        result = runner.invoke(main, ["generate", "--output", str(out_file)])
+        assert result.exit_code == 0
+        assert out_file.exists()
+        assert "services:" in out_file.read_text()
+        assert "Compose file written to" in result.output
+
+    def test_generate_without_redact_includes_secrets(self, runner, mock_docker_env):
+        result = runner.invoke(main, ["generate"])
+        assert result.exit_code == 0
+        assert "hunter2" in result.output
+
+    def test_generate_with_redact_hides_secrets(self, runner, mock_docker_env):
+        result = runner.invoke(main, ["generate", "--redact"])
+        assert result.exit_code == 0
+        assert "hunter2" not in result.output
+        assert "[REDACTED]" in result.output
+
+    def test_generate_docker_failure(self, runner):
+        with patch(
+            "roustabout.cli.connect",
+            side_effect=Exception("Connection refused"),
+        ):
+            result = runner.invoke(main, ["generate"])
+            assert result.exit_code != 0
+            assert "Cannot connect to Docker" in result.output
+
+    def test_generate_help(self, runner):
+        result = runner.invoke(main, ["generate", "--help"])
+        assert result.exit_code == 0
+        assert "--redact" in result.output
+        assert "--include-stopped" in result.output

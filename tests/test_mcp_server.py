@@ -210,6 +210,47 @@ class TestDockerConnectionError:
         assert "Error" in result
 
 
+class TestDockerGenerate:
+    def test_returns_yaml(self, mock_client):
+        from roustabout.mcp_server import docker_generate
+
+        result = docker_generate()
+        assert "services:" in result
+        assert "nginx" in result
+        assert "postgres" in result
+
+    def test_redacts_secrets(self, mock_client):
+        from roustabout.mcp_server import docker_generate
+
+        result = docker_generate()
+        assert "hunter2" not in result
+        assert "supersecret" not in result
+        assert "[REDACTED]" in result
+
+    def test_excludes_stopped_by_default(self, mock_client, mock_env):
+        """Only running containers appear by default."""
+        from roustabout.mcp_server import docker_generate
+
+        # Both containers in mock_env are running, so both should appear
+        result = docker_generate()
+        assert "nginx" in result
+        assert "postgres" in result
+
+    def test_connection_error(self):
+        from roustabout.mcp_server import docker_generate
+
+        with (
+            patch("roustabout.mcp_server._load_cfg", return_value=Config()),
+            patch(
+                "roustabout.mcp_server.connect",
+                side_effect=Exception("connection refused"),
+            ),
+        ):
+            result = docker_generate()
+        assert "Error" in result
+        assert "connection refused" in result
+
+
 class TestMCPServerSetup:
     def test_mcp_instance_exists(self):
         from roustabout.mcp_server import mcp

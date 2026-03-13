@@ -17,7 +17,8 @@ from roustabout.collector import collect
 from roustabout.config import load_config
 from roustabout.connection import connect
 from roustabout.generator import generate as run_generate
-from roustabout.redactor import redact, resolve_patterns
+from roustabout.redactor import redact as redact_env
+from roustabout.redactor import resolve_patterns
 from roustabout.renderer import render
 from roustabout.state import FindingState, load_state, set_finding_state
 
@@ -77,7 +78,7 @@ def snapshot(show_env, no_labels, output, config_path, docker_host):
     env = collect(client)
 
     patterns = resolve_patterns(cfg.redact_patterns)
-    env = redact(env, patterns=patterns)
+    env = redact_env(env, patterns=patterns)
 
     markdown = render(env, show_env=cfg.show_env, show_labels=cfg.show_labels)
 
@@ -143,12 +144,21 @@ def audit(output, config_path, docker_host, state_file, hide_accepted):
     help="Include stopped containers.",
 )
 @click.option("--project", default=None, help="Set compose project name.")
-def generate(output, config_path, docker_host, include_stopped, project):
+@click.option(
+    "--redact/--no-redact",
+    default=False,
+    help="Redact secrets in environment variables (default: no redaction).",
+)
+def generate(output, config_path, docker_host, include_stopped, project, redact):
     """Generate a docker-compose.yml from running containers."""
     cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
 
     client = _connect(cfg.docker_host)
     env = collect(client)
+
+    if redact:
+        patterns = resolve_patterns(cfg.redact_patterns)
+        env = redact_env(env, patterns=patterns)
 
     yaml_output = run_generate(env, include_stopped=include_stopped, project_name=project)
 

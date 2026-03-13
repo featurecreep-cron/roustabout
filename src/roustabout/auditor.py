@@ -7,7 +7,7 @@ All checks are deterministic and independently testable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from roustabout.models import ContainerInfo, DockerEnvironment
@@ -65,11 +65,24 @@ class Finding:
     container: str
     explanation: str
     fix: str
+    detail: str = field(default="", compare=True)
+
+    @property
+    def key(self) -> str:
+        """Stable identifier for state tracking across runs."""
+        parts = [self.container, self.category]
+        if self.detail:
+            parts.append(self.detail)
+        return "|".join(parts)
+
+
+_SEVERITY_MAP = {"critical": Severity.CRITICAL, "warning": Severity.WARNING, "info": Severity.INFO}
 
 
 def audit(
     env: DockerEnvironment,
     patterns: tuple[str, ...] | None = None,
+    severity_overrides: dict[str, str] | None = None,
 ) -> list[Finding]:
     """Run all security checks against a DockerEnvironment.
 
@@ -77,6 +90,8 @@ def audit(
         env: The environment to audit.
         patterns: Custom patterns to extend the defaults for secret detection.
             Merged with DEFAULT_PATTERNS via resolve_patterns.
+        severity_overrides: Map of category name to severity level string.
+            Overrides the default severity for matching checks.
 
     Returns findings sorted by severity (critical first), then container name.
     """
@@ -99,10 +114,31 @@ def audit(
 
     findings.extend(_check_flat_networking(env))
 
+    if severity_overrides:
+        findings = _apply_severity_overrides(findings, severity_overrides)
+
     severity_order = {Severity.CRITICAL: 0, Severity.WARNING: 1, Severity.INFO: 2}
     findings.sort(key=lambda f: (severity_order[f.severity], f.container, f.category))
 
     return findings
+
+
+def _apply_severity_overrides(findings: list[Finding], overrides: dict[str, str]) -> list[Finding]:
+    """Replace severity on findings whose category matches an override."""
+    result = []
+    for f in findings:
+        new_level = overrides.get(f.category)
+        if new_level and new_level in _SEVERITY_MAP:
+            f = Finding(
+                severity=_SEVERITY_MAP[new_level],
+                category=f.category,
+                container=f.container,
+                explanation=f.explanation,
+                fix=f.fix,
+                detail=f.detail,
+            )
+        result.append(f)
+    return result
 
 
 def _check_docker_socket(c: ContainerInfo) -> list[Finding]:
@@ -167,6 +203,7 @@ def _check_sensitive_host_mounts(c: ContainerInfo) -> list[Finding]:
                         fix=f"Mount only the specific subdirectory needed instead of "
                         f"`{mount.source}`. If the container needs host configuration, "
                         f"copy the specific files into the image at build time.",
+                        detail=mount.source,
                     )
                 )
                 break  # one finding per mount is enough
@@ -211,6 +248,7 @@ def _check_secrets_in_env(
                     f"variable. Visible via `docker inspect`.",
                     fix="Use Docker secrets, a mounted file, or a secrets manager instead "
                     "of environment variables for sensitive values.",
+                    detail=key,
                 )
             )
     return findings
@@ -236,6 +274,7 @@ def _check_sensitive_port_binding(c: ContainerInfo) -> list[Finding]:
                     f"this service is accessible from every network.",
                     fix="If this service should only be reachable from localhost, bind to "
                     "127.0.0.1 instead (e.g. `127.0.0.1:5432:5432`).",
+                    detail=str(port.container_port),
                 )
             )
     return findings
@@ -395,35 +434,75 @@ def _check_stale_images(c: ContainerInfo) -> list[Finding]:
     return []
 
 
-def render_findings(findings: list[Finding]) -> str:
-    """Render audit findings as structured markdown."""
-    if not findings:
+def render_findings(
+    findings: list[Finding],
+    state_entries: dict | None = None,
+    hide_accepted: bool = False,
+) -> str:
+    """Render audit findings as structured markdown.
+
+    Args:
+        findings: List of findings from audit().
+        state_entries: Optional dict mapping finding keys to StateEntry objects.
+        hide_accepted: If True, suppress accepted and false-positive findings.
+    """
+    from roustabout.state import FindingState, apply_state
+
+    if state_entries is None:
+        state_entries = {}
+
+    annotated = apply_state(findings, state_entries)
+
+    # Separate actionable from dismissed
+    _suppressed_states = {FindingState.ACCEPTED, FindingState.FALSE_POSITIVE}
+    if hide_accepted:
+        annotated = [
+            (f, s) for f, s in annotated if s is None or s.state not in _suppressed_states
+        ]
+
+    if not annotated:
         return "# Security Audit\n\nNo findings.\n"
+
+    actionable = [(f, s) for f, s in annotated if s is None or s.state not in _suppressed_states]
+    dismissed = [(f, s) for f, s in annotated if s is not None and s.state in _suppressed_states]
 
     lines = ["# Security Audit", ""]
 
-    critical = [f for f in findings if f.severity == Severity.CRITICAL]
-    warnings = [f for f in findings if f.severity == Severity.WARNING]
-    infos = [f for f in findings if f.severity == Severity.INFO]
+    # Summary counts
+    all_findings = [f for f, _ in annotated]
+    critical = [f for f in all_findings if f.severity == Severity.CRITICAL]
+    warnings = [f for f in all_findings if f.severity == Severity.WARNING]
+    infos = [f for f in all_findings if f.severity == Severity.INFO]
 
-    lines.append(
-        f"**{len(findings)} findings:** "
+    summary = (
+        f"**{len(all_findings)} findings:** "
         f"{len(critical)} critical, {len(warnings)} warning, {len(infos)} info"
     )
+    if dismissed:
+        summary += f" ({len(actionable)} actionable, {len(dismissed)} accepted)"
+    lines.append(summary)
     lines.append("")
 
     current_severity = None
-    for finding in findings:
+    for finding, state in annotated:
         if finding.severity != current_severity:
             current_severity = finding.severity
             lines.append(f"## {current_severity.value.title()}")
             lines.append("")
 
-        lines.append(f"### {finding.container} — {finding.category}")
+        state_label = ""
+        if state is not None:
+            state_label = f" [{state.state.value.upper()}]"
+        lines.append(f"### {finding.container} — {finding.category}{state_label}")
         lines.append("")
         lines.append(finding.explanation)
         lines.append("")
-        lines.append(f"**Fix:** {finding.fix}")
-        lines.append("")
+        if state is not None:
+            label = "Accepted" if state.state == FindingState.ACCEPTED else "False positive"
+            lines.append(f"**{label}:** {state.reason}")
+            lines.append("")
+        else:
+            lines.append(f"**Fix:** {finding.fix}")
+            lines.append("")
 
     return "\n".join(lines) + "\n"

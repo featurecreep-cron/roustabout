@@ -100,6 +100,41 @@ class TestLoadConfig:
         assert cfg.docker_host == "unix:///var/run/docker.sock"
 
 
+class TestSeverityOverrides:
+    def test_severity_table_parsed(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            '[severity]\nno-healthcheck = "warning"\nrunning-as-root = "warning"\n'
+        )
+        cfg = load_config(config_file)
+        assert cfg.severity_overrides == {
+            "no-healthcheck": "warning",
+            "running-as-root": "warning",
+        }
+
+    def test_severity_case_insensitive(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('[severity]\nno-healthcheck = "WARNING"\n')
+        cfg = load_config(config_file)
+        assert cfg.severity_overrides["no-healthcheck"] == "warning"
+
+    def test_invalid_severity_value_raises(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('[severity]\nno-healthcheck = "extreme"\n')
+        with pytest.raises(ValueError, match="severity.no-healthcheck must be one of"):
+            load_config(config_file)
+
+    def test_severity_not_table_raises(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('severity = "not a table"\n')
+        with pytest.raises(ValueError, match="severity must be a table"):
+            load_config(config_file)
+
+    def test_default_empty(self):
+        cfg = Config()
+        assert cfg.severity_overrides == {}
+
+
 class TestLoadConfigValidation:
     def test_redact_patterns_not_list_raises(self, tmp_path):
         config_file = tmp_path / "bad.toml"

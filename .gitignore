@@ -5,4 +5,5 @@ dist/
 build/
 .coverage
 .pytest_cache/
+.ruff_cache/
 cronbox/.env

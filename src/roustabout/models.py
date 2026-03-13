@@ -71,8 +71,8 @@ class ContainerInfo:
     restart_count: int
     created: str
     started_at: str
-    command: str | None
-    entrypoint: str | None
+    command: tuple[str, ...] | None
+    entrypoint: tuple[str, ...] | None
     oom_killed: bool
     user: str | None
     restart_policy: str | None
@@ -131,8 +131,8 @@ def make_container(
     restart_count: int = 0,
     created: str = "",
     started_at: str = "",
-    command: str | None = None,
-    entrypoint: str | None = None,
+    command: list[str] | tuple[str, ...] | None = None,
+    entrypoint: list[str] | tuple[str, ...] | None = None,
     oom_killed: bool = False,
     user: str | None = None,
     restart_policy: str | None = None,
@@ -183,8 +183,8 @@ def make_container(
         restart_count=restart_count,
         created=created,
         started_at=started_at,
-        command=command,
-        entrypoint=entrypoint,
+        command=tuple(command) if command else None,
+        entrypoint=tuple(entrypoint) if entrypoint else None,
         oom_killed=oom_killed,
         user=user,
         restart_policy=restart_policy,

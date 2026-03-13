@@ -22,5 +22,9 @@ def connect(docker_host: str | None = None) -> docker.DockerClient:
     """
     kwargs = {"base_url": docker_host} if docker_host else {}
     client = docker.DockerClient(**kwargs)
-    client.ping()
+    try:
+        client.ping()
+    except Exception:
+        client.close()
+        raise
     return client

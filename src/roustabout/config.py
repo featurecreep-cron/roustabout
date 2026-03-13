@@ -37,13 +37,20 @@ class Config:
     docker_host: str | None = None
     severity_overrides: dict[str, str] = field(default_factory=dict)
 
+    _UNSET = object()
+
     def merge(self, **overrides) -> Config:
-        """Return a new Config with non-None overrides applied."""
+        """Return a new Config with explicitly provided overrides applied.
+
+        Only keys present in overrides (regardless of value) are applied.
+        Use this instead of dataclasses.replace() to merge CLI flags with
+        config file values — CLI flags not provided by the user are excluded
+        by the caller.
+        """
         kwargs = {}
         for f in dataclasses.fields(self):
-            override = overrides.get(f.name)
-            if override is not None:
-                kwargs[f.name] = override
+            if f.name in overrides:
+                kwargs[f.name] = overrides[f.name]
             else:
                 kwargs[f.name] = getattr(self, f.name)
         return Config(**kwargs)

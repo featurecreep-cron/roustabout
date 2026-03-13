@@ -11,8 +11,8 @@ from pathlib import Path
 import click
 import docker
 
+from roustabout.audit_renderer import render_findings
 from roustabout.auditor import audit as run_audit
-from roustabout.auditor import render_findings
 from roustabout.collector import collect
 from roustabout.config import load_config
 from roustabout.connection import connect
@@ -146,8 +146,8 @@ def audit(output, config_path, docker_host, state_file, hide_accepted):
 @click.option("--project", default=None, help="Set compose project name.")
 @click.option(
     "--redact/--no-redact",
-    default=False,
-    help="Redact secrets in environment variables (default: no redaction).",
+    default=True,
+    help="Redact secrets in environment variables (default: redact).",
 )
 def generate(output, config_path, docker_host, include_stopped, project, redact):
     """Generate a docker-compose.yml from running containers."""

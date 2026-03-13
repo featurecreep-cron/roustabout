@@ -187,7 +187,8 @@ class TestJsonValueRedaction:
 
 
 class TestCustomPatterns:
-    def test_custom_patterns_replace_defaults(self):
+    def test_custom_patterns_extend_defaults(self):
+        """Custom patterns are merged with defaults — both match."""
         env = _env_environment(
             [
                 ("MY_CUSTOM_FIELD", "sensitive"),
@@ -197,13 +198,13 @@ class TestCustomPatterns:
         result = redact(env, patterns=("custom_field",))
         env_dict = dict(result.containers[0].env)
         assert env_dict["MY_CUSTOM_FIELD"] == REDACTED
-        assert env_dict["DB_PASSWORD"] == "also_sensitive"
+        assert env_dict["DB_PASSWORD"] == REDACTED  # defaults still active
 
-    def test_empty_patterns_redacts_nothing_by_key(self):
-        """Empty patterns → no key-based redaction, but URL/JSON still work."""
+    def test_none_patterns_uses_defaults(self):
+        """None patterns → defaults applied."""
         env = _env_environment([("DB_PASSWORD", "secret")])
-        result = redact(env, patterns=())
-        assert dict(result.containers[0].env)["DB_PASSWORD"] == "secret"
+        result = redact(env, patterns=None)
+        assert dict(result.containers[0].env)["DB_PASSWORD"] == REDACTED
 
 
 class TestMultipleContainers:
@@ -245,8 +246,8 @@ class TestFieldPreservation:
             restart_count=3,
             created="2026-01-01T00:00:00Z",
             started_at="2026-01-01T00:00:05Z",
-            command="nginx -g daemon off",
-            entrypoint="/docker-entrypoint.sh",
+            command=["nginx", "-g", "daemon off"],
+            entrypoint=["/docker-entrypoint.sh"],
             oom_killed=True,
         )
         env = make_environment(
@@ -349,6 +350,92 @@ class TestIsSecretKey:
             '{"name": "test"}',
             DEFAULT_PATTERNS,
         )
+
+
+class TestLabelRedaction:
+    def test_redacts_secret_in_labels(self):
+        container = make_container(
+            name="test",
+            id="abc123",
+            status="running",
+            image="img:latest",
+            image_id="sha256:123",
+            labels=[("traefik.auth.password", "hunter2"), ("app.version", "1.0")],
+        )
+        env = make_environment(
+            containers=[container],
+            generated_at="2026-01-01T00:00:00Z",
+            docker_version="25.0",
+        )
+        result = redact(env)
+        label_dict = dict(result.containers[0].labels)
+        assert label_dict["traefik.auth.password"] == REDACTED
+        assert label_dict["app.version"] == "1.0"
+
+
+class TestCommandRedaction:
+    def test_redacts_password_flag(self):
+        container = make_container(
+            name="test",
+            id="abc123",
+            status="running",
+            image="img:latest",
+            image_id="sha256:123",
+            command=["myapp", "--password=hunter2", "--port=8080"],
+        )
+        env = make_environment(
+            containers=[container],
+            generated_at="2026-01-01T00:00:00Z",
+            docker_version="25.0",
+        )
+        result = redact(env)
+        cmd = result.containers[0].command
+        assert "hunter2" not in " ".join(cmd)
+        assert REDACTED in " ".join(cmd)
+        assert "--port=8080" in cmd
+
+    def test_preserves_safe_command(self):
+        container = make_container(
+            name="test",
+            id="abc123",
+            status="running",
+            image="img:latest",
+            image_id="sha256:123",
+            command=["nginx", "-g", "daemon off;"],
+        )
+        env = make_environment(
+            containers=[container],
+            generated_at="2026-01-01T00:00:00Z",
+            docker_version="25.0",
+        )
+        result = redact(env)
+        assert result.containers[0].command == ("nginx", "-g", "daemon off;")
+
+
+class TestUrlParsingEdgeCases:
+    def test_url_without_username(self):
+        """postgres://:password@host should still redact."""
+        val = redact_value("DATABASE_URL", "postgres://:secret@host/db", DEFAULT_PATTERNS)
+        assert "secret" not in val
+        assert REDACTED in val
+        assert "host" in val
+
+    def test_url_with_special_chars_in_password(self):
+        """URL-encoded special chars in password."""
+        val = redact_value(
+            "DATABASE_URL",
+            "postgresql://user:p%40ss%3Aword@host:5432/db",
+            DEFAULT_PATTERNS,
+        )
+        assert "p%40ss" not in val
+        assert REDACTED in val
+        assert "host:5432/db" in val
+
+    def test_passphrase_pattern(self):
+        """Passphrase keys should be redacted."""
+        env = _env_environment([("PAPERLESS_PASSPHRASE", "my-secret-phrase")])
+        result = redact(env)
+        assert dict(result.containers[0].env)["PAPERLESS_PASSPHRASE"] == REDACTED
 
 
 class TestWarningsPreserved:

@@ -7,13 +7,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from roustabout.constants import COMPOSE_LABEL_PREFIXES
 from roustabout.models import ContainerInfo, DockerEnvironment
-
-# Compose-internal labels that add noise, not signal
-_COMPOSE_LABEL_PREFIXES = (
-    "com.docker.compose.",
-    "com.docker.desktop.",
-)
 
 
 def render(
@@ -159,9 +154,7 @@ def _render_container(
     # Labels (excluding compose-internal)
     if show_labels and c.labels:
         filtered = [
-            (k, v)
-            for k, v in c.labels
-            if not any(k.startswith(p) for p in _COMPOSE_LABEL_PREFIXES)
+            (k, v) for k, v in c.labels if not any(k.startswith(p) for p in COMPOSE_LABEL_PREFIXES)
         ]
         if filtered:
             lines.append("#### Labels")
@@ -179,9 +172,9 @@ def _render_container(
     lines.append(f"- **Created:** {c.created}")
     lines.append(f"- **Started:** {c.started_at}")
     if c.command:
-        lines.append(f"- **Command:** `{c.command}`")
+        lines.append(f"- **Command:** `{' '.join(c.command)}`")
     if c.entrypoint:
-        lines.append(f"- **Entrypoint:** `{c.entrypoint}`")
+        lines.append(f"- **Entrypoint:** `{' '.join(c.entrypoint)}`")
     lines.append(f"- **Restart count:** {c.restart_count}")
     if c.oom_killed:
         lines.append("- **OOM Killed:** yes")
@@ -207,6 +200,33 @@ def _render_network_topology(lines: list[str], env: DockerEnvironment) -> None:
         lines.append(f"- **{net_name}:** {', '.join(members)}")
 
     lines.append("")
+
+
+def render_network_topology(env: DockerEnvironment) -> str:
+    """Render network topology as standalone markdown.
+
+    Used by MCP server for the docker_networks tool.
+    """
+    network_members: dict[str, list[str]] = defaultdict(list)
+    for c in env.containers:
+        for n in c.networks:
+            network_members[n.name].append(c.name)
+
+    if not network_members:
+        return "No networks found.\n"
+
+    lines = ["# Docker Networks", ""]
+    for net_name in sorted(network_members.keys()):
+        members = sorted(network_members[net_name])
+        count = len(members)
+        lines.append(f"## {net_name}")
+        lines.append("")
+        lines.append(f"{count} container{'s' if count != 1 else ''}:")
+        for member in members:
+            lines.append(f"- {member}")
+        lines.append("")
+
+    return "\n".join(lines) + "\n"
 
 
 def _render_attribution(lines: list[str]) -> None:
@@ -247,11 +267,4 @@ def _make_anchor(name: str) -> str:
     GFM lowercases, replaces spaces with hyphens, and strips punctuation
     except hyphens. Underscores and colons are common in container names.
     """
-    return (
-        name.lower()
-        .replace(" ", "-")
-        .replace(".", "")
-        .replace("/", "")
-        .replace("_", "")
-        .replace(":", "")
-    )
+    return name.lower().replace(" ", "-").replace(".", "").replace("/", "").replace(":", "")

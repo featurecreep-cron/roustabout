@@ -191,16 +191,16 @@ class TestGenerateCommand:
         assert "services:" in out_file.read_text()
         assert "Compose file written to" in result.output
 
-    def test_generate_without_redact_includes_secrets(self, runner, mock_docker_env):
+    def test_generate_default_redacts_secrets(self, runner, mock_docker_env):
         result = runner.invoke(main, ["generate"])
-        assert result.exit_code == 0
-        assert "hunter2" in result.output
-
-    def test_generate_with_redact_hides_secrets(self, runner, mock_docker_env):
-        result = runner.invoke(main, ["generate", "--redact"])
         assert result.exit_code == 0
         assert "hunter2" not in result.output
         assert "[REDACTED]" in result.output
+
+    def test_generate_no_redact_includes_secrets(self, runner, mock_docker_env):
+        result = runner.invoke(main, ["generate", "--no-redact"])
+        assert result.exit_code == 0
+        assert "hunter2" in result.output
 
     def test_generate_docker_failure(self, runner):
         with patch(

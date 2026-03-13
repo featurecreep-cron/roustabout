@@ -98,10 +98,8 @@ def _collect_container(container) -> ContainerInfo:
     compose_service = raw_labels.get("com.docker.compose.service")
     compose_config = raw_labels.get("com.docker.compose.project.config_files")
 
-    cmd = config.get("Cmd")
-    command = " ".join(cmd) if cmd else None
-    ep = config.get("Entrypoint")
-    entrypoint = " ".join(ep) if ep else None
+    command = config.get("Cmd") or None
+    entrypoint = config.get("Entrypoint") or None
 
     user = config.get("User") or None
 
@@ -168,8 +166,6 @@ def _collect_container(container) -> ContainerInfo:
 
     # Resource limits
     mem_limit = host_config.get("Memory") or None
-    if mem_limit == 0:
-        mem_limit = None
     nano_cpus = host_config.get("NanoCpus") or 0
     cpus = nano_cpus / 1e9 if nano_cpus else None
 

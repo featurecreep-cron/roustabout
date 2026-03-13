@@ -40,8 +40,8 @@ def _make_mock_container(
     restart_count=0,
     created="2026-02-01T10:00:00.000000000Z",
     started_at="2026-02-01T10:00:05.000000000Z",
-    command="nginx -g 'daemon off;'",
-    entrypoint="/docker-entrypoint.sh",
+    command=("nginx", "-g", "daemon off;"),
+    entrypoint=("/docker-entrypoint.sh",),
     oom_killed=False,
     user="",
     restart_policy_name="always",
@@ -131,8 +131,8 @@ def _make_mock_container(
             "Image": image_tags[0] if image_tags else image_id,
             "Env": list(env),
             "Labels": all_labels,
-            "Cmd": [command] if command else None,
-            "Entrypoint": [entrypoint] if entrypoint else None,
+            "Cmd": list(command) if command else None,
+            "Entrypoint": list(entrypoint) if entrypoint else None,
             "User": user,
             "Healthcheck": healthcheck,
             "Hostname": hostname,
@@ -230,8 +230,8 @@ def mock_postgres():
         compose_project="webstack",
         compose_service="postgres",
         compose_config="/opt/webstack/docker-compose.yml",
-        command="postgres",
-        entrypoint="docker-entrypoint.sh",
+        command=("postgres",),
+        entrypoint=("docker-entrypoint.sh",),
     )
 
 
@@ -266,8 +266,8 @@ def mock_standalone():
         compose_project=None,
         compose_service=None,
         compose_config=None,
-        command="--cleanup --poll-interval 3600",
-        entrypoint="/watchtower",
+        command=("--cleanup", "--poll-interval", "3600"),
+        entrypoint=("/watchtower",),
     )
 
 
@@ -296,8 +296,8 @@ def mock_exited():
         compose_service="redis",
         compose_config="/opt/webstack/docker-compose.yml",
         started_at="2026-01-15T08:00:00.000000000Z",
-        command="redis-server",
-        entrypoint="docker-entrypoint.sh",
+        command=("redis-server",),
+        entrypoint=("docker-entrypoint.sh",),
         oom_killed=True,
     )
 
@@ -372,8 +372,8 @@ def sample_container_info():
         compose_config_files="/opt/webstack/docker-compose.yml",
         created="2026-02-01T10:00:00.000000000Z",
         started_at="2026-02-01T10:00:05.000000000Z",
-        command="nginx -g 'daemon off;'",
-        entrypoint="/docker-entrypoint.sh",
+        command=["nginx", "-g", "daemon off;"],
+        entrypoint=["/docker-entrypoint.sh"],
     )
 
 

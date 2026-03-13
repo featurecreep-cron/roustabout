@@ -255,6 +255,45 @@ class TestNetworkMode:
         doc = _parse_yaml(generate(env))
         assert "network_mode" not in doc["services"]["test-app"]
 
+    def test_compose_default_network_omits(self):
+        env = _env(_container(network_mode="compose_default"))
+        doc = _parse_yaml(generate(env))
+        assert "network_mode" not in doc["services"]["test-app"]
+
+    def test_project_default_network_omits(self):
+        env = _env(_container(network_mode="myproject_default"))
+        doc = _parse_yaml(generate(env))
+        assert "network_mode" not in doc["services"]["test-app"]
+
+
+class TestHostname:
+    def test_explicit_hostname(self):
+        env = _env(_container(hostname="myhost"))
+        doc = _parse_yaml(generate(env))
+        assert doc["services"]["test-app"]["hostname"] == "myhost"
+
+    def test_auto_hostname_omits(self):
+        env = _env(_container(hostname="396477d9ed48"))
+        doc = _parse_yaml(generate(env))
+        assert "hostname" not in doc["services"]["test-app"]
+
+    def test_no_hostname_omits(self):
+        env = _env(_container())
+        doc = _parse_yaml(generate(env))
+        assert "hostname" not in doc["services"]["test-app"]
+
+
+class TestRuntime:
+    def test_custom_runtime(self):
+        env = _env(_container(runtime="nvidia"))
+        doc = _parse_yaml(generate(env))
+        assert doc["services"]["test-app"]["runtime"] == "nvidia"
+
+    def test_runc_runtime_omits(self):
+        env = _env(_container(runtime="runc"))
+        doc = _parse_yaml(generate(env))
+        assert "runtime" not in doc["services"]["test-app"]
+
 
 class TestHealthcheck:
     def test_healthcheck_config(self):

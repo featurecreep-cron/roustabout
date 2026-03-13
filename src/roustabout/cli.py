@@ -18,6 +18,7 @@ from roustabout.config import load_config
 from roustabout.connection import connect
 from roustabout.redactor import redact, resolve_patterns
 from roustabout.renderer import render
+from roustabout.state import FindingState, load_state, set_finding_state
 
 
 def _connect(docker_host: str | None) -> docker.DockerClient:
@@ -35,6 +36,15 @@ def _load_cfg(config_path, **overrides):
     except (FileNotFoundError, ValueError) as exc:
         raise click.ClickException(str(exc))
     return cfg.merge(**{k: v for k, v in overrides.items() if v is not None})
+
+
+def _state_path_option():
+    return click.option(
+        "--state-file",
+        type=click.Path(),
+        default=None,
+        help="Path to state file (default: roustabout.state.toml).",
+    )
 
 
 @click.group()
@@ -87,18 +97,74 @@ def snapshot(show_env, no_labels, output, config_path, docker_host):
     help="Path to config file.",
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
-def audit(output, config_path, docker_host):
+@_state_path_option()
+@click.option(
+    "--hide-accepted",
+    is_flag=True,
+    default=False,
+    help="Hide accepted and false-positive findings.",
+)
+def audit(output, config_path, docker_host, state_file, hide_accepted):
     """Run security checks against the Docker environment."""
     cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
 
     client = _connect(cfg.docker_host)
     env = collect(client)
 
-    findings = run_audit(env, patterns=cfg.redact_patterns)
-    markdown = render_findings(findings)
+    findings = run_audit(
+        env, patterns=cfg.redact_patterns, severity_overrides=cfg.severity_overrides
+    )
+
+    state_entries = load_state(Path(state_file) if state_file else None)
+    markdown = render_findings(findings, state_entries=state_entries, hide_accepted=hide_accepted)
 
     if cfg.output:
         Path(cfg.output).write_text(markdown)
         click.echo(f"Audit written to {cfg.output}")
     else:
         click.echo(markdown)
+
+
+@main.command("accept")
+@click.argument("finding_key")
+@click.argument("reason")
+@_state_path_option()
+def accept_finding(finding_key, reason, state_file):
+    """Mark a finding as accepted (known risk, reviewed)."""
+    path = set_finding_state(
+        finding_key,
+        FindingState.ACCEPTED,
+        reason,
+        Path(state_file) if state_file else None,
+    )
+    click.echo(f"Marked {finding_key} as accepted. State saved to {path}")
+
+
+@main.command("false-positive")
+@click.argument("finding_key")
+@click.argument("reason")
+@_state_path_option()
+def false_positive_finding(finding_key, reason, state_file):
+    """Mark a finding as a false positive."""
+    path = set_finding_state(
+        finding_key,
+        FindingState.FALSE_POSITIVE,
+        reason,
+        Path(state_file) if state_file else None,
+    )
+    click.echo(f"Marked {finding_key} as false-positive. State saved to {path}")
+
+
+@main.command("resolve")
+@click.argument("finding_key")
+@click.argument("reason")
+@_state_path_option()
+def resolve_finding(finding_key, reason, state_file):
+    """Mark a finding as resolved (fixed)."""
+    path = set_finding_state(
+        finding_key,
+        FindingState.RESOLVED,
+        reason,
+        Path(state_file) if state_file else None,
+    )
+    click.echo(f"Marked {finding_key} as resolved. State saved to {path}")

@@ -483,6 +483,29 @@ def render_findings(
     lines.append(summary)
     lines.append("")
 
+    # Summary table
+    lines.append("| Container | Category | Severity | Status |")
+    lines.append("|-----------|----------|----------|--------|")
+    for finding, state in annotated:
+        status = "Open"
+        if state is not None:
+            status = state.state.value.title()
+        lines.append(
+            f"| {finding.container} | {finding.category} "
+            f"| {finding.severity.value.title()} | {status} |"
+        )
+    lines.append("")
+
+    # Table of contents
+    lines.append("## Contents")
+    lines.append("")
+    for sev_label in ("Critical", "Warning", "Info"):
+        sev_findings = [(f, s) for f, s in annotated if f.severity.value.title() == sev_label]
+        if sev_findings:
+            lines.append(f"- [{sev_label} ({len(sev_findings)})](#{sev_label.lower()})")
+    lines.append("")
+
+    # Findings by severity
     current_severity = None
     for finding, state in annotated:
         if finding.severity != current_severity:

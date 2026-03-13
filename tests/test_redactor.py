@@ -11,7 +11,14 @@ from roustabout.models import (
     make_container,
     make_environment,
 )
-from roustabout.redactor import DEFAULT_PATTERNS, REDACTED, is_secret_key, redact, resolve_patterns
+from roustabout.redactor import (
+    DEFAULT_PATTERNS,
+    REDACTED,
+    is_secret_key,
+    redact,
+    redact_value,
+    resolve_patterns,
+)
 
 
 def _env_container(env_pairs, name="test"):
@@ -36,7 +43,7 @@ def _env_environment(env_pairs):
 
 
 class TestDefaultPatternMatching:
-    """Default patterns all hit the same branch: substring match in key, not a _url key."""
+    """Default patterns hit key-based redaction: substring match in key."""
 
     @pytest.mark.parametrize(
         "key",
@@ -48,8 +55,8 @@ class TestDefaultPatternMatching:
             "SMTP_CREDENTIAL",
             "SSH_PRIVATE_KEY",
             "AWS_ACCESS_KEY",
-            "BASIC_AUTH",
-            # case variations — same branch, just verifies .lower() works
+            "AUTHENTIK_SECRET_KEY",
+            # case variations
             "My_Password_Here",
             "db_password",
         ],
@@ -60,67 +67,123 @@ class TestDefaultPatternMatching:
         assert dict(result.containers[0].env)[key] == REDACTED
 
 
-class TestUrlHandling:
-    """URL handling has three distinct branches."""
+class TestNoOverRedaction:
+    """Keys that LOOK sensitive but aren't should be preserved."""
 
-    def test_redacts_database_url_with_credentials(self):
-        """Pattern match (database_url) + _url suffix + credentials present → redact."""
-        env = _env_environment(
-            [
-                ("DATABASE_URL", "postgresql://user:pass@localhost:5432/db"),
-            ]
-        )
-        result = redact(env)
-        assert dict(result.containers[0].env)["DATABASE_URL"] == REDACTED
-
-    def test_preserves_url_matching_pattern_without_credentials(self):
-        """Pattern match (auth) + _url suffix + no credentials → preserve."""
-        env = _env_environment(
-            [
-                ("AUTH_CALLBACK_URL", "https://example.com/callback"),
-            ]
-        )
-        result = redact(env)
-        assert (
-            dict(result.containers[0].env)["AUTH_CALLBACK_URL"] == "https://example.com/callback"
-        )
-
-    def test_catch_all_redacts_any_url_with_embedded_creds(self):
-        """No pattern match, but _url suffix + credentials → redact (catch-all)."""
-        env = _env_environment(
-            [
-                ("REDIS_URL", "redis://default:mypassword@redis:6379/0"),
-            ]
-        )
-        result = redact(env)
-        assert dict(result.containers[0].env)["REDIS_URL"] == REDACTED
-
-    def test_preserves_safe_url_with_no_pattern_match(self):
-        """No pattern match + _url suffix + no credentials → preserve."""
-        env = _env_environment(
-            [
-                ("DOCS_URL", "https://docs.example.com/api"),
-            ]
-        )
-        result = redact(env)
-        assert dict(result.containers[0].env)["DOCS_URL"] == "https://docs.example.com/api"
-
-
-class TestNoFalsePositives:
     @pytest.mark.parametrize(
         "key,value",
         [
+            # "auth" as prefix in product name — NOT a secret pattern
+            ("AUTHENTIK_EMAIL__HOST", "smtp.gmail.com"),
+            ("AUTHENTIK_EMAIL__PORT", "465"),
+            ("AUTHENTIK_EMAIL__USE_SSL", "true"),
+            ("AUTHENTIK_LISTEN__HTTP", "0.0.0.0:9000"),
+            ("AUTHENTIK_POSTGRESQL__HOST", "postgres"),
+            ("AUTHENTIK_POSTGRESQL__NAME", "authentik"),
+            ("AUTHENTIK_POSTGRESQL__USER", "authentik"),
+            ("AUTHENTIK_REDIS__HOST", "redis"),
+            # Non-secret keys
             ("NGINX_HOST", "example.com"),
             ("NODE_ENV", "production"),
             ("TZ", "America/New_York"),
             ("PORT", "8080"),
             ("PATH", "/usr/local/bin:/usr/bin"),
+            ("REGISTRY_KEY_PATH", "/etc/registry/key"),
         ],
     )
     def test_preserves_non_sensitive_keys(self, key, value):
         env = _env_environment([(key, value)])
         result = redact(env)
         assert dict(result.containers[0].env)[key] == value
+
+    def test_authentik_password_still_redacted(self):
+        """Password keys within AUTHENTIK_ namespace ARE redacted."""
+        env = _env_environment([("AUTHENTIK_POSTGRESQL__PASSWORD", "my-db-pass")])
+        result = redact(env)
+        assert dict(result.containers[0].env)["AUTHENTIK_POSTGRESQL__PASSWORD"] == REDACTED
+
+    def test_authentik_secret_key_still_redacted(self):
+        env = _env_environment([("AUTHENTIK_SECRET_KEY", "abc123")])
+        result = redact(env)
+        assert dict(result.containers[0].env)["AUTHENTIK_SECRET_KEY"] == REDACTED
+
+
+class TestUrlHandling:
+    """URL handling: partial redaction of password only."""
+
+    def test_partially_redacts_database_url(self):
+        """DATABASE_URL with credentials → only password replaced."""
+        env = _env_environment([("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")])
+        result = redact(env)
+        val = dict(result.containers[0].env)["DATABASE_URL"]
+        assert "user" in val
+        assert "pass" not in val
+        assert REDACTED in val
+        assert "localhost:5432/db" in val
+
+    def test_url_partial_redaction_format(self):
+        """Verify exact format: ://user:[REDACTED]@host."""
+        val = redact_value(
+            "DATABASE_URL",
+            "postgresql://myuser:s3cret@db.host:5432/mydb",
+            DEFAULT_PATTERNS,
+        )
+        assert val == f"postgresql://myuser:{REDACTED}@db.host:5432/mydb"
+
+    def test_preserves_url_without_credentials(self):
+        """URL key + no credentials → preserve entirely."""
+        env = _env_environment([("CALLBACK_URL", "https://example.com/callback")])
+        result = redact(env)
+        assert dict(result.containers[0].env)["CALLBACK_URL"] == "https://example.com/callback"
+
+    def test_catch_all_redacts_any_url_with_embedded_creds(self):
+        """No pattern match on key, but _url suffix + credentials → partial redact."""
+        env = _env_environment([("REDIS_URL", "redis://default:mypassword@redis:6379/0")])
+        result = redact(env)
+        val = dict(result.containers[0].env)["REDIS_URL"]
+        assert "default" in val
+        assert "mypassword" not in val
+        assert REDACTED in val
+
+    def test_preserves_safe_url_with_no_pattern_match(self):
+        """No pattern match + _url suffix + no credentials → preserve."""
+        env = _env_environment([("DOCS_URL", "https://docs.example.com/api")])
+        result = redact(env)
+        assert dict(result.containers[0].env)["DOCS_URL"] == "https://docs.example.com/api"
+
+
+class TestJsonValueRedaction:
+    """Embedded secrets in JSON/structured values."""
+
+    def test_redacts_secret_in_json_value(self):
+        """SOCIALACCOUNT_PROVIDERS-style JSON with embedded 'secret' key."""
+        json_val = (
+            '{"openid_connect": {"APPS": [{'
+            '"provider_id": "authentik", '
+            '"client_id": "cpkdKN80fIrBk", '
+            '"secret": "eGOxug6qYbZIIS4YM9b0nvOFB5BNG6yk"'
+            "}]}}"
+        )
+        env = _env_environment([("SOCIALACCOUNT_PROVIDERS", json_val)])
+        result = redact(env)
+        val = dict(result.containers[0].env)["SOCIALACCOUNT_PROVIDERS"]
+        assert "eGOxug6qYbZIIS4YM9b0nvOFB5BNG6yk" not in val
+        assert REDACTED in val
+        # Non-secret parts preserved
+        assert "cpkdKN80fIrBk" in val
+        assert "openid_connect" in val
+
+    def test_redacts_client_secret_in_json(self):
+        json_val = '{"client_secret": "abc123secret", "client_id": "pub456"}'
+        val = redact_value("OAUTH_CONFIG", json_val, DEFAULT_PATTERNS)
+        assert "abc123secret" not in val
+        assert "pub456" in val
+        assert REDACTED in val
+
+    def test_preserves_json_without_secret_keys(self):
+        json_val = '{"name": "test", "enabled": true}'
+        val = redact_value("APP_CONFIG", json_val, DEFAULT_PATTERNS)
+        assert val == json_val
 
 
 class TestCustomPatterns:
@@ -136,7 +199,8 @@ class TestCustomPatterns:
         assert env_dict["MY_CUSTOM_FIELD"] == REDACTED
         assert env_dict["DB_PASSWORD"] == "also_sensitive"
 
-    def test_empty_patterns_redacts_nothing(self):
+    def test_empty_patterns_redacts_nothing_by_key(self):
+        """Empty patterns → no key-based redaction, but URL/JSON still work."""
         env = _env_environment([("DB_PASSWORD", "secret")])
         result = redact(env, patterns=())
         assert dict(result.containers[0].env)["DB_PASSWORD"] == "secret"
@@ -157,7 +221,7 @@ class TestMultipleContainers:
 
 
 class TestFieldPreservation:
-    """S1: Verify redaction preserves all ContainerInfo fields (not just env)."""
+    """Verify redaction preserves all ContainerInfo fields (not just env)."""
 
     def test_all_fields_preserved_after_redaction(self):
         container = make_container(
@@ -260,7 +324,7 @@ class TestIsSecretKey:
 
     def test_url_without_credentials_is_not_secret(self):
         assert not is_secret_key(
-            "AUTH_CALLBACK_URL",
+            "CALLBACK_URL",
             "https://example.com/callback",
             DEFAULT_PATTERNS,
         )
@@ -269,6 +333,20 @@ class TestIsSecretKey:
         assert is_secret_key(
             "REDIS_URL",
             "redis://default:pass@redis:6379/0",
+            DEFAULT_PATTERNS,
+        )
+
+    def test_json_with_embedded_secret(self):
+        assert is_secret_key(
+            "OAUTH_CONFIG",
+            '{"secret": "abc123"}',
+            DEFAULT_PATTERNS,
+        )
+
+    def test_json_without_secret_not_flagged(self):
+        assert not is_secret_key(
+            "APP_CONFIG",
+            '{"name": "test"}',
             DEFAULT_PATTERNS,
         )
 

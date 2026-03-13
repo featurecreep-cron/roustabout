@@ -47,6 +47,27 @@ _CLI_SECRET_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Value-based format detectors — catch secrets by shape regardless of key name.
+# Patterns sourced from detect-secrets and secrets-patterns-db (both open source).
+_VALUE_FORMAT_PATTERNS: tuple[re.Pattern, ...] = (
+    # AWS Access Key ID (always starts with AKIA)
+    re.compile(r"^AKIA[0-9A-Z]{16}$"),
+    # AWS Secret Access Key (40 chars, base64-ish)
+    re.compile(r"^[A-Za-z0-9/+=]{40}$"),
+    # GitHub Personal Access Token (classic and fine-grained)
+    re.compile(r"^gh[ps]_[A-Za-z0-9_]{36,}$"),
+    re.compile(r"^github_pat_[A-Za-z0-9_]{22,}$"),
+    # Slack Bot/User OAuth Token
+    re.compile(r"^xoxb-[0-9]{10,}-[A-Za-z0-9-]+$"),
+    re.compile(r"^xoxp-[0-9]{10,}-[A-Za-z0-9-]+$"),
+    # Stripe API Key
+    re.compile(r"^[sr]k_(live|test)_[A-Za-z0-9]{20,}$"),
+    # Private key material
+    re.compile(r"^-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"),
+    # JWT (three base64 segments)
+    re.compile(r"^eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$"),
+)
+
 
 def resolve_patterns(
     custom: tuple[str, ...] = (),
@@ -119,10 +140,11 @@ def _redact_container(
 def redact_value(key: str, value: str, patterns: tuple[str, ...]) -> str:
     """Return the redacted form of a value, or the original if not secret.
 
-    Three redaction mechanisms:
+    Four redaction mechanisms:
     1. Key-based: pattern substring in key name → full value replaced.
     2. URL credential: value contains ://user:pass@host → password portion replaced.
-    3. Value-based: JSON/structured values with embedded secret keys → secret values replaced.
+    3. JSON/structured: embedded secret keys in JSON values → secret values replaced.
+    4. Value format: known secret formats (AWS keys, GitHub PATs, JWTs) → full replace.
     """
     key_lower = key.lower()
 
@@ -143,6 +165,10 @@ def redact_value(key: str, value: str, patterns: tuple[str, ...]) -> str:
     # 3. Value-based: scan for embedded secrets in JSON/structured values
     if _JSON_SECRET_RE.search(value):
         return _redact_json_secrets(value)
+
+    # 4. Value format: detect known secret formats by value shape
+    if _matches_known_secret_format(value):
+        return REDACTED
 
     return value
 
@@ -203,6 +229,18 @@ def _redact_json_secrets(value: str) -> str:
         return full.replace(secret_value, REDACTED)
 
     return _JSON_SECRET_RE.sub(_replace_secret, value)
+
+
+def _matches_known_secret_format(value: str) -> bool:
+    """Check if a value matches a known secret format by its shape.
+
+    Catches secrets like AWS keys, GitHub PATs, Stripe keys, and JWTs
+    regardless of what the key is named.
+    """
+    stripped = value.strip()
+    if len(stripped) < 20:
+        return False  # too short to be a meaningful secret format
+    return any(pattern.search(stripped) for pattern in _VALUE_FORMAT_PATTERNS)
 
 
 def _redact_cli_args(args: tuple[str, ...]) -> tuple[str, ...]:

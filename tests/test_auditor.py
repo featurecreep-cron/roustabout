@@ -635,7 +635,7 @@ class TestRenderFindings:
         result = render_findings([])
         assert "No findings" in result
 
-    def test_renders_findings(self):
+    def test_renders_grouped_findings(self):
         findings = [
             Finding(
                 severity=Severity.CRITICAL,
@@ -650,6 +650,7 @@ class TestRenderFindings:
                 container="postgres",
                 explanation="DB_PASSWORD in env.",
                 fix="Use Docker secrets.",
+                detail="DB_PASSWORD",
             ),
         ]
         result = render_findings(findings)
@@ -661,6 +662,58 @@ class TestRenderFindings:
         assert "## Warning" in result
         assert "watchtower" in result
         assert "postgres" in result
+        # Fix text appears once per category, not per finding
+        assert result.count("Use a socket proxy.") == 1
+
+    def test_groups_same_category(self):
+        """Multiple findings with same category should be grouped, not repeated."""
+        findings = [
+            Finding(Severity.INFO, "no-healthcheck", "app1", "No health check.", "Add one."),
+            Finding(Severity.INFO, "no-healthcheck", "app2", "No health check.", "Add one."),
+            Finding(Severity.INFO, "no-healthcheck", "app3", "No health check.", "Add one."),
+        ]
+        result = render_findings(findings)
+        # Explanation appears once, not three times
+        assert result.count("No health check.") == 1
+        # All containers listed
+        assert "app1" in result
+        assert "app2" in result
+        assert "app3" in result
+
+    def test_secrets_detail_table(self):
+        """secrets-in-env should show per-container env var table."""
+        findings = [
+            Finding(
+                Severity.WARNING,
+                "secrets-in-env",
+                "db",
+                "Secret in env.",
+                "Use secrets.",
+                detail="DB_PASSWORD",
+            ),
+            Finding(
+                Severity.WARNING,
+                "secrets-in-env",
+                "db",
+                "Secret in env.",
+                "Use secrets.",
+                detail="API_KEY",
+            ),
+            Finding(
+                Severity.WARNING,
+                "secrets-in-env",
+                "app",
+                "Secret in env.",
+                "Use secrets.",
+                detail="SECRET_KEY",
+            ),
+        ]
+        result = render_findings(findings)
+        # Table format with container and vars
+        assert "Exposed Variables" in result
+        assert "`DB_PASSWORD`" in result
+        assert "`API_KEY`" in result
+        assert "`SECRET_KEY`" in result
 
     def test_summary_counts(self):
         findings = [

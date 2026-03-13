@@ -438,6 +438,60 @@ class TestUrlParsingEdgeCases:
         assert dict(result.containers[0].env)["PAPERLESS_PASSPHRASE"] == REDACTED
 
 
+class TestValueFormatDetection:
+    """Value-based format detection — catches secrets by shape regardless of key name."""
+
+    def test_aws_access_key_id(self):
+        val = redact_value("CONFIG_VALUE", "AKIAIOSFODNN7EXAMPLE", DEFAULT_PATTERNS)
+        assert val == REDACTED
+
+    def test_github_pat_classic(self):
+        pat = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh1234"
+        val = redact_value("INIT_DATA", pat, DEFAULT_PATTERNS)
+        assert val == REDACTED
+
+    def test_github_pat_fine_grained(self):
+        val = redact_value("SOME_KEY", "github_pat_11AAAAAA0abcdefghijklmnop", DEFAULT_PATTERNS)
+        assert val == REDACTED
+
+    def test_stripe_live_key(self):
+        # Prefix + 20 alphanum chars triggers Stripe pattern
+        val = redact_value("PAYMENT_CONFIG", "sk_test_FAKEFAKEFAKEFAKEFAKE", DEFAULT_PATTERNS)
+        assert val == REDACTED
+
+    def test_jwt_token(self):
+        jwt = (
+            "eyJhbGciOiJIUzI1NiJ9"
+            ".eyJzdWIiOiIxMjM0NTY3ODkwIn0"
+            ".dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+        )
+        val = redact_value("SESSION_DATA", jwt, DEFAULT_PATTERNS)
+        assert val == REDACTED
+
+    def test_private_key_header(self):
+        pem = "-----BEGIN RSA PRIVATE KEY-----\nMIIE..."
+        val = redact_value("TLS_CERT", pem, DEFAULT_PATTERNS)
+        assert val == REDACTED
+
+    def test_short_value_not_flagged(self):
+        """Short values should not trigger format detection."""
+        val = redact_value("APP_MODE", "production", DEFAULT_PATTERNS)
+        assert val == "production"
+
+    def test_normal_base64_not_flagged(self):
+        """Regular base64 that doesn't match known formats passes through."""
+        val = redact_value("ICON_DATA", "aGVsbG8gd29ybGQgdGhpcyBpcyBhIHRlc3Q=", DEFAULT_PATTERNS)
+        assert val == "aGVsbG8gd29ybGQgdGhpcyBpcyBhIHRlc3Q="
+
+    def test_slack_bot_token(self):
+        # Test value-format detection for Slack-shaped tokens.
+        # Construct the token at runtime to avoid push protection.
+        prefix = "xoxb"
+        token = f"{prefix}-0000000000-FAKEFAKEFAKEFAKE"
+        val = redact_value("NOTIFY_URL", token, DEFAULT_PATTERNS)
+        assert val == REDACTED
+
+
 class TestWarningsPreserved:
     def test_redact_preserves_warnings(self):
         env = make_environment(

@@ -39,6 +39,17 @@ class NetworkMembership:
 
 
 @dataclass(frozen=True)
+class HealthcheckConfig:
+    """Container health check configuration (not status)."""
+
+    test: tuple[str, ...]
+    interval_ns: int
+    timeout_ns: int
+    retries: int
+    start_period_ns: int
+
+
+@dataclass(frozen=True)
 class ContainerInfo:
     """Complete snapshot of a single container's state."""
 
@@ -67,6 +78,27 @@ class ContainerInfo:
     restart_policy: str | None
     privileged: bool
     network_mode: str | None
+    # Compose generator fields
+    healthcheck: HealthcheckConfig | None
+    devices: tuple[str, ...]
+    cap_add: tuple[str, ...]
+    cap_drop: tuple[str, ...]
+    runtime: str | None
+    shm_size: int | None
+    tmpfs: tuple[str, ...]
+    sysctls: tuple[tuple[str, str], ...]
+    security_opt: tuple[str, ...]
+    pid_mode: str | None
+    dns: tuple[str, ...]
+    dns_search: tuple[str, ...]
+    extra_hosts: tuple[str, ...]
+    group_add: tuple[str, ...]
+    hostname: str | None
+    stop_signal: str | None
+    stop_grace_period: int | None
+    mem_limit: int | None
+    cpus: float | None
+    init: bool
 
 
 @dataclass(frozen=True)
@@ -106,6 +138,26 @@ def make_container(
     restart_policy: str | None = None,
     privileged: bool = False,
     network_mode: str | None = None,
+    healthcheck: HealthcheckConfig | None = None,
+    devices: list[str] | tuple[str, ...] = (),
+    cap_add: list[str] | tuple[str, ...] = (),
+    cap_drop: list[str] | tuple[str, ...] = (),
+    runtime: str | None = None,
+    shm_size: int | None = None,
+    tmpfs: list[str] | tuple[str, ...] = (),
+    sysctls: list[tuple[str, str]] | tuple[tuple[str, str], ...] = (),
+    security_opt: list[str] | tuple[str, ...] = (),
+    pid_mode: str | None = None,
+    dns: list[str] | tuple[str, ...] = (),
+    dns_search: list[str] | tuple[str, ...] = (),
+    extra_hosts: list[str] | tuple[str, ...] = (),
+    group_add: list[str] | tuple[str, ...] = (),
+    hostname: str | None = None,
+    stop_signal: str | None = None,
+    stop_grace_period: int | None = None,
+    mem_limit: int | None = None,
+    cpus: float | None = None,
+    init: bool = False,
 ) -> ContainerInfo:
     """Construct a ContainerInfo with sorted collections.
 
@@ -138,6 +190,26 @@ def make_container(
         restart_policy=restart_policy,
         privileged=privileged,
         network_mode=network_mode,
+        healthcheck=healthcheck,
+        devices=tuple(sorted(devices)),
+        cap_add=tuple(sorted(cap_add)),
+        cap_drop=tuple(sorted(cap_drop)),
+        runtime=runtime,
+        shm_size=shm_size,
+        tmpfs=tuple(sorted(tmpfs)),
+        sysctls=tuple(sorted(sysctls, key=lambda s: s[0])),
+        security_opt=tuple(sorted(security_opt)),
+        pid_mode=pid_mode,
+        dns=tuple(dns),  # preserve order (priority matters)
+        dns_search=tuple(dns_search),
+        extra_hosts=tuple(sorted(extra_hosts)),
+        group_add=tuple(sorted(group_add)),
+        hostname=hostname,
+        stop_signal=stop_signal,
+        stop_grace_period=stop_grace_period,
+        mem_limit=mem_limit,
+        cpus=cpus,
+        init=init,
     )
 
 

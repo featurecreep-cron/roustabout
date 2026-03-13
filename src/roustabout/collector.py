@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from roustabout.models import (
+    HealthcheckConfig,
     MountInfo,
     NetworkMembership,
     PortBinding,
@@ -110,6 +111,71 @@ def _collect_container(container) -> ContainerInfo:
     privileged = host_config.get("Privileged", False)
     network_mode = host_config.get("NetworkMode") or None
 
+    # Healthcheck config (the command/interval, not the status)
+    healthcheck = _collect_healthcheck(config.get("Healthcheck"))
+
+    # Device mappings (GPU passthrough, etc.)
+    raw_devices = host_config.get("Devices") or []
+    devices = [
+        f"{d['PathOnHost']}:{d['PathInContainer']}:{d.get('CgroupPermissions', 'rwm')}"
+        for d in raw_devices
+        if isinstance(d, dict) and "PathOnHost" in d
+    ]
+
+    # Capabilities
+    cap_add = host_config.get("CapAdd") or []
+    cap_drop = host_config.get("CapDrop") or []
+
+    # Runtime (nvidia, etc.)
+    runtime = host_config.get("Runtime") or None
+
+    # Shared memory size (bytes, None if default)
+    shm_size = host_config.get("ShmSize")
+    if shm_size == 67108864:  # 64MB is the default
+        shm_size = None
+
+    # Tmpfs mounts
+    raw_tmpfs = host_config.get("Tmpfs") or {}
+    tmpfs = [f"{path}:{opts}" if opts else path for path, opts in raw_tmpfs.items()]
+
+    # Sysctls
+    raw_sysctls = host_config.get("Sysctls") or {}
+    sysctls = list(raw_sysctls.items())
+
+    # Security options
+    security_opt = host_config.get("SecurityOpt") or []
+
+    # PID mode
+    pid_mode = host_config.get("PidMode") or None
+
+    # DNS
+    dns = host_config.get("Dns") or []
+    dns_search = host_config.get("DnsSearch") or []
+
+    # Extra hosts
+    extra_hosts = host_config.get("ExtraHosts") or []
+
+    # Group add
+    group_add = host_config.get("GroupAdd") or []
+
+    # Hostname (only if explicitly set, not auto-generated)
+    hostname = config.get("Hostname") or None
+
+    # Stop signal and grace period
+    stop_signal = config.get("StopSignal") or None
+    stop_timeout = config.get("StopTimeout")
+    stop_grace_period = stop_timeout if stop_timeout is not None else None
+
+    # Resource limits
+    mem_limit = host_config.get("Memory") or None
+    if mem_limit == 0:
+        mem_limit = None
+    nano_cpus = host_config.get("NanoCpus") or 0
+    cpus = nano_cpus / 1e9 if nano_cpus else None
+
+    # Init process
+    init = host_config.get("Init") or False
+
     return make_container(
         name=name,
         id=container.short_id,
@@ -136,6 +202,45 @@ def _collect_container(container) -> ContainerInfo:
         restart_policy=restart_policy,
         privileged=privileged,
         network_mode=network_mode,
+        healthcheck=healthcheck,
+        devices=devices,
+        cap_add=cap_add,
+        cap_drop=cap_drop,
+        runtime=runtime,
+        shm_size=shm_size,
+        tmpfs=tmpfs,
+        sysctls=sysctls,
+        security_opt=security_opt,
+        pid_mode=pid_mode,
+        dns=dns,
+        dns_search=dns_search,
+        extra_hosts=extra_hosts,
+        group_add=group_add,
+        hostname=hostname,
+        stop_signal=stop_signal,
+        stop_grace_period=stop_grace_period,
+        mem_limit=mem_limit,
+        cpus=cpus,
+        init=init,
+    )
+
+
+def _collect_healthcheck(hc_config: dict | None) -> HealthcheckConfig | None:
+    """Extract healthcheck configuration from Config.Healthcheck."""
+    if not hc_config:
+        return None
+    test = hc_config.get("Test")
+    if not test:
+        return None
+    # Docker stores "NONE" as the test to indicate healthcheck is disabled
+    if test == ["NONE"]:
+        return None
+    return HealthcheckConfig(
+        test=tuple(test),
+        interval_ns=hc_config.get("Interval", 0),
+        timeout_ns=hc_config.get("Timeout", 0),
+        retries=hc_config.get("Retries", 0),
+        start_period_ns=hc_config.get("StartPeriod", 0),
     )
 
 

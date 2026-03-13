@@ -23,6 +23,7 @@ classifiers = [
 dependencies = [
     "docker>=7.0",
     "click>=8.0",
+    "ruamel.yaml>=0.18",
     "tomli>=2.0; python_version < '3.11'",
 ]
 

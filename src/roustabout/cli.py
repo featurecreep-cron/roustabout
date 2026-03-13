@@ -16,6 +16,7 @@ from roustabout.auditor import render_findings
 from roustabout.collector import collect
 from roustabout.config import load_config
 from roustabout.connection import connect
+from roustabout.generator import generate as run_generate
 from roustabout.redactor import redact, resolve_patterns
 from roustabout.renderer import render
 from roustabout.state import FindingState, load_state, set_finding_state
@@ -123,6 +124,39 @@ def audit(output, config_path, docker_host, state_file, hide_accepted):
         click.echo(f"Audit written to {cfg.output}")
     else:
         click.echo(markdown)
+
+
+@main.command("generate")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Write output to file.")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+@click.option(
+    "--include-stopped",
+    is_flag=True,
+    default=False,
+    help="Include stopped containers.",
+)
+@click.option("--project", default=None, help="Set compose project name.")
+def generate(output, config_path, docker_host, include_stopped, project):
+    """Generate a docker-compose.yml from running containers."""
+    cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
+
+    client = _connect(cfg.docker_host)
+    env = collect(client)
+
+    yaml_output = run_generate(env, include_stopped=include_stopped, project_name=project)
+
+    if cfg.output:
+        Path(cfg.output).write_text(yaml_output)
+        click.echo(f"Compose file written to {cfg.output}")
+    else:
+        click.echo(yaml_output)
 
 
 @main.command("accept")

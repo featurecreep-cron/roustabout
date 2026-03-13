@@ -1,5 +1,10 @@
 # roustabout
 
+[![CI](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml/badge.svg)](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/featurecreep-cron/roustabout)](https://github.com/featurecreep-cron/roustabout/blob/main/LICENSE)
+[![Python: 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://github.com/featurecreep-cron/roustabout)
+[![Release](https://img.shields.io/github/v/release/featurecreep-cron/roustabout)](https://github.com/featurecreep-cron/roustabout/releases)
+
 Structured documentation, security auditing, and compose generation for Docker environments.
 
 Roustabout connects to the Docker API, inspects every running container, and produces three kinds of output:
@@ -124,6 +129,16 @@ Findings can be triaged with `roustabout accept`, `false-positive`, or `resolve`
 
 - Python 3.10+
 - Access to a Docker socket (local or remote)
+
+## Contributing
+
+Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+This project uses [ruff](https://docs.astral.sh/ruff/) for linting and formatting. Run `ruff check .` and `ruff format --check .` before submitting.
+
+## Support
+
+If you find roustabout useful, consider [buying us a coffee](https://buymeacoffee.com/featurecreep).
 
 ## License
 

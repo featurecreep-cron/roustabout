@@ -13,21 +13,32 @@ from roustabout.models import ContainerInfo, DockerEnvironment, make_container, 
 
 REDACTED = "[REDACTED]"
 
+# Patterns match as substrings in env var KEY names (case-insensitive).
+# Deliberately excludes overly broad terms like "auth" (matches AUTHENTIK_*)
+# and bare "key" (matches REGISTRY_KEY, etc.). Specific compound patterns
+# like "api_key" and "secret_key" cover the important cases.
 DEFAULT_PATTERNS: tuple[str, ...] = (
     "password",
+    "passwd",
     "secret",
     "token",
     "api_key",
-    "key",
+    "apikey",
     "credential",
     "private_key",
     "access_key",
-    "database_url",
-    "auth",
+    "secret_key",
 )
 
 # Matches URLs with embedded credentials: scheme://user:pass@host
-_CREDENTIAL_URL_RE = re.compile(r"://[^@]+@")
+_CREDENTIAL_URL_RE = re.compile(r"(://[^:]+:)([^@]+)(@)")
+
+# Matches secret-like keys inside JSON/structured values
+_JSON_SECRET_RE = re.compile(
+    r'["\'](?:secret|password|token|api_key|client_secret|private_key)["\']'
+    r'\s*:\s*["\']([^"\']+)["\']',
+    re.IGNORECASE,
+)
 
 
 def resolve_patterns(
@@ -78,38 +89,66 @@ def _redact_container(
     patterns: tuple[str, ...],
 ) -> ContainerInfo:
     """Redact env vars in a single container."""
-    redacted_env = [
-        (key, REDACTED if is_secret_key(key, value, patterns) else value)
-        for key, value in container.env
-    ]
+    redacted_env = [(key, redact_value(key, value, patterns)) for key, value in container.env]
 
     kwargs = {f.name: getattr(container, f.name) for f in dataclasses.fields(container)}
     kwargs["env"] = redacted_env
     return make_container(**kwargs)
 
 
-def is_secret_key(key: str, value: str, patterns: tuple[str, ...]) -> bool:
-    """Check if a key-value pair contains a secret worth redacting.
+def redact_value(key: str, value: str, patterns: tuple[str, ...]) -> str:
+    """Return the redacted form of a value, or the original if not secret.
 
-    Two mechanisms:
-    1. Pattern match: if a pattern substring appears in the key, redact —
-       UNLESS the key ends with _url, in which case only redact if the
-       value contains embedded credentials (://...@...).
-    2. Catch-all: any key ending with _url whose value has embedded
-       credentials is redacted regardless of pattern match.
+    Three redaction mechanisms:
+    1. Key-based: pattern substring in key name → full value replaced.
+    2. URL credential: value contains ://user:pass@host → password portion replaced.
+    3. Value-based: JSON/structured values with embedded secret keys → secret values replaced.
     """
     key_lower = key.lower()
 
-    # Catch-all: any _url key with embedded credentials
-    if key_lower.endswith("_url") and _CREDENTIAL_URL_RE.search(value):
-        return True
-
+    # 1. Key-based pattern match
     for pattern in patterns:
-        pattern_lower = pattern.lower()
-        if pattern_lower in key_lower:
-            # _url suffix without embedded credentials: don't redact
+        if pattern.lower() in key_lower:
+            # URL keys get partial redaction, not full
             if key_lower.endswith("_url"):
-                return bool(_CREDENTIAL_URL_RE.search(value))
-            return True
+                if _CREDENTIAL_URL_RE.search(value):
+                    return _redact_url_password(value)
+                return value
+            return REDACTED
 
-    return False
+    # 2. Catch-all: any _url key with embedded credentials (partial redaction)
+    if key_lower.endswith("_url") and _CREDENTIAL_URL_RE.search(value):
+        return _redact_url_password(value)
+
+    # 3. Value-based: scan for embedded secrets in JSON/structured values
+    if _JSON_SECRET_RE.search(value):
+        return _redact_json_secrets(value)
+
+    return value
+
+
+def is_secret_key(key: str, value: str, patterns: tuple[str, ...]) -> bool:
+    """Check if a key-value pair needs any redaction.
+
+    Returns True if redact_value would change the value.
+    """
+    return redact_value(key, value, patterns) != value
+
+
+def _redact_url_password(value: str) -> str:
+    """Replace only the password portion of a credential URL.
+
+    ://user:password@host → ://user:[REDACTED]@host
+    """
+    return _CREDENTIAL_URL_RE.sub(rf"\g<1>{REDACTED}\g<3>", value)
+
+
+def _redact_json_secrets(value: str) -> str:
+    """Replace secret values inside JSON/structured strings."""
+
+    def _replace_secret(match: re.Match) -> str:
+        full = match.group(0)
+        secret_value = match.group(1)
+        return full.replace(secret_value, REDACTED)
+
+    return _JSON_SECRET_RE.sub(_replace_secret, value)

@@ -7,3 +7,5 @@ build/
 .pytest_cache/
 .ruff_cache/
 cronbox/.env
+cronbox-*.md
+cronbox-*.yml

@@ -34,6 +34,7 @@ mcp = [
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.12",
+    "ruff>=0.4",
 ]
 
 [project.scripts]
@@ -49,10 +50,6 @@ line-length = 99
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP"]
-
-[tool.black]
-target-version = ["py310"]
-line-length = 99
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -12,6 +12,7 @@ from roustabout.auditor import audit, render_findings
 from roustabout.collector import collect
 from roustabout.config import load_config
 from roustabout.connection import connect
+from roustabout.generator import generate
 from roustabout.models import make_environment
 from roustabout.redactor import redact, resolve_patterns
 from roustabout.renderer import render
@@ -137,6 +138,24 @@ def docker_networks() -> str:
         lines.append("")
 
     return "\n".join(lines) + "\n"
+
+
+@mcp.tool()
+def docker_generate(include_stopped: bool = False) -> str:
+    """Generate a docker-compose.yml from running containers.
+
+    Reconstructs a compose file from the live Docker environment. Environment
+    variable secrets are automatically redacted — the output is safe to share
+    but will need real values filled in before use.
+
+    Args:
+        include_stopped: Include stopped containers (default: running only).
+    """
+    try:
+        env, cfg = _collect_redacted()
+    except Exception as exc:
+        return f"Error: Cannot connect to Docker: {exc}"
+    return generate(env, include_stopped=include_stopped)
 
 
 def main():

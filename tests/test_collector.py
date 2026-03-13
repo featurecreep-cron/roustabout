@@ -157,9 +157,7 @@ class TestEnvironmentVars:
 
     def test_equals_in_value_preserved(self):
         """Partition on first = so values with = are kept intact."""
-        container = _make_minimal_container(
-            env=["CONNECTION=host=db;port=5432;password=secret"]
-        )
+        container = _make_minimal_container(env=["CONNECTION=host=db;port=5432;password=secret"])
         client = _make_client(container)
         result = collect(client)
         assert dict(result.containers[0].env)["CONNECTION"] == "host=db;port=5432;password=secret"

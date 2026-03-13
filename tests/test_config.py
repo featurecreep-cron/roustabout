@@ -1,6 +1,5 @@
 """Tests for configuration loading."""
 
-
 import pytest
 
 from roustabout.config import Config, load_config

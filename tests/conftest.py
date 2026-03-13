@@ -45,6 +45,8 @@ def _make_mock_container(
     oom_killed=False,
     user="",
     restart_policy_name="always",
+    privileged=False,
+    network_mode="bridge",
 ):
     """Build a mock container object matching docker-py's Container interface."""
     if ports is None:
@@ -115,6 +117,8 @@ def _make_mock_container(
         },
         "HostConfig": {
             "RestartPolicy": {"Name": restart_policy_name},
+            "Privileged": privileged,
+            "NetworkMode": network_mode,
         },
         "NetworkSettings": {
             "Ports": ports,

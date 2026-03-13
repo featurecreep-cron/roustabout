@@ -63,9 +63,7 @@ class TestSnapshotCommand:
         assert "Environment" in result.output
 
     def test_snapshot_with_docker_host(self, runner, mock_docker_env):
-        result = runner.invoke(
-            main, ["snapshot", "--docker-host", "tcp://myhost:2375"]
-        )
+        result = runner.invoke(main, ["snapshot", "--docker-host", "tcp://myhost:2375"])
         assert result.exit_code == 0
         mock_docker_env["connect"].assert_called_once_with("tcp://myhost:2375")
 

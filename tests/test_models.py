@@ -106,6 +106,8 @@ class TestMakeContainerDefaults:
         assert c.compose_project is None
         assert c.restart_count == 0
         assert c.oom_killed is False
+        assert c.privileged is False
+        assert c.network_mode is None
 
 
 class TestMakeEnvironment:

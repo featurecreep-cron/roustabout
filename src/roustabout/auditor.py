@@ -33,6 +33,22 @@ _SENSITIVE_IMAGE_PATTERNS = (
     "portainer",
 )
 
+# Host paths that should not be bind-mounted into containers
+_SENSITIVE_HOST_PATHS = (
+    "/etc",
+    "/root",
+    "/home",
+    "/var/run/docker.sock",  # handled separately by docker-socket check
+)
+
+# Specific files under sensitive paths that are safe to mount (read-only, no secrets)
+_SAFE_MOUNT_EXCEPTIONS = (
+    "/etc/localtime",
+    "/etc/timezone",
+    "/etc/hosts",
+    "/etc/resolv.conf",
+)
+
 
 class Severity(Enum):
     CRITICAL = "critical"
@@ -69,6 +85,9 @@ def audit(
 
     for container in env.containers:
         findings.extend(_check_docker_socket(container))
+        findings.extend(_check_privileged_mode(container))
+        findings.extend(_check_sensitive_host_mounts(container))
+        findings.extend(_check_host_network(container))
         findings.extend(_check_secrets_in_env(container, active_patterns))
         findings.extend(_check_sensitive_port_binding(container))
         findings.extend(_check_no_health_check(container))
@@ -102,6 +121,75 @@ def _check_docker_socket(c: ContainerInfo) -> list[Finding]:
                 )
             ]
     return []
+
+
+def _check_privileged_mode(c: ContainerInfo) -> list[Finding]:
+    """Check #11: Container running in privileged mode."""
+    if not c.privileged:
+        return []
+    return [
+        Finding(
+            severity=Severity.CRITICAL,
+            category="privileged-mode",
+            container=c.name,
+            explanation="Container is running in privileged mode. It has full access to "
+            "all host devices and can bypass all Docker isolation.",
+            fix="Remove `privileged: true` from docker-compose.yml. If the container "
+            "needs specific device access, use `devices:` to grant only what it needs. "
+            "If it needs specific capabilities, use `cap_add:` instead.",
+        )
+    ]
+
+
+def _check_sensitive_host_mounts(c: ContainerInfo) -> list[Finding]:
+    """Check #12: Sensitive host paths mounted into container."""
+    # Docker socket is already caught by check #1 — skip it here
+    findings = []
+    for mount in c.mounts:
+        if mount.type != "bind":
+            continue
+        source = mount.source.rstrip("/")
+        # Skip known-safe individual file mounts (timezone, hosts, etc.)
+        if source in _SAFE_MOUNT_EXCEPTIONS:
+            continue
+        for sensitive in _SENSITIVE_HOST_PATHS:
+            if sensitive == "/var/run/docker.sock":
+                continue  # handled by docker-socket check
+            if source == sensitive or source.startswith(sensitive + "/"):
+                findings.append(
+                    Finding(
+                        severity=Severity.WARNING,
+                        category="sensitive-mount",
+                        container=c.name,
+                        explanation=f"Host path `{mount.source}` is mounted at "
+                        f"`{mount.destination}`. This exposes sensitive host files "
+                        f"to the container.",
+                        fix=f"Mount only the specific subdirectory needed instead of "
+                        f"`{mount.source}`. If the container needs host configuration, "
+                        f"copy the specific files into the image at build time.",
+                    )
+                )
+                break  # one finding per mount is enough
+    return findings
+
+
+def _check_host_network(c: ContainerInfo) -> list[Finding]:
+    """Check #13: Container using host network mode."""
+    if c.status != "running":
+        return []
+    if c.network_mode != "host":
+        return []
+    return [
+        Finding(
+            severity=Severity.INFO,
+            category="host-network",
+            container=c.name,
+            explanation="Container is using host network mode. It shares the host's "
+            "network stack directly, bypassing Docker network isolation.",
+            fix="Use a bridge network with explicit port mappings unless host network "
+            "performance is specifically required.",
+        )
+    ]
 
 
 def _check_secrets_in_env(
@@ -140,14 +228,14 @@ def _check_sensitive_port_binding(c: ContainerInfo) -> list[Finding]:
         if port.host_ip in ("0.0.0.0", "::"):
             findings.append(
                 Finding(
-                    severity=Severity.WARNING,
+                    severity=Severity.INFO,
                     category="exposed-port",
                     container=c.name,
-                    explanation=f"Port {port.container_port} is bound to all interfaces "
-                    f"({port.host_ip}:{port.host_port}). This service "
-                    f"({c.image}) should not be directly accessible from the network.",
-                    fix="Bind to 127.0.0.1 instead (e.g. `127.0.0.1:5432:5432`) or use a "
-                    "reverse proxy.",
+                    explanation=f"Port {port.container_port} ({c.image}) is bound to all "
+                    f"interfaces ({port.host_ip}:{port.host_port}). On a multi-NIC host, "
+                    f"this service is accessible from every network.",
+                    fix="If this service should only be reachable from localhost, bind to "
+                    "127.0.0.1 instead (e.g. `127.0.0.1:5432:5432`).",
                 )
             )
     return findings
@@ -160,7 +248,7 @@ def _check_no_health_check(c: ContainerInfo) -> list[Finding]:
     if c.health is None:
         return [
             Finding(
-                severity=Severity.WARNING,
+                severity=Severity.INFO,
                 category="no-healthcheck",
                 container=c.name,
                 explanation="No health check configured. Docker cannot detect if this "

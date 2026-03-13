@@ -13,14 +13,79 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from roustabout.models import ContainerInfo, DockerEnvironment
 
-# Labels managed by compose — exclude from generated output
+# Labels managed by compose or baked into images — exclude from generated output
 _COMPOSE_LABEL_PREFIXES = (
     "com.docker.compose.",
     "com.docker.desktop.",
 )
 
+# Image metadata labels — always baked in, never user-set
+_IMAGE_LABEL_PREFIXES = (
+    "org.opencontainers.image.",
+    "org.label-schema.",
+)
+
 # Default Docker networks that shouldn't be declared in top-level networks:
 _DEFAULT_NETWORKS = {"bridge", "host", "none"}
+
+# Default runtimes that shouldn't be emitted
+_DEFAULT_RUNTIMES = {"runc", "io.containerd.runc.v2"}
+
+# Docker volume internal path prefix — identifies anonymous volumes
+_DOCKER_VOLUME_PATH = "/var/lib/docker/volumes/"
+
+# Environment variables that are image-baked, not user-set.
+# These appear on virtually every container and are never useful in compose files.
+_IMAGE_ENV_VARS = {
+    "PATH",
+    "HOSTNAME",
+    "HOME",
+    "LANG",
+    "LANGUAGE",
+    "LC_ALL",
+    "TERM",
+    # Python
+    "GPG_KEY",
+    "PYTHON_VERSION",
+    "PYTHON_PIP_VERSION",
+    "PYTHON_SETUPTOOLS_VERSION",
+    "PYTHON_GET_PIP_URL",
+    "PYTHON_GET_PIP_SHA256",
+    "PYTHON_SHA256",
+    # Go
+    "GOPATH",
+    "GOVERSION",
+    "GOTOOLCHAIN",
+    # Node
+    "NODE_VERSION",
+    "YARN_VERSION",
+    # Java
+    "JAVA_HOME",
+    "JAVA_VERSION",
+    # Ruby
+    "RUBY_VERSION",
+    "GEM_HOME",
+    "BUNDLE_SILENCE_ROOT_WARNING",
+    # Rust
+    "RUSTUP_HOME",
+    "CARGO_HOME",
+    # Database version vars (image metadata)
+    "PG_MAJOR",
+    "PG_VERSION",
+    "PG_SHA256",
+    "GOSU_VERSION",
+    "MARIADB_MAJOR",
+    "MARIADB_VERSION",
+    "MYSQL_MAJOR",
+    "MYSQL_VERSION",
+    # LinuxServer.io internals
+    "LSIO_FIRST_PARTY",
+    "S6_VERBOSITY",
+    "S6_STAGE2_HOOK",
+    "S6_CMD_WAIT_FOR_SERVICES_MAXTIME",
+    "VIRTUAL_ENV",
+    "PS1",
+}
 
 
 def generate(
@@ -46,6 +111,19 @@ def generate(
     if not containers:
         return "# No running containers found.\n"
 
+    # Build a lookup from container name → service name for cross-references
+    name_to_service: dict[str, str] = {}
+    used_names: dict[str, int] = {}
+    for container in containers:
+        svc_name = _service_name(container)
+        # Handle service name collisions
+        if svc_name in used_names:
+            used_names[svc_name] += 1
+            svc_name = f"{svc_name}-{used_names[svc_name]}"
+        else:
+            used_names[svc_name] = 1
+        name_to_service[container.name] = svc_name
+
     doc = CommentedMap()
     doc.yaml_set_comment_before_after_key(
         "services",
@@ -58,13 +136,13 @@ def generate(
     all_networks: set[str] = set()
 
     for container in containers:
-        service_name = _service_name(container)
-        service = _build_service(container)
+        service_name = name_to_service[container.name]
+        service = _build_service(container, name_to_service)
         services[service_name] = service
 
         # Track volumes and networks for top-level declarations
         for mount in container.mounts:
-            if mount.type == "volume":
+            if mount.type == "volume" and not _is_anonymous_volume(mount.source):
                 all_volumes.add(mount.source)
         for net in container.networks:
             if net.name not in _DEFAULT_NETWORKS:
@@ -79,7 +157,7 @@ def generate(
 
     doc["services"] = services
 
-    # Top-level volumes
+    # Top-level volumes (only named volumes, not anonymous)
     if all_volumes:
         volumes = CommentedMap()
         for vol_name in sorted(all_volumes):
@@ -145,25 +223,31 @@ def _service_name(container: ContainerInfo) -> str:
     return name.lower().replace(".", "-")
 
 
-def _is_default_network_mode(mode: str) -> bool:
+def _is_default_network_mode(mode: str, compose_project: str | None = None) -> bool:
     """Check if a network mode is a default that shouldn't be emitted."""
     if mode in ("bridge", "default"):
         return True
-    # Compose creates {project}_default networks — these are the default behavior
-    if mode.endswith("_default"):
+    # Compose creates {project}_default networks — only suppress when we can
+    # confirm it matches the container's own compose project
+    if compose_project and mode == f"{compose_project}_default":
         return True
     return False
 
 
-def _is_auto_hostname(hostname: str) -> bool:
-    """Check if a hostname is auto-generated (container ID fragment)."""
-    # Docker auto-generates hostnames as 12-char hex strings from the container ID
-    import re
-
-    return bool(re.fullmatch(r"[0-9a-f]{12}", hostname))
+def _is_auto_hostname(hostname: str, container_id: str) -> bool:
+    """Check if a hostname is auto-generated (matches container ID prefix)."""
+    # Docker sets hostname to the first 12 chars of the container ID
+    return hostname == container_id[:12]
 
 
-def _build_service(c: ContainerInfo) -> CommentedMap:
+def _is_anonymous_volume(source: str) -> bool:
+    """Check if a volume source is an anonymous Docker volume (hash path)."""
+    return source.startswith(_DOCKER_VOLUME_PATH)
+
+
+def _build_service(
+    c: ContainerInfo, name_to_service: dict[str, str] | None = None
+) -> CommentedMap:
     """Build a compose service definition from a ContainerInfo."""
     svc = CommentedMap()
 
@@ -182,24 +266,28 @@ def _build_service(c: ContainerInfo) -> CommentedMap:
     if c.init:
         svc["init"] = True
 
-    if c.network_mode and not _is_default_network_mode(c.network_mode):
+    if c.network_mode and not _is_default_network_mode(c.network_mode, c.compose_project):
         # Handle container:X network mode → service:X in compose
         if c.network_mode.startswith("container:"):
             ref_container = c.network_mode.split(":", 1)[1]
-            svc["network_mode"] = f"service:{ref_container}"
+            # Map container name to service name if known
+            if name_to_service and ref_container in name_to_service:
+                svc["network_mode"] = f"service:{name_to_service[ref_container]}"
+            else:
+                svc["network_mode"] = f"service:{ref_container}"
         else:
             svc["network_mode"] = c.network_mode
 
-    if c.hostname and not _is_auto_hostname(c.hostname):
+    if c.hostname and not _is_auto_hostname(c.hostname, c.id):
         svc["hostname"] = c.hostname
 
-    if c.runtime and c.runtime not in ("runc",):
+    if c.runtime and c.runtime not in _DEFAULT_RUNTIMES:
         svc["runtime"] = c.runtime
 
     if c.pid_mode and c.pid_mode != "":
         svc["pid"] = c.pid_mode
 
-    if c.stop_signal:
+    if c.stop_signal and c.stop_signal not in ("SIGTERM",):
         svc["stop_signal"] = c.stop_signal
 
     if c.stop_grace_period is not None:
@@ -208,17 +296,20 @@ def _build_service(c: ContainerInfo) -> CommentedMap:
     if c.shm_size:
         svc["shm_size"] = _human_bytes(c.shm_size)
 
-    # Ports
+    # Ports — skip unpublished (empty host_port) ports
     if c.ports:
         ports = CommentedSeq()
         for p in c.ports:
+            if not p.host_port:
+                continue  # EXPOSE-only, not published
             host_ip = p.host_ip if p.host_ip and p.host_ip != "0.0.0.0" else ""
             ip_prefix = f"{host_ip}:" if host_ip else ""
             port_str = f"{ip_prefix}{p.host_port}:{p.container_port}"
             if p.protocol != "tcp":
                 port_str += f"/{p.protocol}"
             ports.append(port_str)
-        svc["ports"] = ports
+        if ports:
+            svc["ports"] = ports
 
     # Volumes
     volumes = _build_volumes(c)
@@ -229,22 +320,27 @@ def _build_service(c: ContainerInfo) -> CommentedMap:
     if c.tmpfs:
         svc["tmpfs"] = list(c.tmpfs)
 
-    # Networks (skip if using network_mode)
-    if not (c.network_mode and not _is_default_network_mode(c.network_mode)):
+    # Networks (skip if using non-default network_mode)
+    if not (c.network_mode and not _is_default_network_mode(c.network_mode, c.compose_project)):
         nets = _build_networks(c)
         if nets:
             svc["networks"] = nets
 
-    # Environment
+    # Environment — filter out image-baked variables
     if c.env:
-        env_map = CommentedMap()
-        for key, value in c.env:
-            env_map[key] = value
-        svc["environment"] = env_map
+        user_env = [(k, v) for k, v in c.env if k not in _IMAGE_ENV_VARS]
+        if user_env:
+            env_map = CommentedMap()
+            for key, value in user_env:
+                env_map[key] = value
+            svc["environment"] = env_map
 
-    # Labels (excluding compose-internal)
+    # Labels (excluding compose-internal and image metadata)
     user_labels = [
-        (k, v) for k, v in c.labels if not any(k.startswith(p) for p in _COMPOSE_LABEL_PREFIXES)
+        (k, v)
+        for k, v in c.labels
+        if not any(k.startswith(p) for p in _COMPOSE_LABEL_PREFIXES)
+        and not any(k.startswith(p) for p in _IMAGE_LABEL_PREFIXES)
     ]
     if user_labels:
         labels = CommentedMap()
@@ -329,10 +425,15 @@ def _build_volumes(c: ContainerInfo) -> CommentedSeq | None:
                 entry += f":{m.mode}"
             volumes.append(entry)
         elif m.type == "volume":
-            entry = f"{m.source}:{m.destination}"
-            if m.mode and m.mode != "rw":
-                entry += f":{m.mode}"
-            volumes.append(entry)
+            if _is_anonymous_volume(m.source):
+                # Anonymous volume — emit just the destination to let compose
+                # create a new anonymous volume
+                volumes.append(m.destination)
+            else:
+                entry = f"{m.source}:{m.destination}"
+                if m.mode and m.mode != "rw":
+                    entry += f":{m.mode}"
+                volumes.append(entry)
         # tmpfs mounts are handled separately
 
     return volumes if volumes else None

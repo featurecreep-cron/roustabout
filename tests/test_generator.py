@@ -255,15 +255,16 @@ class TestNetworkMode:
         doc = _parse_yaml(generate(env))
         assert "network_mode" not in doc["services"]["test-app"]
 
-    def test_compose_default_network_omits(self):
-        env = _env(_container(network_mode="compose_default"))
+    def test_compose_default_network_omits_with_matching_project(self):
+        env = _env(_container(network_mode="myproject_default", compose_project="myproject"))
         doc = _parse_yaml(generate(env))
         assert "network_mode" not in doc["services"]["test-app"]
 
-    def test_project_default_network_omits(self):
+    def test_compose_default_network_kept_without_project(self):
+        """Without compose_project, _default networks are kept."""
         env = _env(_container(network_mode="myproject_default"))
         doc = _parse_yaml(generate(env))
-        assert "network_mode" not in doc["services"]["test-app"]
+        assert doc["services"]["test-app"]["network_mode"] == "myproject_default"
 
 
 class TestHostname:
@@ -273,7 +274,8 @@ class TestHostname:
         assert doc["services"]["test-app"]["hostname"] == "myhost"
 
     def test_auto_hostname_omits(self):
-        env = _env(_container(hostname="396477d9ed48"))
+        # Hostname matches first 12 chars of container ID → auto-generated, omit
+        env = _env(_container(id="396477d9ed48abcdef", hostname="396477d9ed48"))
         doc = _parse_yaml(generate(env))
         assert "hostname" not in doc["services"]["test-app"]
 
@@ -354,11 +356,28 @@ class TestLabels:
     def test_user_labels_included(self):
         env = _env(
             _container(
-                labels=[("org.opencontainers.image.version", "1.0")],
+                labels=[("app.custom.version", "1.0")],
             )
         )
         doc = _parse_yaml(generate(env))
-        assert doc["services"]["test-app"]["labels"]["org.opencontainers.image.version"] == "1.0"
+        assert doc["services"]["test-app"]["labels"]["app.custom.version"] == "1.0"
+
+    def test_image_metadata_labels_excluded(self):
+        """Image metadata labels (OCI, label-schema) are excluded."""
+        env = _env(
+            _container(
+                labels=[
+                    ("org.opencontainers.image.version", "1.0"),
+                    ("org.label-schema.name", "test"),
+                    ("custom.label", "value"),
+                ],
+            )
+        )
+        doc = _parse_yaml(generate(env))
+        labels = doc["services"]["test-app"]["labels"]
+        assert "org.opencontainers.image.version" not in labels
+        assert "org.label-schema.name" not in labels
+        assert "custom.label" in labels
 
     def test_compose_labels_excluded(self):
         env = _env(

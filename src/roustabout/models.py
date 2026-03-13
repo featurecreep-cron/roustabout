@@ -65,6 +65,8 @@ class ContainerInfo:
     oom_killed: bool
     user: str | None
     restart_policy: str | None
+    privileged: bool
+    network_mode: str | None
 
 
 @dataclass(frozen=True)
@@ -102,6 +104,8 @@ def make_container(
     oom_killed: bool = False,
     user: str | None = None,
     restart_policy: str | None = None,
+    privileged: bool = False,
+    network_mode: str | None = None,
 ) -> ContainerInfo:
     """Construct a ContainerInfo with sorted collections.
 
@@ -132,6 +136,8 @@ def make_container(
         oom_killed=oom_killed,
         user=user,
         restart_policy=restart_policy,
+        privileged=privileged,
+        network_mode=network_mode,
     )
 
 

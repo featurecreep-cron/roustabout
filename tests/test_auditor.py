@@ -122,7 +122,7 @@ class TestSensitivePortBinding:
         findings = audit(env)
         f = _find(findings, "exposed-port")
         assert f is not None
-        assert f.severity == Severity.WARNING
+        assert f.severity == Severity.INFO
         assert "5432" in f.explanation
 
     def test_postgres_on_localhost_ok(self):
@@ -165,7 +165,7 @@ class TestNoHealthCheck:
         findings = audit(env)
         f = _find(findings, "no-healthcheck")
         assert f is not None
-        assert f.severity == Severity.WARNING
+        assert f.severity == Severity.INFO
 
     def test_running_with_health(self):
         env = _env(health="healthy")
@@ -379,6 +379,123 @@ class TestStaleImages:
         env = _env(status="exited", image="nginx:latest", image_digest=None)
         findings = audit(env)
         assert _find(findings, "stale-image") is None
+
+
+class TestPrivilegedMode:
+    def test_privileged_detected(self):
+        env = _env(privileged=True)
+        findings = audit(env)
+        f = _find(findings, "privileged-mode")
+        assert f is not None
+        assert f.severity == Severity.CRITICAL
+        assert "privileged mode" in f.explanation
+
+    def test_not_privileged_clean(self):
+        env = _env(privileged=False)
+        findings = audit(env)
+        assert _find(findings, "privileged-mode") is None
+
+
+class TestSensitiveHostMounts:
+    def test_etc_mount_detected(self):
+        env = _env(
+            mounts=[MountInfo(source="/etc", destination="/host-etc", mode="ro", type="bind")]
+        )
+        findings = audit(env)
+        f = _find(findings, "sensitive-mount")
+        assert f is not None
+        assert f.severity == Severity.WARNING
+        assert "/etc" in f.explanation
+
+    def test_etc_localtime_safe(self):
+        """Common timezone mount is excluded — not a security concern."""
+        env = _env(
+            mounts=[
+                MountInfo(
+                    source="/etc/localtime", destination="/etc/localtime", mode="ro", type="bind"
+                )
+            ]
+        )
+        findings = audit(env)
+        assert _find(findings, "sensitive-mount") is None
+
+    def test_etc_subdir_detected(self):
+        """Non-safe /etc subdirectory is flagged."""
+        env = _env(
+            mounts=[
+                MountInfo(source="/etc/shadow", destination="/etc/shadow", mode="ro", type="bind")
+            ]
+        )
+        findings = audit(env)
+        f = _find(findings, "sensitive-mount")
+        assert f is not None
+
+    def test_home_mount_detected(self):
+        env = _env(mounts=[MountInfo(source="/home", destination="/data", mode="rw", type="bind")])
+        findings = audit(env)
+        f = _find(findings, "sensitive-mount")
+        assert f is not None
+
+    def test_root_home_detected(self):
+        env = _env(mounts=[MountInfo(source="/root", destination="/root", mode="rw", type="bind")])
+        findings = audit(env)
+        f = _find(findings, "sensitive-mount")
+        assert f is not None
+
+    def test_docker_socket_not_duplicated(self):
+        """Docker socket is caught by check #1, should not also appear as sensitive-mount."""
+        env = _env(
+            mounts=[
+                MountInfo(
+                    source="/var/run/docker.sock",
+                    destination="/var/run/docker.sock",
+                    mode="rw",
+                    type="bind",
+                )
+            ]
+        )
+        findings = audit(env)
+        assert _find(findings, "sensitive-mount") is None
+        assert _find(findings, "docker-socket") is not None
+
+    def test_volume_mount_skipped(self):
+        """Named volumes are not bind mounts — should not trigger."""
+        env = _env(
+            mounts=[MountInfo(source="my_volume", destination="/etc", mode="rw", type="volume")]
+        )
+        findings = audit(env)
+        assert _find(findings, "sensitive-mount") is None
+
+    def test_safe_path_clean(self):
+        env = _env(
+            mounts=[MountInfo(source="/opt/app/data", destination="/data", mode="rw", type="bind")]
+        )
+        findings = audit(env)
+        assert _find(findings, "sensitive-mount") is None
+
+
+class TestHostNetwork:
+    def test_host_network_detected(self):
+        env = _env(network_mode="host")
+        findings = audit(env)
+        f = _find(findings, "host-network")
+        assert f is not None
+        assert f.severity == Severity.INFO
+
+    def test_bridge_network_clean(self):
+        env = _env(network_mode="bridge")
+        findings = audit(env)
+        assert _find(findings, "host-network") is None
+
+    def test_stopped_host_network_skipped(self):
+        env = _env(status="exited", network_mode="host")
+        findings = audit(env)
+        assert _find(findings, "host-network") is None
+
+    def test_none_network_clean(self):
+        env = _env(network_mode=None)
+        findings = audit(env)
+        assert _find(findings, "host-network") is None
 
 
 class TestSortOrder:

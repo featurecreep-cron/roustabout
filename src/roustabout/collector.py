@@ -107,6 +107,8 @@ def _collect_container(container) -> ContainerInfo:
     host_config = attrs.get("HostConfig", {})
     restart_info = host_config.get("RestartPolicy", {})
     restart_policy = restart_info.get("Name") or None
+    privileged = host_config.get("Privileged", False)
+    network_mode = host_config.get("NetworkMode") or None
 
     return make_container(
         name=name,
@@ -132,6 +134,8 @@ def _collect_container(container) -> ContainerInfo:
         oom_killed=state.get("OOMKilled", False),
         user=user,
         restart_policy=restart_policy,
+        privileged=privileged,
+        network_mode=network_mode,
     )
 
 

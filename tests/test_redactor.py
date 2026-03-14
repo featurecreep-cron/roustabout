@@ -180,6 +180,27 @@ class TestJsonValueRedaction:
         assert "pub456" in val
         assert REDACTED in val
 
+    def test_redacts_prefixed_secret_keys_in_structured_values(self):
+        """pgadmin OAUTH2_CLIENT_SECRET-style keys: secret pattern as substring."""
+        val = (
+            "[{'OAUTH2_NAME': 'authentik', "
+            "'OAUTH2_CLIENT_ID': 'pub123', "
+            "'OAUTH2_CLIENT_SECRET': 'supersecretvalue', "
+            "'OAUTH2_TOKEN_URL': 'https://auth.example.com/token/'}]"
+        )
+        result = redact_value("PGADMIN_CONFIG_OAUTH2_CONFIG", val, DEFAULT_PATTERNS)
+        assert "supersecretvalue" not in result
+        assert "pub123" in result
+        assert "auth.example.com" in result
+        assert "authentik" in result
+
+    def test_redacts_suffixed_secret_keys_in_structured_values(self):
+        """SECRET_KEY-style: pattern appears before other words in key."""
+        val = '{"SECRET_KEY": "django-insecure-abc123", "DEBUG": "true"}'
+        result = redact_value("APP_CONFIG", val, DEFAULT_PATTERNS)
+        assert "django-insecure-abc123" not in result
+        assert "true" in result
+
     def test_preserves_json_without_secret_keys(self):
         json_val = '{"name": "test", "enabled": true}'
         val = redact_value("APP_CONFIG", json_val, DEFAULT_PATTERNS)

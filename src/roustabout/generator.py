@@ -404,6 +404,14 @@ def _build_service(
         deploy["resources"] = resources
         svc["deploy"] = deploy
 
+    # depends_on — inferred from container:X network mode
+    deps = _infer_depends_on(c, name_to_service)
+    if deps:
+        depends_on = CommentedMap()
+        for dep in deps:
+            depends_on[dep] = CommentedMap([("condition", "service_started")])
+        svc["depends_on"] = depends_on
+
     # Command and entrypoint — use list form to preserve argument boundaries
     if c.entrypoint:
         svc["entrypoint"] = list(c.entrypoint) if len(c.entrypoint) > 1 else c.entrypoint[0]
@@ -412,6 +420,21 @@ def _build_service(
         svc["command"] = list(c.command) if len(c.command) > 1 else c.command[0]
 
     return svc
+
+
+def _infer_depends_on(c: ContainerInfo, name_to_service: dict[str, str] | None) -> list[str]:
+    """Infer service dependencies from container relationships."""
+    deps: list[str] = []
+
+    # container:X network mode implies dependency on X
+    if c.network_mode and c.network_mode.startswith("container:"):
+        ref_container = c.network_mode.split(":", 1)[1]
+        if name_to_service and ref_container in name_to_service:
+            deps.append(name_to_service[ref_container])
+        else:
+            deps.append(ref_container)
+
+    return deps
 
 
 def _build_volumes(c: ContainerInfo) -> CommentedSeq | None:

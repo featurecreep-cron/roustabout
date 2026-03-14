@@ -18,13 +18,13 @@ All output passes through a secret redactor. Environment variables matching conf
 ## Install
 
 ```bash
-pip install -e .
+pip install roustabout
 ```
 
 For MCP server support:
 
 ```bash
-pip install -e ".[mcp]"
+pip install "roustabout[mcp]"
 ```
 
 ## Usage
@@ -49,6 +49,43 @@ roustabout accept docker-socket-watchtower "Watchtower needs socket access"
 roustabout false-positive secrets-env-nginx "NGINX_HOST is not a secret"
 roustabout resolve stale-image-redis "Updated to redis:7.2"
 ```
+
+### Example: Audit Output
+
+From a homelab running 48 containers:
+
+```
+$ roustabout audit
+
+# Security Audit
+
+**118 findings:** **5 critical**, **40 warning**, **73 info**
+
+| Severity | Check | Count | Containers |
+|----------|-------|-------|------------|
+| Critical | privileged-mode | 1 | cadvisor |
+| Critical | docker-socket | 4 | cronbox, homeassistant, portainer, watchtower |
+| Warning | secrets-in-env | 38 | authentik_server, grafana, mariadb, +14 more |
+| Warning | host-pid | 1 | node_exporter |
+| Info | no-healthcheck | 35 | adguard, bazarr, freshrss, +30 more |
+| Info | running-as-root | 29 | adguard, cadvisor, plex, +24 more |
+...
+
+### secrets-in-env — 17 containers, 38 findings
+
+| Container | Exposed Variables |
+|-----------|-------------------|
+| authentik_server | `AUTHENTIK_EMAIL__PASSWORD`, `AUTHENTIK_SECRET_KEY` |
+| grafana | `GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET` |
+| mariadb | `MARIADB_PASSWORD`, `MARIADB_ROOT_PASSWORD` |
+| photoprism | `PHOTOPRISM_ADMIN_PASSWORD`, `PHOTOPRISM_DATABASE_PASSWORD` |
+...
+
+**Fix:** Use Docker secrets, a mounted file, or a secrets manager instead
+of environment variables for sensitive values.
+```
+
+Findings are grouped by category — each explanation appears once, not per container.
 
 ### MCP Server
 
@@ -106,22 +143,26 @@ redact_patterns = ["my_custom_secret", "internal_token"]
 "secrets-env" = "critical"
 ```
 
-Default redaction patterns: `password`, `secret`, `token`, `api_key`, `key`, `credential`, `private_key`, `access_key`, `database_url`, `auth`. URLs with embedded credentials (`://user:pass@host`) are always redacted.
+Default redaction patterns: `password`, `passwd`, `passphrase`, `secret`, `token`, `api_key`, `apikey`, `credential`, `private_key`, `access_key`, `secret_key`. URLs with embedded credentials (`://user:pass@host`) get partial redaction (password only). Known secret formats (AWS keys, GitHub PATs, JWTs, Stripe keys) are caught by value shape regardless of key name.
 
 ## Security Checks
 
 | Check | Default Severity | What it finds |
 |-------|-----------------|---------------|
+| Privileged mode | Critical | Containers running with `--privileged` |
 | Docker socket mount | Critical | Containers with `/var/run/docker.sock` |
-| Secrets in env vars | Warning | Env var keys matching secret patterns |
+| Secrets in env vars | Warning | Env var keys matching secret patterns + value-format detection |
+| Dangerous capabilities | Warning | `SYS_ADMIN`, `NET_ADMIN`, `SYS_PTRACE`, and other risky caps |
+| Host PID namespace | Warning | Containers sharing the host PID namespace |
 | Sensitive ports exposed | Warning | Database, admin, and management ports on 0.0.0.0 |
+| Restart loops | Warning | Containers with restart count > 25 |
+| OOM killed | Warning | Containers killed by the OOM killer |
 | Missing healthcheck | Info | Containers without health monitoring |
 | Running as root | Info | Containers without a `user` directive |
-| Restart loops | Warning | Containers with restart count > 5 |
-| OOM killed | Warning | Containers killed by the OOM killer |
-| Flat networking | Info | All containers sharing one network |
+| Host network mode | Info | Containers using `network_mode: host` |
+| Sensitive host mounts | Info | `/etc`, `/root`, or `/home` mounted from host |
 | Missing restart policy | Info | Containers without restart policy |
-| Stale images | Info | Images older than configurable threshold |
+| Stale images | Info | Untagged or `:latest` images without pinned digest |
 
 Findings can be triaged with `roustabout accept`, `false-positive`, or `resolve`. State is stored in `roustabout.state.toml`.
 

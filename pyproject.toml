@@ -12,6 +12,7 @@ authors = [
     { name = "Cron", email = "cron@featurecreep.dev" },
     { name = "Chris", email = "chris@featurecreep.dev" },
 ]
+readme = "README.md"
 keywords = ["docker", "documentation", "compose", "markdown", "security", "mcp"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -26,6 +27,11 @@ dependencies = [
     "ruamel.yaml>=0.18",
     "tomli>=2.0; python_version < '3.11'",
 ]
+
+[project.urls]
+Homepage = "https://github.com/featurecreep-cron/roustabout"
+Repository = "https://github.com/featurecreep-cron/roustabout"
+Issues = "https://github.com/featurecreep-cron/roustabout/issues"
 
 [project.optional-dependencies]
 mcp = [

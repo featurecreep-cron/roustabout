@@ -7,6 +7,7 @@ from roustabout.auditor import (
     audit,
 )
 from roustabout.models import (
+    DaemonInfo,
     MountInfo,
     NetworkMembership,
     PortBinding,
@@ -649,6 +650,95 @@ class TestNoResourceLimits:
         env = _env(status="exited", mem_limit=None)
         findings = audit(env)
         assert _find(findings, "no-resource-limits") is None
+
+
+class TestImageAge:
+    def test_old_image_detected(self):
+        # 200 days ago
+        env = _env(image_created="2025-08-26T00:00:00Z")
+        findings = audit(env)
+        f = _find(findings, "image-age")
+        assert f is not None
+        assert f.severity == Severity.INFO
+        assert "days ago" in f.explanation
+
+    def test_recent_image_clean(self):
+        env = _env(image_created="2026-03-10T00:00:00Z")
+        findings = audit(env)
+        assert _find(findings, "image-age") is None
+
+    def test_no_image_created_clean(self):
+        env = _env(image_created=None)
+        findings = audit(env)
+        assert _find(findings, "image-age") is None
+
+    def test_stopped_container_skipped(self):
+        env = _env(status="exited", image_created="2025-01-01T00:00:00Z")
+        findings = audit(env)
+        assert _find(findings, "image-age") is None
+
+
+class TestDaemonConfig:
+    def _daemon_env(self, **daemon_kwargs):
+        defaults = dict(
+            live_restore=True,
+            default_log_driver="json-file",
+            default_log_opts=(("max-size", "10m"),),
+            storage_driver="overlay2",
+            security_options=(),
+            cgroup_driver="systemd",
+            server_version="25.0.3",
+        )
+        defaults.update(daemon_kwargs)
+        daemon = DaemonInfo(**defaults)
+        container = make_container(
+            name="test",
+            id="abc123",
+            status="running",
+            image="nginx:1.25",
+            image_id="sha256:abc",
+        )
+        return make_environment(
+            containers=[container],
+            generated_at="2026-03-13T00:00:00Z",
+            docker_version="25.0.3",
+            daemon=daemon,
+        )
+
+    def test_live_restore_disabled(self):
+        env = self._daemon_env(live_restore=False)
+        findings = audit(env)
+        f = _find(findings, "daemon-live-restore")
+        assert f is not None
+        assert f.container == "(daemon)"
+
+    def test_live_restore_enabled_clean(self):
+        env = self._daemon_env(live_restore=True)
+        findings = audit(env)
+        assert _find(findings, "daemon-live-restore") is None
+
+    def test_daemon_no_log_rotation(self):
+        env = self._daemon_env(default_log_opts=())
+        findings = audit(env)
+        f = _find(findings, "daemon-no-log-rotation")
+        assert f is not None
+        assert f.severity == Severity.WARNING
+
+    def test_daemon_with_log_rotation_clean(self):
+        env = self._daemon_env(default_log_opts=(("max-size", "10m"),))
+        findings = audit(env)
+        assert _find(findings, "daemon-no-log-rotation") is None
+
+    def test_daemon_syslog_no_warning(self):
+        env = self._daemon_env(default_log_driver="syslog", default_log_opts=())
+        findings = audit(env)
+        assert _find(findings, "daemon-no-log-rotation") is None
+
+    def test_no_daemon_info(self):
+        env = _env()
+        findings = audit(env)
+        assert _find(findings, "daemon-live-restore") is None
+        assert _find(findings, "daemon-no-log-rotation") is None
 
 
 class TestStaleImagesUntagged:

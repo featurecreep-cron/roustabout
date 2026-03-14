@@ -129,6 +129,8 @@ def audit(
         findings.extend(_check_oom_killed(container))
         findings.extend(_check_no_restart_policy(container))
         findings.extend(_check_stale_images(container))
+        findings.extend(_check_no_log_rotation(container))
+        findings.extend(_check_no_resource_limits(container))
 
     findings.extend(_check_flat_networking(env))
 
@@ -508,3 +510,47 @@ def _check_stale_images(c: ContainerInfo) -> list[Finding]:
             )
         ]
     return []
+
+
+def _check_no_log_rotation(c: ContainerInfo) -> list[Finding]:
+    """Check: No log rotation configured — can fill disk."""
+    if c.status != "running":
+        return []
+    # Only relevant for json-file and local drivers (the ones that write to disk)
+    # Other drivers (syslog, journald, fluentd, etc.) handle rotation externally
+    disk_drivers = {None, "json-file", "local"}
+    if c.log_driver not in disk_drivers:
+        return []
+    has_max_size = any(k == "max-size" for k, _ in c.log_opts)
+    if has_max_size:
+        return []
+    return [
+        Finding(
+            severity=Severity.INFO,
+            category="no-log-rotation",
+            container=c.name,
+            explanation="No log rotation configured. Container logs will grow "
+            "without limit and can fill the host disk.",
+            fix="Add `logging: {options: {max-size: '10m', max-file: '3'}}` in "
+            "docker-compose.yml, or set default log options in the Docker daemon config.",
+        )
+    ]
+
+
+def _check_no_resource_limits(c: ContainerInfo) -> list[Finding]:
+    """Check: No memory limit — can OOM the host."""
+    if c.status != "running":
+        return []
+    if c.mem_limit:
+        return []
+    return [
+        Finding(
+            severity=Severity.INFO,
+            category="no-resource-limits",
+            container=c.name,
+            explanation="No memory limit configured. A memory leak in this container "
+            "can consume all host memory and crash other services.",
+            fix="Set `deploy: {resources: {limits: {memory: '512M'}}}` in "
+            "docker-compose.yml. Choose a limit based on the service's actual needs.",
+        )
+    ]

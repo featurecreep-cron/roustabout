@@ -161,6 +161,8 @@ Default redaction patterns: `password`, `passwd`, `passphrase`, `secret`, `token
 | Running as root | Info | Containers without a `user` directive |
 | Host network mode | Info | Containers using `network_mode: host` |
 | Sensitive host mounts | Info | `/etc`, `/root`, or `/home` mounted from host |
+| No log rotation | Info | Containers without `max-size` on json-file/local log driver |
+| No resource limits | Info | Containers without a memory limit |
 | Missing restart policy | Info | Containers without restart policy |
 | Stale images | Info | Untagged or `:latest` images without pinned digest |
 

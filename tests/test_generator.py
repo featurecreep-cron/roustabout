@@ -352,6 +352,43 @@ class TestResourceLimits:
         assert doc["services"]["test-app"]["deploy"]["resources"]["limits"]["cpus"] == "1.5"
 
 
+class TestLogging:
+    def test_non_default_driver(self):
+        env = _env(_container(log_driver="syslog", log_opts=[]))
+        doc = _parse_yaml(generate(env))
+        assert doc["services"]["test-app"]["logging"]["driver"] == "syslog"
+
+    def test_json_file_driver_omitted(self):
+        """json-file is the default — no driver key needed, just options."""
+        env = _env(_container(log_driver="json-file", log_opts=[("max-size", "10m")]))
+        doc = _parse_yaml(generate(env))
+        logging = doc["services"]["test-app"]["logging"]
+        assert "driver" not in logging
+        assert logging["options"]["max-size"] == "10m"
+
+    def test_log_opts_emitted(self):
+        env = _env(
+            _container(
+                log_driver="json-file",
+                log_opts=[("max-size", "10m"), ("max-file", "3")],
+            )
+        )
+        doc = _parse_yaml(generate(env))
+        opts = doc["services"]["test-app"]["logging"]["options"]
+        assert opts["max-size"] == "10m"
+        assert opts["max-file"] == "3"
+
+    def test_no_log_config_no_section(self):
+        env = _env(_container(log_driver=None, log_opts=[]))
+        doc = _parse_yaml(generate(env))
+        assert "logging" not in doc["services"]["test-app"]
+
+    def test_default_driver_no_opts_no_section(self):
+        env = _env(_container(log_driver="json-file", log_opts=[]))
+        doc = _parse_yaml(generate(env))
+        assert "logging" not in doc["services"]["test-app"]
+
+
 class TestLabels:
     def test_user_labels_included(self):
         env = _env(

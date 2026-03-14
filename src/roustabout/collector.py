@@ -169,6 +169,13 @@ def _collect_container(container) -> ContainerInfo:
     nano_cpus = host_config.get("NanoCpus") or 0
     cpus = nano_cpus / 1e9 if nano_cpus else None
 
+    # Logging configuration
+    log_config = host_config.get("LogConfig") or {}
+    log_type = log_config.get("Type") or None
+    log_driver = log_type if log_type and log_type != "json-file" else log_type
+    raw_log_opts = log_config.get("Config") or {}
+    log_opts = list(raw_log_opts.items())
+
     # Init process
     init = host_config.get("Init") or False
 
@@ -218,6 +225,8 @@ def _collect_container(container) -> ContainerInfo:
         mem_limit=mem_limit,
         cpus=cpus,
         init=init,
+        log_driver=log_driver,
+        log_opts=log_opts,
     )
 
 

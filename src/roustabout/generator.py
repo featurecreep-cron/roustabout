@@ -255,6 +255,9 @@ def _build_service(
     if c.init:
         svc["init"] = True
 
+    if c.read_only:
+        svc["read_only"] = True
+
     if c.network_mode and not _is_default_network_mode(c.network_mode, c.compose_project):
         # Handle container:X network mode → service:X in compose
         if c.network_mode.startswith("container:"):

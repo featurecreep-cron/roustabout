@@ -7,6 +7,8 @@ provides the shared connection logic.
 
 from __future__ import annotations
 
+import os
+
 import docker
 
 
@@ -15,12 +17,14 @@ def connect(docker_host: str | None = None) -> docker.DockerClient:
 
     Args:
         docker_host: Optional Docker host URL (e.g. tcp://host:2375).
-            If None, uses the default from environment/socket.
+            If None, reads DOCKER_HOST env var, then falls back to the
+            default local socket.
 
     Raises:
         Exception: If connection or ping fails.
     """
-    kwargs = {"base_url": docker_host} if docker_host else {}
+    host = docker_host or os.environ.get("DOCKER_HOST")
+    kwargs = {"base_url": host} if host else {}
     client = docker.DockerClient(**kwargs)
     try:
         client.ping()

@@ -32,11 +32,15 @@ DEFAULT_PATTERNS: tuple[str, ...] = (
     "secret_key",
 )
 
-# Matches secret-like keys inside JSON/structured values
+# Matches secret-like keys inside JSON/structured values.
+# Key names are matched as substrings — 'OAUTH2_CLIENT_SECRET' matches 'secret'.
+# The pattern allows characters before AND after the secret keyword in the key name.
+# 'token' is excluded here (too broad in structured contexts — matches TOKEN_URL, etc.).
+# Top-level *TOKEN* env vars are caught by key-based detection instead.
 _JSON_SECRET_RE = re.compile(
-    r'["\'](?:secret|password|passwd|passphrase|token|api_key|client_secret|'
-    r'private_key|access_key)["\']'
-    r'\s*:\s*["\']([^"\']+)["\']',
+    r"""["\'][^"']*(?:secret|password|passwd|passphrase|api_key|"""
+    r"""private_key|access_key|credential)[^"']*["\']"""
+    r"""\s*:\s*["\']([^"']+)["\']""",
     re.IGNORECASE,
 )
 

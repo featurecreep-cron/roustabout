@@ -69,5 +69,9 @@ disallow_untyped_defs = true
 module = ["docker.*", "ruamel.*", "mcp.*", "tomli"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["roustabout.mcp_server"]
+disallow_untyped_decorators = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

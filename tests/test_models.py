@@ -6,6 +6,7 @@ from roustabout.models import (
     MountInfo,
     NetworkMembership,
     PortBinding,
+    filter_by_project,
     make_container,
     make_environment,
 )
@@ -138,3 +139,56 @@ class TestMakeEnvironment:
         )
         assert len(env.warnings) == 1
         assert "foo" in env.warnings[0]
+
+
+class TestFilterByProject:
+    def test_filters_by_compose_project(self):
+        c1 = make_container(
+            name="web",
+            id="a",
+            status="running",
+            image="img",
+            image_id="sha256:a",
+            compose_project="webstack",
+        )
+        c2 = make_container(
+            name="db",
+            id="b",
+            status="running",
+            image="img",
+            image_id="sha256:b",
+            compose_project="dbstack",
+        )
+        c3 = make_container(
+            name="cache",
+            id="c",
+            status="running",
+            image="img",
+            image_id="sha256:c",
+            compose_project="webstack",
+        )
+        env = make_environment(
+            containers=[c1, c2, c3],
+            generated_at="2026-01-01T00:00:00Z",
+            docker_version="25.0",
+        )
+        filtered = filter_by_project(env, "webstack")
+        assert len(filtered.containers) == 2
+        assert {c.name for c in filtered.containers} == {"web", "cache"}
+
+    def test_filter_no_match(self):
+        c1 = make_container(
+            name="web",
+            id="a",
+            status="running",
+            image="img",
+            image_id="sha256:a",
+            compose_project="webstack",
+        )
+        env = make_environment(
+            containers=[c1],
+            generated_at="2026-01-01T00:00:00Z",
+            docker_version="25.0",
+        )
+        filtered = filter_by_project(env, "nonexistent")
+        assert len(filtered.containers) == 0

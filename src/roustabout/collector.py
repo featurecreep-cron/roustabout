@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from roustabout.models import (
+    DaemonInfo,
     HealthcheckConfig,
     MountInfo,
     NetworkMembership,
@@ -49,12 +50,14 @@ def collect(client: docker.DockerClient) -> DockerEnvironment:
             warnings.append(msg)
 
     version_info = client.version()
+    daemon = _collect_daemon_info(client)
 
     return make_environment(
         containers=containers,
         generated_at=datetime.now(timezone.utc).isoformat(),
         docker_version=version_info.get("Version", "unknown"),
         warnings=warnings,
+        daemon=daemon,
     )
 
 
@@ -77,10 +80,12 @@ def _collect_container(container: Any) -> ContainerInfo:
         image_id = image.id
         repo_digests = image.attrs.get("RepoDigests", [])
         image_digest = repo_digests[0] if repo_digests else None
+        image_created = image.attrs.get("Created")
     else:
         image_tag = config.get("Image", "unknown")
         image_id = "unknown"
         image_digest = None
+        image_created = None
 
     # NetworkSettings.Ports reflects actual runtime bindings, not just EXPOSE
     ports = _collect_ports(network_settings.get("Ports") or {})
@@ -231,6 +236,34 @@ def _collect_container(container: Any) -> ContainerInfo:
         log_driver=log_driver,
         log_opts=log_opts,
         read_only=read_only,
+        image_created=image_created,
+    )
+
+
+def _collect_daemon_info(client: Any) -> DaemonInfo | None:
+    """Collect Docker daemon configuration."""
+    try:
+        info = client.info()
+    except Exception:
+        return None
+
+    log_driver = info.get("LoggingDriver", "json-file")
+    # Docker daemon log opts are in the info dict under LogConfig (undocumented)
+    # but more reliably available via daemon config. We use what's available.
+    raw_log_opts = info.get("LogConfig", {})
+    if isinstance(raw_log_opts, dict):
+        log_opts = list(raw_log_opts.get("Config", {}).items())
+    else:
+        log_opts = []
+
+    return DaemonInfo(
+        live_restore=info.get("LiveRestoreEnabled", False),
+        default_log_driver=log_driver,
+        default_log_opts=tuple(sorted(log_opts, key=lambda o: o[0])),
+        storage_driver=info.get("Driver", "unknown"),
+        security_options=tuple(sorted(info.get("SecurityOptions", []))),
+        cgroup_driver=info.get("CgroupDriver", "unknown"),
+        server_version=info.get("ServerVersion", "unknown"),
     )
 
 

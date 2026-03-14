@@ -16,12 +16,17 @@ from roustabout.models import DockerEnvironment
 
 def environment_to_dict(env: DockerEnvironment) -> dict[str, Any]:
     """Convert a DockerEnvironment to a JSON-serializable dict."""
-    return {
+    d: dict[str, Any] = {
         "generated_at": env.generated_at,
         "docker_version": env.docker_version,
         "containers": [_container_to_dict(c) for c in env.containers],
         "warnings": list(env.warnings),
     }
+    if env.daemon is not None:
+        daemon = dataclasses.asdict(env.daemon)
+        daemon["default_log_opts"] = dict(daemon["default_log_opts"])
+        d["daemon"] = daemon
+    return d
 
 
 def environment_to_json(env: DockerEnvironment, indent: int = 2) -> str:

@@ -15,17 +15,20 @@ import docker
 def connect(docker_host: str | None = None) -> docker.DockerClient:
     """Connect to Docker and verify the daemon is responsive.
 
+    Resolution order:
+        1. Explicit ``docker_host`` argument (from config file)
+        2. ``DOCKER_HOST`` environment variable (standard Docker convention)
+        3. Default local socket
+
     Args:
-        docker_host: Optional Docker host URL (e.g. tcp://host:2375).
-            If None, reads DOCKER_HOST env var, then falls back to the
-            default local socket.
+        docker_host: Docker host URL (e.g. ``unix:///tmp/docker.sock``,
+            ``tcp://host:2375``). Overrides the environment variable.
 
     Raises:
         Exception: If connection or ping fails.
     """
     host = docker_host or os.environ.get("DOCKER_HOST")
-    kwargs = {"base_url": host} if host else {}
-    client = docker.DockerClient(**kwargs)
+    client = docker.DockerClient(base_url=host) if host else docker.DockerClient()
     try:
         client.ping()
     except Exception:

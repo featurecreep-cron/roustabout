@@ -593,6 +593,64 @@ class TestHostPid:
         assert _find(findings, "host-pid") is None
 
 
+class TestNoLogRotation:
+    def test_no_log_config_detected(self):
+        env = _env(log_driver=None, log_opts=[])
+        findings = audit(env)
+        f = _find(findings, "no-log-rotation")
+        assert f is not None
+        assert f.severity == Severity.INFO
+
+    def test_json_file_no_rotation_detected(self):
+        env = _env(log_driver="json-file", log_opts=[])
+        findings = audit(env)
+        assert _find(findings, "no-log-rotation") is not None
+
+    def test_json_file_with_max_size_clean(self):
+        env = _env(log_driver="json-file", log_opts=[("max-size", "10m"), ("max-file", "3")])
+        findings = audit(env)
+        assert _find(findings, "no-log-rotation") is None
+
+    def test_local_driver_no_rotation_detected(self):
+        env = _env(log_driver="local", log_opts=[])
+        findings = audit(env)
+        assert _find(findings, "no-log-rotation") is not None
+
+    def test_syslog_driver_clean(self):
+        env = _env(log_driver="syslog", log_opts=[])
+        findings = audit(env)
+        assert _find(findings, "no-log-rotation") is None
+
+    def test_journald_driver_clean(self):
+        env = _env(log_driver="journald", log_opts=[])
+        findings = audit(env)
+        assert _find(findings, "no-log-rotation") is None
+
+    def test_stopped_container_skipped(self):
+        env = _env(status="exited", log_driver=None, log_opts=[])
+        findings = audit(env)
+        assert _find(findings, "no-log-rotation") is None
+
+
+class TestNoResourceLimits:
+    def test_no_mem_limit_detected(self):
+        env = _env(mem_limit=None)
+        findings = audit(env)
+        f = _find(findings, "no-resource-limits")
+        assert f is not None
+        assert f.severity == Severity.INFO
+
+    def test_with_mem_limit_clean(self):
+        env = _env(mem_limit=536870912)  # 512M
+        findings = audit(env)
+        assert _find(findings, "no-resource-limits") is None
+
+    def test_stopped_container_skipped(self):
+        env = _env(status="exited", mem_limit=None)
+        findings = audit(env)
+        assert _find(findings, "no-resource-limits") is None
+
+
 class TestStaleImagesUntagged:
     def test_untagged_image_detected(self):
         env = _env(image="postgres", image_digest=None)

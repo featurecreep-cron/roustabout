@@ -378,6 +378,19 @@ def _build_service(
     if c.group_add:
         svc["group_add"] = list(c.group_add)
 
+    # Logging
+    if c.log_driver or c.log_opts:
+        logging = CommentedMap()
+        if c.log_driver and c.log_driver != "json-file":
+            logging["driver"] = c.log_driver
+        if c.log_opts:
+            options = CommentedMap()
+            for key, value in c.log_opts:
+                options[key] = value
+            logging["options"] = options
+        if logging:
+            svc["logging"] = logging
+
     # Resource limits
     if c.mem_limit or c.cpus:
         deploy = CommentedMap()

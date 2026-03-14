@@ -99,6 +99,8 @@ class ContainerInfo:
     mem_limit: int | None
     cpus: float | None
     init: bool
+    log_driver: str | None
+    log_opts: tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True)
@@ -158,6 +160,8 @@ def make_container(
     mem_limit: int | None = None,
     cpus: float | None = None,
     init: bool = False,
+    log_driver: str | None = None,
+    log_opts: list[tuple[str, str]] | tuple[tuple[str, str], ...] = (),
 ) -> ContainerInfo:
     """Construct a ContainerInfo with sorted collections.
 
@@ -210,6 +214,8 @@ def make_container(
         mem_limit=mem_limit,
         cpus=cpus,
         init=init,
+        log_driver=log_driver,
+        log_opts=tuple(sorted(log_opts, key=lambda o: o[0])),
     )
 
 

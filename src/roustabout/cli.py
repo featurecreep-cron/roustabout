@@ -19,6 +19,8 @@ from roustabout.collector import collect
 from roustabout.config import Config, load_config
 from roustabout.connection import connect
 from roustabout.generator import generate as run_generate
+from roustabout.json_output import environment_to_json, findings_to_json
+from roustabout.models import filter_by_project
 from roustabout.redactor import redact as redact_env
 from roustabout.redactor import resolve_patterns
 from roustabout.renderer import render
@@ -71,12 +73,22 @@ def main() -> None:
     help="Path to config file.",
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
+@click.option("--project", "filter_project", default=None, help="Filter by compose project.")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["markdown", "json"]),
+    default="markdown",
+    help="Output format.",
+)
 def snapshot(
     show_env: bool | None,
     no_labels: bool,
     output: str | None,
     config_path: str | None,
     docker_host: str | None,
+    filter_project: str | None,
+    output_format: str,
 ) -> None:
     """Generate a markdown snapshot of the Docker environment."""
     overrides: dict[str, Any] = {
@@ -91,16 +103,22 @@ def snapshot(
     client = _connect(cfg.docker_host)
     env = collect(client)
 
+    if filter_project:
+        env = filter_by_project(env, filter_project)
+
     patterns = resolve_patterns(cfg.redact_patterns)
     env = redact_env(env, patterns=patterns)
 
-    markdown = render(env, show_env=cfg.show_env, show_labels=cfg.show_labels)
+    if output_format == "json":
+        result = environment_to_json(env)
+    else:
+        result = render(env, show_env=cfg.show_env, show_labels=cfg.show_labels)
 
     if cfg.output:
-        Path(cfg.output).write_text(markdown)
+        Path(cfg.output).write_text(result)
         click.echo(f"Snapshot written to {cfg.output}")
     else:
-        click.echo(markdown)
+        click.echo(result)
 
 
 @main.command()
@@ -113,6 +131,7 @@ def snapshot(
     help="Path to config file.",
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
+@click.option("--project", "filter_project", default=None, help="Filter by compose project.")
 @_state_path_option()
 @click.option(
     "--hide-accepted",
@@ -120,12 +139,21 @@ def snapshot(
     default=False,
     help="Hide accepted and false-positive findings.",
 )
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["markdown", "json"]),
+    default="markdown",
+    help="Output format.",
+)
 def audit(
     output: str | None,
     config_path: str | None,
     docker_host: str | None,
+    filter_project: str | None,
     state_file: str | None,
     hide_accepted: bool,
+    output_format: str,
 ) -> None:
     """Run security checks against the Docker environment."""
     cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
@@ -133,18 +161,26 @@ def audit(
     client = _connect(cfg.docker_host)
     env = collect(client)
 
+    if filter_project:
+        env = filter_by_project(env, filter_project)
+
     findings = run_audit(
         env, patterns=cfg.redact_patterns, severity_overrides=cfg.severity_overrides
     )
 
-    state_entries = load_state(Path(state_file) if state_file else None)
-    markdown = render_findings(findings, state_entries=state_entries, hide_accepted=hide_accepted)
+    if output_format == "json":
+        result = findings_to_json(findings)
+    else:
+        state_entries = load_state(Path(state_file) if state_file else None)
+        result = render_findings(
+            findings, state_entries=state_entries, hide_accepted=hide_accepted
+        )
 
     if cfg.output:
-        Path(cfg.output).write_text(markdown)
+        Path(cfg.output).write_text(result)
         click.echo(f"Audit written to {cfg.output}")
     else:
-        click.echo(markdown)
+        click.echo(result)
 
 
 @main.command("generate")
@@ -165,6 +201,9 @@ def audit(
 )
 @click.option("--project", default=None, help="Set compose project name.")
 @click.option(
+    "--filter-project", default=None, help="Only include containers from this compose project."
+)
+@click.option(
     "--redact/--no-redact",
     default=True,
     help="Redact secrets in environment variables (default: redact).",
@@ -175,6 +214,7 @@ def generate(
     docker_host: str | None,
     include_stopped: bool,
     project: str | None,
+    filter_project: str | None,
     redact: bool,
 ) -> None:
     """Generate a docker-compose.yml from running containers."""
@@ -182,6 +222,9 @@ def generate(
 
     client = _connect(cfg.docker_host)
     env = collect(client)
+
+    if filter_project:
+        env = filter_by_project(env, filter_project)
 
     if redact:
         patterns = resolve_patterns(cfg.redact_patterns)
@@ -194,6 +237,27 @@ def generate(
         click.echo(f"Compose file written to {cfg.output}")
     else:
         click.echo(yaml_output)
+
+
+@main.command("diff")
+@click.argument("old_snapshot", type=click.Path(exists=True))
+@click.argument("new_snapshot", type=click.Path(exists=True))
+@click.option("--output", "-o", type=click.Path(), default=None, help="Write output to file.")
+def diff_cmd(old_snapshot: str, new_snapshot: str, output: str | None) -> None:
+    """Compare two JSON snapshots and show what changed.
+
+    Usage: roustabout diff snapshot-old.json snapshot-new.json
+    """
+    from roustabout.diff import diff_snapshots, render_diff
+
+    result = diff_snapshots(Path(old_snapshot), Path(new_snapshot))
+    markdown = render_diff(result)
+
+    if output:
+        Path(output).write_text(markdown)
+        click.echo(f"Diff written to {output}")
+    else:
+        click.echo(markdown)
 
 
 @main.command("accept")

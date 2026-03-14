@@ -7,7 +7,7 @@ name = "roustabout"
 version = "0.5.0"
 description = "Docker environment documentation, security auditing, and safe MCP server"
 license = "MIT"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     { name = "Cron", email = "cron@featurecreep.dev" },
     { name = "Chris", email = "chris@featurecreep.dev" },
@@ -25,7 +25,7 @@ dependencies = [
     "docker>=7.0",
     "click>=8.0",
     "ruamel.yaml>=0.18",
-    "tomli>=2.0; python_version < '3.11'",
+    "secretscreen>=0.1.0",
 ]
 
 [project.urls]
@@ -52,14 +52,14 @@ roustabout-mcp = "roustabout.mcp_server:main"
 where = ["src"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 99
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true

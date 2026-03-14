@@ -9,7 +9,6 @@ produces all findings. This module annotates them with user decisions.
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -19,10 +18,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from roustabout.auditor import Finding
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
+import tomllib
 
 
 DEFAULT_STATE_PATHS = (

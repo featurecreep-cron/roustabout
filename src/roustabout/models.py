@@ -102,6 +102,20 @@ class ContainerInfo:
     log_driver: str | None
     log_opts: tuple[tuple[str, str], ...]
     read_only: bool
+    image_created: str | None
+
+
+@dataclass(frozen=True)
+class DaemonInfo:
+    """Docker daemon configuration relevant to security."""
+
+    live_restore: bool
+    default_log_driver: str
+    default_log_opts: tuple[tuple[str, str], ...]
+    storage_driver: str
+    security_options: tuple[str, ...]
+    cgroup_driver: str
+    server_version: str
 
 
 @dataclass(frozen=True)
@@ -112,6 +126,7 @@ class DockerEnvironment:
     generated_at: str
     docker_version: str
     warnings: tuple[str, ...] = ()
+    daemon: DaemonInfo | None = None
 
 
 def make_container(
@@ -164,6 +179,7 @@ def make_container(
     log_driver: str | None = None,
     log_opts: list[tuple[str, str]] | tuple[tuple[str, str], ...] = (),
     read_only: bool = False,
+    image_created: str | None = None,
 ) -> ContainerInfo:
     """Construct a ContainerInfo with sorted collections.
 
@@ -219,6 +235,7 @@ def make_container(
         log_driver=log_driver,
         log_opts=tuple(sorted(log_opts, key=lambda o: o[0])),
         read_only=read_only,
+        image_created=image_created,
     )
 
 
@@ -228,6 +245,7 @@ def make_environment(
     generated_at: str,
     docker_version: str,
     warnings: list[str] | tuple[str, ...] = (),
+    daemon: DaemonInfo | None = None,
 ) -> DockerEnvironment:
     """Construct a DockerEnvironment with containers sorted by name."""
     return DockerEnvironment(
@@ -235,4 +253,19 @@ def make_environment(
         generated_at=generated_at,
         docker_version=docker_version,
         warnings=tuple(warnings),
+        daemon=daemon,
+    )
+
+
+def filter_by_project(
+    env: DockerEnvironment,
+    project: str,
+) -> DockerEnvironment:
+    """Return a new DockerEnvironment with only containers from the given compose project."""
+    filtered = [c for c in env.containers if c.compose_project == project]
+    return DockerEnvironment(
+        containers=tuple(filtered),
+        generated_at=env.generated_at,
+        docker_version=env.docker_version,
+        warnings=env.warnings,
     )

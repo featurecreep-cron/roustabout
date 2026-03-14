@@ -6,7 +6,9 @@ Docker environment documentation and security findings.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any, TypeVar
 
 import click
 import docker
@@ -14,13 +16,15 @@ import docker
 from roustabout.audit_renderer import render_findings
 from roustabout.auditor import audit as run_audit
 from roustabout.collector import collect
-from roustabout.config import load_config
+from roustabout.config import Config, load_config
 from roustabout.connection import connect
 from roustabout.generator import generate as run_generate
 from roustabout.redactor import redact as redact_env
 from roustabout.redactor import resolve_patterns
 from roustabout.renderer import render
 from roustabout.state import FindingState, load_state, set_finding_state
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 def _connect(docker_host: str | None) -> docker.DockerClient:
@@ -31,7 +35,7 @@ def _connect(docker_host: str | None) -> docker.DockerClient:
         raise click.ClickException(f"Cannot connect to Docker: {exc}")
 
 
-def _load_cfg(config_path, **overrides):
+def _load_cfg(config_path: str | None, **overrides: Any) -> Config:
     """Load config and apply overrides."""
     try:
         cfg = load_config(Path(config_path) if config_path else None)
@@ -40,7 +44,7 @@ def _load_cfg(config_path, **overrides):
     return cfg.merge(**{k: v for k, v in overrides.items() if v is not None})
 
 
-def _state_path_option():
+def _state_path_option() -> Callable[[F], F]:
     return click.option(
         "--state-file",
         type=click.Path(),
@@ -51,7 +55,7 @@ def _state_path_option():
 
 @click.group()
 @click.version_option(package_name="roustabout")
-def main():
+def main() -> None:
     """Roustabout — structured markdown documentation of Docker environments."""
 
 
@@ -67,9 +71,19 @@ def main():
     help="Path to config file.",
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
-def snapshot(show_env, no_labels, output, config_path, docker_host):
+def snapshot(
+    show_env: bool | None,
+    no_labels: bool,
+    output: str | None,
+    config_path: str | None,
+    docker_host: str | None,
+) -> None:
     """Generate a markdown snapshot of the Docker environment."""
-    overrides = {"show_env": show_env, "output": output, "docker_host": docker_host}
+    overrides: dict[str, Any] = {
+        "show_env": show_env,
+        "output": output,
+        "docker_host": docker_host,
+    }
     if no_labels:
         overrides["show_labels"] = False
     cfg = _load_cfg(config_path, **overrides)
@@ -106,7 +120,13 @@ def snapshot(show_env, no_labels, output, config_path, docker_host):
     default=False,
     help="Hide accepted and false-positive findings.",
 )
-def audit(output, config_path, docker_host, state_file, hide_accepted):
+def audit(
+    output: str | None,
+    config_path: str | None,
+    docker_host: str | None,
+    state_file: str | None,
+    hide_accepted: bool,
+) -> None:
     """Run security checks against the Docker environment."""
     cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
 
@@ -149,7 +169,14 @@ def audit(output, config_path, docker_host, state_file, hide_accepted):
     default=True,
     help="Redact secrets in environment variables (default: redact).",
 )
-def generate(output, config_path, docker_host, include_stopped, project, redact):
+def generate(
+    output: str | None,
+    config_path: str | None,
+    docker_host: str | None,
+    include_stopped: bool,
+    project: str | None,
+    redact: bool,
+) -> None:
     """Generate a docker-compose.yml from running containers."""
     cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
 
@@ -173,7 +200,7 @@ def generate(output, config_path, docker_host, include_stopped, project, redact)
 @click.argument("finding_key")
 @click.argument("reason")
 @_state_path_option()
-def accept_finding(finding_key, reason, state_file):
+def accept_finding(finding_key: str, reason: str, state_file: str | None) -> None:
     """Mark a finding as accepted (known risk, reviewed)."""
     path = set_finding_state(
         finding_key,
@@ -188,7 +215,7 @@ def accept_finding(finding_key, reason, state_file):
 @click.argument("finding_key")
 @click.argument("reason")
 @_state_path_option()
-def false_positive_finding(finding_key, reason, state_file):
+def false_positive_finding(finding_key: str, reason: str, state_file: str | None) -> None:
     """Mark a finding as a false positive."""
     path = set_finding_state(
         finding_key,
@@ -203,7 +230,7 @@ def false_positive_finding(finding_key, reason, state_file):
 @click.argument("finding_key")
 @click.argument("reason")
 @_state_path_option()
-def resolve_finding(finding_key, reason, state_file):
+def resolve_finding(finding_key: str, reason: str, state_file: str | None) -> None:
     """Mark a finding as resolved (fixed)."""
     path = set_finding_state(
         finding_key,

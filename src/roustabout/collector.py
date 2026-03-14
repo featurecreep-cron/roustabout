@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from roustabout.models import (
     HealthcheckConfig,
@@ -58,7 +58,7 @@ def collect(client: docker.DockerClient) -> DockerEnvironment:
     )
 
 
-def _collect_container(container) -> ContainerInfo:
+def _collect_container(container: Any) -> ContainerInfo:
     """Extract a ContainerInfo from a docker-py Container object."""
     attrs = container.attrs
     config = attrs.get("Config", {})
@@ -234,7 +234,7 @@ def _collect_container(container) -> ContainerInfo:
     )
 
 
-def _collect_healthcheck(hc_config: dict | None) -> HealthcheckConfig | None:
+def _collect_healthcheck(hc_config: dict[str, Any] | None) -> HealthcheckConfig | None:
     """Extract healthcheck configuration from Config.Healthcheck."""
     if not hc_config:
         return None
@@ -253,7 +253,7 @@ def _collect_healthcheck(hc_config: dict | None) -> HealthcheckConfig | None:
     )
 
 
-def _collect_ports(ports_dict: dict) -> list[PortBinding]:
+def _collect_ports(ports_dict: dict[str, Any]) -> list[PortBinding]:
     port_bindings = []
     for port_proto, host_bindings in ports_dict.items():
         if not host_bindings:
@@ -277,7 +277,7 @@ def _collect_ports(ports_dict: dict) -> list[PortBinding]:
     return port_bindings
 
 
-def _collect_mounts(mounts_list: list[dict]) -> list[MountInfo]:
+def _collect_mounts(mounts_list: list[dict[str, Any]]) -> list[MountInfo]:
     return [
         MountInfo(
             source=m.get("Source", ""),
@@ -289,7 +289,7 @@ def _collect_mounts(mounts_list: list[dict]) -> list[MountInfo]:
     ]
 
 
-def _collect_networks(networks_dict: dict) -> list[NetworkMembership]:
+def _collect_networks(networks_dict: dict[str, Any]) -> list[NetworkMembership]:
     memberships = []
     for net_name, net_info in networks_dict.items():
         aliases = net_info.get("Aliases") or []

@@ -14,6 +14,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from roustabout.auditor import Finding
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -120,9 +124,9 @@ def set_finding_state(
 
 
 def apply_state(
-    findings: list[object],
+    findings: list[Finding],
     state_entries: dict[str, StateEntry],
-) -> list[tuple[object, StateEntry | None]]:
+) -> list[tuple[Finding, StateEntry | None]]:
     """Annotate findings with their state.
 
     Returns list of (finding, state_entry_or_none) tuples.

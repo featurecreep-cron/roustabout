@@ -267,6 +267,38 @@ class TestNetworkMode:
         assert doc["services"]["test-app"]["network_mode"] == "myproject_default"
 
 
+class TestDependsOn:
+    def test_container_network_mode_creates_dependency(self):
+        env = _env(_container(network_mode="container:vpn"))
+        doc = _parse_yaml(generate(env))
+        assert "depends_on" in doc["services"]["test-app"]
+        assert doc["services"]["test-app"]["depends_on"]["vpn"]["condition"] == "service_started"
+
+    def test_host_network_no_dependency(self):
+        env = _env(_container(network_mode="host"))
+        doc = _parse_yaml(generate(env))
+        assert "depends_on" not in doc["services"]["test-app"]
+
+    def test_no_network_mode_no_dependency(self):
+        env = _env(_container())
+        doc = _parse_yaml(generate(env))
+        assert "depends_on" not in doc["services"]["test-app"]
+
+    def test_container_ref_maps_to_service_name(self):
+        """When the referenced container is in the compose, use its service name."""
+        vpn = _container(name="my-vpn", compose_service="vpn")
+        app = _container(
+            name="torrent", compose_service="torrent", network_mode="container:my-vpn"
+        )
+        env = make_environment(
+            containers=[vpn, app],
+            generated_at="2026-03-09T00:00:00Z",
+            docker_version="25.0.3",
+        )
+        doc = _parse_yaml(generate(env))
+        assert doc["services"]["torrent"]["depends_on"]["vpn"]["condition"] == "service_started"
+
+
 class TestHostname:
     def test_explicit_hostname(self):
         env = _env(_container(hostname="myhost"))

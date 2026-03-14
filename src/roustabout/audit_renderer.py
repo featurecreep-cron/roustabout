@@ -192,14 +192,14 @@ def _render_detail_table(
 
     elif category == "dangerous-capability":
         # Group by container, list capabilities
-        by_container: dict[str, list[str]] = {}
+        by_container_caps: dict[str, list[str]] = {}
         for finding, _ in group:
-            by_container.setdefault(finding.container, []).append(f"`{finding.detail}`")
+            by_container_caps.setdefault(finding.container, []).append(f"`{finding.detail}`")
 
         lines.append("| Container | Capabilities |")
         lines.append("|-----------|-------------|")
-        for container in sorted(by_container):
-            caps_str = ", ".join(sorted(by_container[container]))
+        for container in sorted(by_container_caps):
+            caps_str = ", ".join(sorted(by_container_caps[container]))
             lines.append(f"| {container} | {caps_str} |")
         lines.append("")
 

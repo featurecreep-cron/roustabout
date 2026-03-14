@@ -11,10 +11,10 @@ from mcp.server.fastmcp import FastMCP
 from roustabout.audit_renderer import render_findings
 from roustabout.auditor import audit
 from roustabout.collector import collect
-from roustabout.config import load_config
+from roustabout.config import Config, load_config
 from roustabout.connection import connect
 from roustabout.generator import generate
-from roustabout.models import make_environment
+from roustabout.models import DockerEnvironment, make_environment
 from roustabout.redactor import redact, resolve_patterns
 from roustabout.renderer import render
 
@@ -24,17 +24,15 @@ mcp = FastMCP(
 )
 
 
-def _load_cfg():
+def _load_cfg() -> Config:
     """Load config, falling back to defaults on any error."""
     try:
         return load_config()
     except (FileNotFoundError, ValueError):
-        from roustabout.config import Config
-
         return Config()
 
 
-def _collect_redacted():
+def _collect_redacted() -> tuple[DockerEnvironment, Config]:
     """Collect and redact the Docker environment using config patterns."""
     cfg = _load_cfg()
     client = connect(cfg.docker_host)
@@ -150,7 +148,7 @@ def docker_generate(include_stopped: bool = False) -> str:
     return generate(env, include_stopped=include_stopped)
 
 
-def main():
+def main() -> None:
     """Entry point for roustabout-mcp."""
     mcp.run()
 

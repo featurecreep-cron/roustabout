@@ -49,7 +49,7 @@ _CLI_SECRET_RE = re.compile(
 
 # Value-based format detectors — catch secrets by shape regardless of key name.
 # Patterns sourced from detect-secrets and secrets-patterns-db (both open source).
-_VALUE_FORMAT_PATTERNS: tuple[re.Pattern, ...] = (
+_VALUE_FORMAT_PATTERNS: tuple[re.Pattern[str], ...] = (
     # AWS Access Key ID (always starts with AKIA)
     re.compile(r"^AKIA[0-9A-Z]{16}$"),
     # AWS Secret Access Key (40 chars, base64-ish, must contain mixed case)
@@ -224,9 +224,9 @@ def _redact_url_password(value: str) -> str:
 def _redact_json_secrets(value: str) -> str:
     """Replace secret values inside JSON/structured strings."""
 
-    def _replace_secret(match: re.Match) -> str:
-        full = match.group(0)
-        secret_value = match.group(1)
+    def _replace_secret(match: re.Match[str]) -> str:
+        full: str = match.group(0)
+        secret_value: str = match.group(1)
         return full.replace(secret_value, REDACTED)
 
     return _JSON_SECRET_RE.sub(_replace_secret, value)

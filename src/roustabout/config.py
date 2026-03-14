@@ -10,6 +10,7 @@ import dataclasses
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -39,7 +40,7 @@ class Config:
 
     _UNSET = object()
 
-    def merge(self, **overrides) -> Config:
+    def merge(self, **overrides: Any) -> Config:
         """Return a new Config with explicitly provided overrides applied.
 
         Only keys present in overrides (regardless of value) are applied.
@@ -86,7 +87,7 @@ def _parse_config(path: Path) -> Config:
     with open(path, "rb") as f:
         data = tomllib.load(f)
 
-    kwargs: dict = {}
+    kwargs: dict[str, Any] = {}
 
     if "redact_patterns" in data:
         patterns = data["redact_patterns"]

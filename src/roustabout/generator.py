@@ -489,6 +489,7 @@ def _build_networks(c: ContainerInfo) -> CommentedMap | None:
 
 def _build_healthcheck(c: ContainerInfo) -> CommentedMap:
     """Build healthcheck config from HealthcheckConfig."""
+    assert c.healthcheck is not None
     hc = c.healthcheck
     result = CommentedMap()
 

@@ -478,6 +478,18 @@ class TestValueFormatDetection:
         val = redact_value("APP_MODE", "production", DEFAULT_PATTERNS)
         assert val == "production"
 
+    def test_aws_secret_key(self):
+        """AWS secret keys (mixed case, 40 chars) are caught."""
+        aws = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        val = redact_value("SOME_VAR", aws, DEFAULT_PATTERNS)
+        assert val == REDACTED
+
+    def test_gpg_fingerprint_not_flagged(self):
+        """GPG fingerprints (uppercase hex, 40 chars) are not secrets."""
+        gpg = "7169605F62C751356D054A26A821E680E5FA6305"
+        val = redact_value("GPG_KEY", gpg, DEFAULT_PATTERNS)
+        assert val == gpg
+
     def test_normal_base64_not_flagged(self):
         """Regular base64 that doesn't match known formats passes through."""
         val = redact_value("ICON_DATA", "aGVsbG8gd29ybGQgdGhpcyBpcyBhIHRlc3Q=", DEFAULT_PATTERNS)

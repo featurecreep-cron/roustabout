@@ -52,8 +52,9 @@ _CLI_SECRET_RE = re.compile(
 _VALUE_FORMAT_PATTERNS: tuple[re.Pattern, ...] = (
     # AWS Access Key ID (always starts with AKIA)
     re.compile(r"^AKIA[0-9A-Z]{16}$"),
-    # AWS Secret Access Key (40 chars, base64-ish)
-    re.compile(r"^[A-Za-z0-9/+=]{40}$"),
+    # AWS Secret Access Key (40 chars, base64-ish, must contain mixed case)
+    # Excludes pure-hex strings like GPG fingerprints.
+    re.compile(r"^(?=.*[a-z])(?=.*[A-Z])[A-Za-z0-9/+=]{40}$"),
     # GitHub Personal Access Token (classic and fine-grained)
     re.compile(r"^gh[ps]_[A-Za-z0-9_]{36,}$"),
     re.compile(r"^github_pat_[A-Za-z0-9_]{22,}$"),

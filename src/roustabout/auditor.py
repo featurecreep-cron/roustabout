@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 
-from roustabout.models import ContainerInfo, DockerEnvironment
+from roustabout.models import ContainerInfo, DaemonInfo, DockerEnvironment
 from roustabout.redactor import is_secret_key, resolve_patterns
 
 # Image name substrings that indicate sensitive services (databases, admin panels)
@@ -131,8 +132,12 @@ def audit(
         findings.extend(_check_stale_images(container))
         findings.extend(_check_no_log_rotation(container))
         findings.extend(_check_no_resource_limits(container))
+        findings.extend(_check_image_age(container))
 
     findings.extend(_check_flat_networking(env))
+
+    if env.daemon:
+        findings.extend(_check_daemon_config(env.daemon))
 
     if severity_overrides:
         findings = _apply_severity_overrides(findings, severity_overrides)
@@ -554,3 +559,71 @@ def _check_no_resource_limits(c: ContainerInfo) -> list[Finding]:
             "docker-compose.yml. Choose a limit based on the service's actual needs.",
         )
     ]
+
+
+# Default threshold for image age (days)
+_IMAGE_AGE_THRESHOLD_DAYS = 90
+
+
+def _check_image_age(c: ContainerInfo) -> list[Finding]:
+    """Check: Image is old — may be missing security patches."""
+    if c.status != "running":
+        return []
+    if not c.image_created:
+        return []
+    try:
+        # Docker timestamps are ISO 8601 with optional fractional seconds
+        created_str = c.image_created.split(".")[0].rstrip("Z")
+        created = datetime.fromisoformat(created_str).replace(tzinfo=timezone.utc)
+        age_days = (datetime.now(timezone.utc) - created).days
+    except (ValueError, TypeError):
+        return []
+    if age_days < _IMAGE_AGE_THRESHOLD_DAYS:
+        return []
+    return [
+        Finding(
+            severity=Severity.INFO,
+            category="image-age",
+            container=c.name,
+            explanation=f"Image `{c.image}` was built {age_days} days ago. "
+            f"It may be missing security patches.",
+            fix="Pull the latest version of this image or rebuild from an updated base.",
+        )
+    ]
+
+
+def _check_daemon_config(d: DaemonInfo) -> list[Finding]:
+    """Check Docker daemon-level configuration."""
+    findings: list[Finding] = []
+
+    if not d.live_restore:
+        findings.append(
+            Finding(
+                severity=Severity.INFO,
+                category="daemon-live-restore",
+                container="(daemon)",
+                explanation="Live restore is disabled. Containers will stop when the "
+                "Docker daemon restarts (e.g., during upgrades).",
+                fix='Add `"live-restore": true` to /etc/docker/daemon.json.',
+            )
+        )
+
+    # Check if daemon has default log rotation
+    disk_drivers = {"json-file", "local"}
+    if d.default_log_driver in disk_drivers:
+        has_max_size = any(k == "max-size" for k, _ in d.default_log_opts)
+        if not has_max_size:
+            findings.append(
+                Finding(
+                    severity=Severity.WARNING,
+                    category="daemon-no-log-rotation",
+                    container="(daemon)",
+                    explanation=f"Docker daemon uses `{d.default_log_driver}` logging "
+                    f"without default max-size. Every container without explicit log "
+                    f"config will write unbounded logs to disk.",
+                    fix='Add `"log-opts": {"max-size": "10m", "max-file": "3"}` to '
+                    "/etc/docker/daemon.json.",
+                )
+            )
+
+    return findings

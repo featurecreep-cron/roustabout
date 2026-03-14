@@ -176,6 +176,9 @@ def _collect_container(container) -> ContainerInfo:
     raw_log_opts = log_config.get("Config") or {}
     log_opts = list(raw_log_opts.items())
 
+    # Read-only root filesystem
+    read_only = host_config.get("ReadonlyRootfs", False)
+
     # Init process
     init = host_config.get("Init") or False
 
@@ -227,6 +230,7 @@ def _collect_container(container) -> ContainerInfo:
         init=init,
         log_driver=log_driver,
         log_opts=log_opts,
+        read_only=read_only,
     )
 
 

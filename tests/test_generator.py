@@ -239,6 +239,18 @@ class TestPrivileged:
         assert "privileged" not in doc["services"]["test-app"]
 
 
+class TestReadOnly:
+    def test_read_only(self):
+        env = _env(_container(read_only=True))
+        doc = _parse_yaml(generate(env))
+        assert doc["services"]["test-app"]["read_only"] is True
+
+    def test_not_read_only_omits(self):
+        env = _env(_container(read_only=False))
+        doc = _parse_yaml(generate(env))
+        assert "read_only" not in doc["services"]["test-app"]
+
+
 class TestNetworkMode:
     def test_host_network(self):
         env = _env(_container(network_mode="host"))

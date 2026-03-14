@@ -10,8 +10,9 @@ Structured documentation, security auditing, and compose generation for Docker e
 Roustabout connects to the Docker API, inspects every running container, and produces three kinds of output:
 
 - **Markdown snapshots** — a complete inventory of your Docker host: images, ports, volumes, networks, env vars, labels
-- **Security audits** — 10 checks covering socket exposure, secrets in env vars, sensitive ports, missing healthchecks, root containers, restart loops, OOM kills, flat networking, missing restart policies, and stale images
-- **Compose generation** — reconstructs a `docker-compose.yml` from running containers, filtering image noise and handling named volumes, network modes, healthchecks, resource limits, capabilities, and devices
+- **Security audits** — 18 checks covering socket exposure, secrets in env vars, sensitive ports, missing healthchecks, root containers, restart loops, OOM kills, flat networking, missing restart policies, stale images, image age, log rotation, resource limits, and daemon configuration
+- **Compose generation** — reconstructs a `docker-compose.yml` from running containers, filtering image noise and handling named volumes, network modes, healthchecks, resource limits, capabilities, devices, logging, read-only filesystems, and dependency inference
+- **Snapshot diffs** — compare two JSON snapshots to see what changed: added/removed containers, image updates, env changes, port remapping
 
 All output passes through a secret redactor. Environment variables matching configurable patterns (passwords, tokens, API keys) are replaced with `[REDACTED]` before they reach your screen or your AI model.
 
@@ -35,14 +36,23 @@ pip install "roustabout[mcp]"
 # Document your Docker environment
 roustabout snapshot
 roustabout snapshot --show-env --output snapshot.md
+roustabout snapshot --format json --output snapshot.json
+
+# Filter by compose project
+roustabout snapshot --project mystack
+roustabout audit --project mystack
 
 # Run security checks
 roustabout audit
 roustabout audit --output audit.md --hide-accepted
+roustabout audit --format json
 
 # Generate a compose file from running containers
 roustabout generate
 roustabout generate --redact --output docker-compose.yml
+
+# Compare two snapshots
+roustabout diff snapshot-old.json snapshot-new.json
 
 # Manage audit findings
 roustabout accept docker-socket-watchtower "Watchtower needs socket access"
@@ -59,7 +69,7 @@ $ roustabout audit
 
 # Security Audit
 
-**118 findings:** **5 critical**, **40 warning**, **73 info**
+**212 findings:** **5 critical**, **40 warning**, **167 info**
 
 | Severity | Check | Count | Containers |
 |----------|-------|-------|------------|
@@ -165,6 +175,9 @@ Default redaction patterns: `password`, `passwd`, `passphrase`, `secret`, `token
 | No resource limits | Info | Containers without a memory limit |
 | Missing restart policy | Info | Containers without restart policy |
 | Stale images | Info | Untagged or `:latest` images without pinned digest |
+| Image age | Info | Container images older than 90 days |
+| Daemon live-restore | Info | Docker daemon without live-restore enabled |
+| Daemon log rotation | Warning | Docker daemon using json-file/local without default log rotation |
 
 Findings can be triaged with `roustabout accept`, `false-positive`, or `resolve`. State is stored in `roustabout.state.toml`.
 

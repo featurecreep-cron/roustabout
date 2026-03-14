@@ -7,15 +7,11 @@ Search order: --config flag > ./roustabout.toml > ~/.config/roustabout/config.to
 from __future__ import annotations
 
 import dataclasses
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
+import tomllib
 
 
 DEFAULT_CONFIG_PATHS = (

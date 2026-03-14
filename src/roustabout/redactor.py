@@ -2,75 +2,32 @@
 
 Runs even when env vars will be hidden in output (defense in depth).
 The redacted DockerEnvironment can be safely logged, diffed, or stored.
+
+Detection is delegated to secretscreen (5 detection layers, 221 format patterns).
+Roustabout-specific concerns (DockerEnvironment model, CLI arg redaction) stay here.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import re
-from urllib.parse import urlsplit, urlunsplit
+
+from secretscreen import Mode, redact_pair
+from secretscreen._keys import DEFAULT_KEY_PATTERNS
 
 from roustabout.models import ContainerInfo, DockerEnvironment, make_environment
 
 REDACTED = "[REDACTED]"
 
-# Patterns match as substrings in env var KEY names (case-insensitive).
-# Deliberately excludes overly broad terms like "auth" (matches AUTHENTIK_*)
-# and bare "key" (matches REGISTRY_KEY, etc.). Specific compound patterns
-# like "api_key" and "secret_key" cover the important cases.
-DEFAULT_PATTERNS: tuple[str, ...] = (
-    "password",
-    "passwd",
-    "passphrase",
-    "secret",
-    "token",
-    "api_key",
-    "apikey",
-    "credential",
-    "private_key",
-    "access_key",
-    "secret_key",
-)
-
-# Matches secret-like keys inside JSON/structured values.
-# Key names are matched as substrings — 'OAUTH2_CLIENT_SECRET' matches 'secret'.
-# The pattern allows characters before AND after the secret keyword in the key name.
-# 'token' is excluded here (too broad in structured contexts — matches TOKEN_URL, etc.).
-# Top-level *TOKEN* env vars are caught by key-based detection instead.
-_JSON_SECRET_RE = re.compile(
-    r"""["\'][^"']*(?:secret|password|passwd|passphrase|api_key|"""
-    r"""private_key|access_key|credential)[^"']*["\']"""
-    r"""\s*:\s*["\']([^"']+)["\']""",
-    re.IGNORECASE,
-)
+# Re-export default patterns for callers that need them (auditor, config).
+DEFAULT_PATTERNS: tuple[str, ...] = DEFAULT_KEY_PATTERNS
 
 # Matches secrets passed as CLI flags: --password=value, --token value, etc.
+# This is roustabout-specific — secretscreen handles key-value pairs, not CLI args.
 _CLI_SECRET_RE = re.compile(
     r"(--(?:password|passwd|passphrase|secret|token|api[_-]key|"
     r"private[_-]key|access[_-]key|credential)[=\s])(\S+)",
     re.IGNORECASE,
-)
-
-# Value-based format detectors — catch secrets by shape regardless of key name.
-# Patterns sourced from detect-secrets and secrets-patterns-db (both open source).
-_VALUE_FORMAT_PATTERNS: tuple[re.Pattern[str], ...] = (
-    # AWS Access Key ID (always starts with AKIA)
-    re.compile(r"^AKIA[0-9A-Z]{16}$"),
-    # AWS Secret Access Key (40 chars, base64-ish, must contain mixed case)
-    # Excludes pure-hex strings like GPG fingerprints.
-    re.compile(r"^(?=.*[a-z])(?=.*[A-Z])[A-Za-z0-9/+=]{40}$"),
-    # GitHub Personal Access Token (classic and fine-grained)
-    re.compile(r"^gh[ps]_[A-Za-z0-9_]{36,}$"),
-    re.compile(r"^github_pat_[A-Za-z0-9_]{22,}$"),
-    # Slack Bot/User OAuth Token
-    re.compile(r"^xoxb-[0-9]{10,}-[A-Za-z0-9-]+$"),
-    re.compile(r"^xoxp-[0-9]{10,}-[A-Za-z0-9-]+$"),
-    # Stripe API Key
-    re.compile(r"^[sr]k_(live|test)_[A-Za-z0-9]{20,}$"),
-    # Private key material
-    re.compile(r"^-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"),
-    # JWT (three base64 segments)
-    re.compile(r"^eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$"),
 )
 
 
@@ -145,37 +102,10 @@ def _redact_container(
 def redact_value(key: str, value: str, patterns: tuple[str, ...]) -> str:
     """Return the redacted form of a value, or the original if not secret.
 
-    Four redaction mechanisms:
-    1. Key-based: pattern substring in key name → full value replaced.
-    2. URL credential: value contains ://user:pass@host → password portion replaced.
-    3. JSON/structured: embedded secret keys in JSON values → secret values replaced.
-    4. Value format: known secret formats (AWS keys, GitHub PATs, JWTs) → full replace.
+    Delegates to secretscreen for detection and redaction across all layers:
+    key patterns, structured parsing, 221 format patterns, URL credentials.
     """
-    key_lower = key.lower()
-
-    # 1. Key-based pattern match
-    for pattern in patterns:
-        if pattern.lower() in key_lower:
-            # URL keys get partial redaction, not full
-            if key_lower.endswith("_url"):
-                if _has_url_credentials(value):
-                    return _redact_url_password(value)
-                return value
-            return REDACTED
-
-    # 2. Catch-all: any _url key with embedded credentials (partial redaction)
-    if key_lower.endswith("_url") and _has_url_credentials(value):
-        return _redact_url_password(value)
-
-    # 3. Value-based: scan for embedded secrets in JSON/structured values
-    if _JSON_SECRET_RE.search(value):
-        return _redact_json_secrets(value)
-
-    # 4. Value format: detect known secret formats by value shape
-    if _matches_known_secret_format(value):
-        return REDACTED
-
-    return value
+    return redact_pair(key, value, extra_keys=patterns)
 
 
 def is_secret_key(key: str, value: str, patterns: tuple[str, ...]) -> bool:
@@ -186,72 +116,11 @@ def is_secret_key(key: str, value: str, patterns: tuple[str, ...]) -> bool:
     return redact_value(key, value, patterns) != value
 
 
-def _has_url_credentials(value: str) -> bool:
-    """Check if a value contains a URL with embedded credentials."""
-    try:
-        parsed = urlsplit(value)
-        return bool(parsed.scheme and parsed.password)
-    except (ValueError, AttributeError):
-        return False
-
-
-def _redact_url_password(value: str) -> str:
-    """Replace only the password portion of a credential URL.
-
-    Uses urllib.parse for correct handling of special characters,
-    missing usernames, and URL-encoded values.
-    """
-    try:
-        parsed = urlsplit(value)
-        if not parsed.password:
-            return value
-
-        # Reconstruct netloc with redacted password
-        user = parsed.username or ""
-        host = parsed.hostname or ""
-        port_str = f":{parsed.port}" if parsed.port else ""
-        new_netloc = f"{user}:{REDACTED}@{host}{port_str}"
-
-        return urlunsplit(
-            (
-                parsed.scheme,
-                new_netloc,
-                parsed.path,
-                parsed.query,
-                parsed.fragment,
-            )
-        )
-    except (ValueError, AttributeError):
-        return REDACTED
-
-
-def _redact_json_secrets(value: str) -> str:
-    """Replace secret values inside JSON/structured strings."""
-
-    def _replace_secret(match: re.Match[str]) -> str:
-        full: str = match.group(0)
-        secret_value: str = match.group(1)
-        return full.replace(secret_value, REDACTED)
-
-    return _JSON_SECRET_RE.sub(_replace_secret, value)
-
-
-def _matches_known_secret_format(value: str) -> bool:
-    """Check if a value matches a known secret format by its shape.
-
-    Catches secrets like AWS keys, GitHub PATs, Stripe keys, and JWTs
-    regardless of what the key is named.
-    """
-    stripped = value.strip()
-    if len(stripped) < 20:
-        return False  # too short to be a meaningful secret format
-    return any(pattern.search(stripped) for pattern in _VALUE_FORMAT_PATTERNS)
-
-
 def _redact_cli_args(args: tuple[str, ...]) -> tuple[str, ...]:
     """Redact secrets in command-line argument tuples.
 
     Handles patterns like --password=secret and --token secret.
+    This is roustabout-specific — secretscreen handles key-value pairs only.
     """
     result = list(args)
     for i, arg in enumerate(result):

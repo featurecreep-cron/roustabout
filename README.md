@@ -2,8 +2,10 @@
 
 [![CI](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml/badge.svg)](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/featurecreep-cron/roustabout)](https://github.com/featurecreep-cron/roustabout/blob/main/LICENSE)
-[![Python: 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://github.com/featurecreep-cron/roustabout)
 [![Release](https://img.shields.io/github/v/release/featurecreep-cron/roustabout)](https://github.com/featurecreep-cron/roustabout/releases)
+[![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Ffeaturecreep-cron%2Froustabout%2Fmain%2Fpyproject.toml)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/roustabout)](https://pypi.org/project/roustabout/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 Structured documentation, security auditing, and compose generation for Docker environments.
 

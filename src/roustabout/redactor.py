@@ -12,7 +12,7 @@ from __future__ import annotations
 import dataclasses
 import re
 
-from secretscreen import Mode, redact_pair
+from secretscreen import redact_pair
 from secretscreen._keys import DEFAULT_KEY_PATTERNS
 
 from roustabout.models import ContainerInfo, DockerEnvironment, make_environment

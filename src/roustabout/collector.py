@@ -7,7 +7,7 @@ a DockerEnvironment with sorted, frozen model instances.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from roustabout.models import (
@@ -54,7 +54,7 @@ def collect(client: docker.DockerClient) -> DockerEnvironment:
 
     return make_environment(
         containers=containers,
-        generated_at=datetime.now(timezone.utc).isoformat(),
+        generated_at=datetime.now(UTC).isoformat(),
         docker_version=version_info.get("Version", "unknown"),
         warnings=warnings,
         daemon=daemon,

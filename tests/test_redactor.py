@@ -476,7 +476,8 @@ class TestValueFormatDetection:
         # or by gitleaks format if the value matches the full pattern.
         # The old hand-rolled regex was more permissive. With secretscreen,
         # this test uses a key name that triggers key-pattern detection.
-        val = redact_value("GITHUB_TOKEN", "github_pat_11AAAAAA0abcdefghijklmnop", DEFAULT_PATTERNS)
+        token = "github_pat_11AAAAAA0abcdefghijklmnop"
+        val = redact_value("GITHUB_TOKEN", token, DEFAULT_PATTERNS)
         assert val == REDACTED
 
     def test_stripe_live_key(self):

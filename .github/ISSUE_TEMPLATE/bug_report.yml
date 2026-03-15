@@ -1,0 +1,57 @@
+name: Bug Report
+description: Report a bug in roustabout
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Roustabout version
+      description: Output of `roustabout --version` or pip show version
+      placeholder: "0.6.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Local Docker socket
+        - Remote Docker host (TCP)
+        - SSH tunnel
+        - MCP server mode
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the behavior.
+      placeholder: |
+        1. Run `roustabout audit`
+        2. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste any relevant log output. This will be formatted as code.
+      render: shell

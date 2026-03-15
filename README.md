@@ -1,6 +1,8 @@
 # roustabout
 
 [![CI](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml/badge.svg)](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/featurecreep-cron/roustabout/graph/badge.svg)](https://codecov.io/gh/featurecreep-cron/roustabout)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/featurecreep-cron/roustabout/badge)](https://scorecard.dev/viewer/?uri=github.com/featurecreep-cron/roustabout)
 [![License: MIT](https://img.shields.io/github/license/featurecreep-cron/roustabout)](https://github.com/featurecreep-cron/roustabout/blob/main/LICENSE)
 [![Release](https://img.shields.io/github/v/release/featurecreep-cron/roustabout)](https://github.com/featurecreep-cron/roustabout/releases)
 [![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Ffeaturecreep-cron%2Froustabout%2Fmain%2Fpyproject.toml)](https://www.python.org/downloads/)
@@ -9,60 +11,60 @@
 
 Structured documentation, security auditing, and compose generation for Docker environments.
 
-Roustabout connects to the Docker API, inspects every running container, and produces three kinds of output:
+Roustabout connects to the Docker API, inspects every running container, and produces:
 
-- **Markdown snapshots** — a complete inventory of your Docker host: images, ports, volumes, networks, env vars, labels
-- **Security audits** — 18 checks covering socket exposure, secrets in env vars, sensitive ports, missing healthchecks, root containers, restart loops, OOM kills, flat networking, missing restart policies, stale images, image age, log rotation, resource limits, and daemon configuration
-- **Compose generation** — reconstructs a `docker-compose.yml` from running containers, filtering image noise and handling named volumes, network modes, healthchecks, resource limits, capabilities, devices, logging, read-only filesystems, and dependency inference
-- **Snapshot diffs** — compare two JSON snapshots to see what changed: added/removed containers, image updates, env changes, port remapping
+- **Markdown snapshots** — complete inventory of images, ports, volumes, networks, env vars, labels
+- **Security audits** — 18 checks covering socket exposure, secrets in env vars, sensitive ports, missing healthchecks, root containers, and more
+- **Compose generation** — reconstructs `docker-compose.yml` from running containers
+- **Snapshot diffs** — compare two JSON snapshots to see what changed
 
-All output passes through a secret redactor. Environment variables matching configurable patterns (passwords, tokens, API keys) are replaced with `[REDACTED]` before they reach your screen or your AI model.
+All output passes through a secret redactor. Environment variables matching configurable patterns are replaced with `[REDACTED]` before reaching your screen or AI model.
 
 ## Install
 
 ```bash
 pip install roustabout
-```
 
-For MCP server support:
-
-```bash
+# With MCP server support
 pip install "roustabout[mcp]"
 ```
 
-## Usage
-
-### CLI
+## Quick start
 
 ```bash
-# Document your Docker environment
-roustabout snapshot
+roustabout snapshot                    # document your Docker environment
+roustabout audit                       # run security checks
+roustabout generate                    # reconstruct a compose file
+roustabout diff old.json new.json      # compare snapshots
+```
+
+<details>
+<summary><strong>Full CLI reference</strong></summary>
+
+```bash
+# Snapshot options
 roustabout snapshot --show-env --output snapshot.md
 roustabout snapshot --format json --output snapshot.json
-
-# Filter by compose project
 roustabout snapshot --project mystack
-roustabout audit --project mystack
 
-# Run security checks
-roustabout audit
+# Audit options
 roustabout audit --output audit.md --hide-accepted
 roustabout audit --format json
+roustabout audit --project mystack
 
-# Generate a compose file from running containers
-roustabout generate
+# Generate options
 roustabout generate --redact --output docker-compose.yml
 
-# Compare two snapshots
-roustabout diff snapshot-old.json snapshot-new.json
-
-# Manage audit findings
+# Finding management
 roustabout accept docker-socket-watchtower "Watchtower needs socket access"
 roustabout false-positive secrets-env-nginx "NGINX_HOST is not a secret"
 roustabout resolve stale-image-redis "Updated to redis:7.2"
 ```
 
-### Example: Audit Output
+</details>
+
+<details>
+<summary><strong>Example audit output</strong></summary>
 
 From a homelab running 48 containers:
 
@@ -81,27 +83,16 @@ $ roustabout audit
 | Warning | host-pid | 1 | node_exporter |
 | Info | no-healthcheck | 35 | adguard, bazarr, freshrss, +30 more |
 | Info | running-as-root | 29 | adguard, cadvisor, plex, +24 more |
-...
-
-### secrets-in-env — 17 containers, 38 findings
-
-| Container | Exposed Variables |
-|-----------|-------------------|
-| authentik_server | `AUTHENTIK_EMAIL__PASSWORD`, `AUTHENTIK_SECRET_KEY` |
-| grafana | `GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET` |
-| mariadb | `MARIADB_PASSWORD`, `MARIADB_ROOT_PASSWORD` |
-| photoprism | `PHOTOPRISM_ADMIN_PASSWORD`, `PHOTOPRISM_DATABASE_PASSWORD` |
-...
-
-**Fix:** Use Docker secrets, a mounted file, or a secrets manager instead
-of environment variables for sensitive values.
 ```
 
 Findings are grouped by category — each explanation appears once, not per container.
 
-### MCP Server
+</details>
 
-Roustabout includes an MCP server for use with Claude Code and other AI tools. Five read-only tools, all auto-redacted:
+<details>
+<summary><strong>MCP server</strong></summary>
+
+Five read-only tools, all auto-redacted:
 
 | Tool | Description |
 |------|-------------|
@@ -111,13 +102,11 @@ Roustabout includes an MCP server for use with Claude Code and other AI tools. F
 | `docker_networks` | Network topology |
 | `docker_generate` | Compose file generation |
 
-Run standalone:
-
 ```bash
-roustabout-mcp
+roustabout-mcp  # run standalone
 ```
 
-Or configure in Claude Code's MCP settings:
+Claude Code configuration:
 
 ```json
 {
@@ -129,35 +118,31 @@ Or configure in Claude Code's MCP settings:
 }
 ```
 
-## Configuration
+</details>
+
+<details>
+<summary><strong>Configuration</strong></summary>
 
 Create `roustabout.toml` in your working directory:
 
 ```toml
-# Show environment variables in snapshot output
 show_env = false
-
-# Show container labels
 show_labels = true
-
-# Output file path
 output = "docker-snapshot.md"
-
-# Connect to a remote Docker host
 docker_host = "tcp://myhost:2375"
-
-# Additional secret patterns (extend defaults, never replace)
 redact_patterns = ["my_custom_secret", "internal_token"]
 
-# Override finding severities
 [severity_overrides]
 "docker-socket" = "info"
 "secrets-env" = "critical"
 ```
 
-Default redaction patterns: `password`, `passwd`, `passphrase`, `secret`, `token`, `api_key`, `apikey`, `credential`, `private_key`, `access_key`, `secret_key`. URLs with embedded credentials (`://user:pass@host`) get partial redaction (password only). Known secret formats (AWS keys, GitHub PATs, JWTs, Stripe keys) are caught by value shape regardless of key name.
+Default redaction patterns: `password`, `passwd`, `passphrase`, `secret`, `token`, `api_key`, `apikey`, `credential`, `private_key`, `access_key`, `secret_key`. URLs with embedded credentials get partial redaction. Known secret formats (AWS keys, GitHub PATs, JWTs, Stripe keys) are caught by value shape regardless of key name.
 
-## Security Checks
+</details>
+
+<details>
+<summary><strong>Security checks</strong></summary>
 
 | Check | Default Severity | What it finds |
 |-------|-----------------|---------------|
@@ -183,16 +168,16 @@ Default redaction patterns: `password`, `passwd`, `passphrase`, `secret`, `token
 
 Findings can be triaged with `roustabout accept`, `false-positive`, or `resolve`. State is stored in `roustabout.state.toml`.
 
+</details>
+
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - Access to a Docker socket (local or remote)
 
 ## Contributing
 
-Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-This project uses [ruff](https://docs.astral.sh/ruff/) for linting and formatting. Run `ruff check .` and `ruff format --check .` before submitting.
+Bug reports and pull requests welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Support
 

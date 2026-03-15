@@ -52,5 +52,12 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev,mcp]"
 
-      - name: Test
-        run: pytest --tb=short -q
+      - name: Test with coverage
+        run: pytest --cov --cov-report=xml --tb=short -q
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.13'
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}

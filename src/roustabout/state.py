@@ -10,7 +10,7 @@ produces all findings. This module annotates them with user decisions.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from roustabout.auditor import Finding
 
 import tomllib
-
 
 DEFAULT_STATE_PATHS = (
     Path("roustabout.state.toml"),
@@ -114,7 +113,7 @@ def set_finding_state(
     entries[finding_key] = StateEntry(
         state=state,
         reason=reason,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
     )
     return save_state(entries, state_path)
 

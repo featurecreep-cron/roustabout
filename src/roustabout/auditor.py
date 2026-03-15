@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from roustabout.models import ContainerInfo, DaemonInfo, DockerEnvironment
@@ -574,8 +574,8 @@ def _check_image_age(c: ContainerInfo) -> list[Finding]:
     try:
         # Docker timestamps are ISO 8601 with optional fractional seconds
         created_str = c.image_created.split(".")[0].rstrip("Z")
-        created = datetime.fromisoformat(created_str).replace(tzinfo=timezone.utc)
-        age_days = (datetime.now(timezone.utc) - created).days
+        created = datetime.fromisoformat(created_str).replace(tzinfo=UTC)
+        age_days = (datetime.now(UTC) - created).days
     except (ValueError, TypeError):
         return []
     if age_days < _IMAGE_AGE_THRESHOLD_DAYS:

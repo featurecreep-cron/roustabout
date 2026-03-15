@@ -7,12 +7,10 @@ Search order: --config flag > ./roustabout.toml > ~/.config/roustabout/config.to
 from __future__ import annotations
 
 import dataclasses
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
-import tomllib
-
 
 DEFAULT_CONFIG_PATHS = (
     Path("roustabout.toml"),

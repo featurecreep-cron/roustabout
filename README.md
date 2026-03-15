@@ -4,7 +4,6 @@
 [![Codecov](https://codecov.io/gh/featurecreep-cron/roustabout/graph/badge.svg)](https://codecov.io/gh/featurecreep-cron/roustabout)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/featurecreep-cron/roustabout/badge)](https://scorecard.dev/viewer/?uri=github.com/featurecreep-cron/roustabout)
 [![License: MIT](https://img.shields.io/github/license/featurecreep-cron/roustabout)](https://github.com/featurecreep-cron/roustabout/blob/main/LICENSE)
-[![Release](https://img.shields.io/github/v/release/featurecreep-cron/roustabout)](https://github.com/featurecreep-cron/roustabout/releases)
 [![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Ffeaturecreep-cron%2Froustabout%2Fmain%2Fpyproject.toml)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/roustabout)](https://pypi.org/project/roustabout/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)

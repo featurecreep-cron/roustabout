@@ -281,6 +281,119 @@ def dr_plan(
         click.echo(result)
 
 
+@main.command("stop")
+@click.argument("container_name")
+@click.option("--dry-run", is_flag=True, default=False, help="Preview without executing.")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+def stop_cmd(
+    container_name: str,
+    dry_run: bool,
+    config_path: str | None,
+    docker_host: str | None,
+) -> None:
+    """Stop a running container."""
+    _run_mutation("stop", container_name, dry_run, config_path, docker_host)
+
+
+@main.command("start")
+@click.argument("container_name")
+@click.option("--dry-run", is_flag=True, default=False, help="Preview without executing.")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+def start_cmd(
+    container_name: str,
+    dry_run: bool,
+    config_path: str | None,
+    docker_host: str | None,
+) -> None:
+    """Start a stopped container."""
+    _run_mutation("start", container_name, dry_run, config_path, docker_host)
+
+
+@main.command("restart")
+@click.argument("container_name")
+@click.option("--dry-run", is_flag=True, default=False, help="Preview without executing.")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+def restart_cmd(
+    container_name: str,
+    dry_run: bool,
+    config_path: str | None,
+    docker_host: str | None,
+) -> None:
+    """Restart a container."""
+    _run_mutation("restart", container_name, dry_run, config_path, docker_host)
+
+
+def _run_mutation(
+    action: str,
+    container_name: str,
+    dry_run: bool,
+    config_path: str | None,
+    docker_host: str | None,
+) -> None:
+    """Execute a mutation through the gateway."""
+    from roustabout.gateway import MutationCommand
+    from roustabout.gateway import execute as gw_execute
+    from roustabout.session import (
+        DockerSession,
+        PermissionTier,
+        RateLimiter,
+        Session,
+        _capabilities_for_tier,
+    )
+
+    cfg = _load_cfg(config_path, docker_host=docker_host)
+    client = _connect(cfg.docker_host)
+
+    docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
+    session = Session(
+        id="cli",
+        docker=docker_session,
+        tier=PermissionTier.OPERATE,
+        capabilities=_capabilities_for_tier(PermissionTier.OPERATE),
+        rate_limiter=RateLimiter(),
+        created_at="",
+    )
+
+    cmd = MutationCommand(
+        action=action,
+        target=container_name,
+        dry_run=dry_run,
+    )
+
+    result = gw_execute(cmd, session=session)
+
+    if result.success:
+        if result.result == "dry-run":
+            click.echo(f"[dry-run] Would {action} {container_name}")
+        else:
+            click.echo(f"{action.capitalize()}ed {container_name}")
+    else:
+        raise click.ClickException(
+            f"{action} failed: {result.error or result.gate_failed}"
+        )
+
+
 @main.command("diff")
 @click.argument("old_snapshot", type=click.Path(exists=True))
 @click.argument("new_snapshot", type=click.Path(exists=True))

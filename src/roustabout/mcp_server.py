@@ -259,6 +259,80 @@ async def docker_dr_detail(name: str) -> str:
     return _enforce_size_limit(gen_dr_plan(single_env), cfg.response_size_cap)
 
 
+@mcp.tool()
+async def docker_manage(
+    action: str,
+    container_name: str,
+    dry_run: bool = False,
+) -> str:
+    """[OPERATE] Start, stop, or restart a container.
+
+    Use when: you need to manage container lifecycle.
+    Returns: result of the operation.
+
+    Args:
+        action: One of 'start', 'stop', 'restart'.
+        container_name: The container to act on.
+        dry_run: Preview without executing (default: false).
+    """
+    container_name = sanitize(container_name)[:128]
+    action = sanitize(action)[:32]
+
+    valid_actions = {"start", "stop", "restart"}
+    if action not in valid_actions:
+        return _envelope(
+            f"Invalid action '{action}'. Must be one of: {', '.join(sorted(valid_actions))}"
+        )
+
+    def _run() -> str:
+        from roustabout.gateway import MutationCommand
+        from roustabout.gateway import execute as gw_execute
+        from roustabout.session import (
+            DockerSession,
+            PermissionTier,
+            RateLimiter,
+            Session,
+            _capabilities_for_tier,
+        )
+
+        cfg = _load_cfg()
+        client = connect(cfg.docker_host)
+        docker_session = DockerSession(
+            client=client, host=cfg.docker_host or "localhost",
+        )
+        session = Session(
+            id="mcp",
+            docker=docker_session,
+            tier=PermissionTier.OPERATE,
+            capabilities=_capabilities_for_tier(PermissionTier.OPERATE),
+            rate_limiter=RateLimiter(),
+            created_at="",
+        )
+
+        cmd = MutationCommand(
+            action=action,
+            target=container_name,
+            dry_run=dry_run,
+        )
+
+        try:
+            result = gw_execute(cmd, session=session)
+        finally:
+            client.close()
+
+        if result.success:
+            if result.result == "dry-run":
+                return f"[dry-run] Would {action} {container_name}"
+            return f"{action.capitalize()}ed {container_name}"
+        return f"Failed: {result.error or result.gate_failed}"
+
+    try:
+        msg = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
+    except Exception as exc:
+        return _envelope(f"Error: {_safe_error(exc)}")
+    return _envelope(msg)
+
+
 def main() -> None:
     """Entry point for roustabout-mcp."""
     mcp.run()

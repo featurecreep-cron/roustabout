@@ -40,10 +40,7 @@ _MUTATION_ACTIONS = frozenset(
     if permissions.CAPABILITY_TIER[cap] >= permissions.PermissionTier.OPERATE
 )
 
-# ---------------------------------------------------------------------------
 # Command and result types
-# ---------------------------------------------------------------------------
-
 
 @dataclass(frozen=True)
 class MutationCommand:
@@ -73,10 +70,7 @@ class GatewayResult:
     audit_id: int | None = None
 
 
-# ---------------------------------------------------------------------------
 # Gate exceptions
-# ---------------------------------------------------------------------------
-
 
 @dataclass
 class CircuitOpen(Exception):
@@ -130,10 +124,7 @@ class ConcurrentMutation(Exception):
         )
 
 
-# ---------------------------------------------------------------------------
 # Module-level state
-# ---------------------------------------------------------------------------
-
 _default_db: StateDB | None = None
 
 
@@ -143,10 +134,7 @@ def set_default_db(db: StateDB) -> None:
     _default_db = db
 
 
-# ---------------------------------------------------------------------------
 # Gate helpers
-# ---------------------------------------------------------------------------
-
 
 def _inspect_target(session: Session, target: str) -> Any:
     """Lightweight single-container inspect for pre-gate label reading.
@@ -175,35 +163,34 @@ def _compute_target_hash(session: Session, target: str) -> str | None:
         return None
     container.reload()
     attrs = container.attrs
+    config = attrs["Config"]
+    host_config = attrs["HostConfig"]
     state_data = json.dumps(
         {
             "status": attrs["State"]["Status"],
             "image": attrs["Image"],
-            "env": sorted(attrs["Config"].get("Env", [])),
-            "labels": sorted(
-                attrs["Config"].get("Labels", {}).items()
-            ),
-            "network_mode": attrs["HostConfig"].get(
-                "NetworkMode", ""
-            ),
-            "privileged": attrs["HostConfig"].get(
-                "Privileged", False
-            ),
-            "cap_add": sorted(
-                attrs["HostConfig"].get("CapAdd") or []
-            ),
-            "cap_drop": sorted(
-                attrs["HostConfig"].get("CapDrop") or []
-            ),
-            "pid_mode": attrs["HostConfig"].get("PidMode", ""),
+            "env": sorted(config.get("Env", [])),
+            "cmd": config.get("Cmd"),
+            "entrypoint": config.get("Entrypoint"),
+            "user": config.get("User", ""),
+            "labels": sorted(config.get("Labels", {}).items()),
+            "network_mode": host_config.get("NetworkMode", ""),
+            "privileged": host_config.get("Privileged", False),
+            "cap_add": sorted(host_config.get("CapAdd") or []),
+            "cap_drop": sorted(host_config.get("CapDrop") or []),
+            "pid_mode": host_config.get("PidMode", ""),
+            "ipc_mode": host_config.get("IpcMode", ""),
             "security_opt": sorted(
-                attrs["HostConfig"].get("SecurityOpt") or []
+                host_config.get("SecurityOpt") or []
             ),
-            "binds": sorted(
-                attrs["HostConfig"].get("Binds") or []
+            "read_only": host_config.get("ReadonlyRootfs", False),
+            "devices": sorted(
+                json.dumps(d, sort_keys=True)
+                for d in (host_config.get("Devices") or [])
             ),
+            "binds": sorted(host_config.get("Binds") or []),
             "port_bindings": json.dumps(
-                attrs["HostConfig"].get("PortBindings") or {},
+                host_config.get("PortBindings") or {},
                 sort_keys=True,
             ),
         },
@@ -220,10 +207,7 @@ def _check_blast_radius(command: MutationCommand, session: Session) -> None:
     """
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
-
 
 def execute(
     command: MutationCommand,

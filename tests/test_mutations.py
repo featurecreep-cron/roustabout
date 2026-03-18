@@ -12,10 +12,7 @@ import docker.errors as _docker_errors
 
 from roustabout.mutations import MutationResult, execute
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
-
 
 def _make_docker_session():
     """Create a mock DockerSession."""
@@ -37,10 +34,7 @@ def _mock_container(**overrides):
     return container
 
 
-# ---------------------------------------------------------------------------
 # MutationResult dataclass
-# ---------------------------------------------------------------------------
-
 
 class TestMutationResult:
     def test_success(self):
@@ -57,10 +51,7 @@ class TestMutationResult:
         assert "connection" in r.error
 
 
-# ---------------------------------------------------------------------------
 # stop
-# ---------------------------------------------------------------------------
-
 
 class TestStop:
     def test_stop_running_container(self):
@@ -96,10 +87,7 @@ class TestStop:
         assert result.success is False
 
 
-# ---------------------------------------------------------------------------
 # start
-# ---------------------------------------------------------------------------
-
 
 class TestStart:
     def test_start_stopped_container(self):
@@ -123,10 +111,7 @@ class TestStart:
         assert result.success is False
 
 
-# ---------------------------------------------------------------------------
 # restart
-# ---------------------------------------------------------------------------
-
 
 class TestRestart:
     def test_restart_container(self):
@@ -150,10 +135,7 @@ class TestRestart:
         assert result.success is False
 
 
-# ---------------------------------------------------------------------------
 # execute dispatch
-# ---------------------------------------------------------------------------
-
 
 class TestExecuteDispatch:
     def test_unknown_action(self):
@@ -173,10 +155,7 @@ class TestExecuteDispatch:
             assert result.action == action
 
 
-# ---------------------------------------------------------------------------
 # Error classification
-# ---------------------------------------------------------------------------
-
 
 class TestErrorClassification:
     def test_connection_error_classified(self):
@@ -211,3 +190,19 @@ class TestErrorClassification:
 
         assert result.success is False
         assert result.error_type == "mutation_error"
+
+    def test_error_strings_are_sanitized(self):
+        """Docker API errors must be sanitized before storage."""
+        docker = _make_docker_session()
+        container = _mock_container()
+        docker.client.containers.get.return_value = container
+        # Inject ANSI escape + control chars in error message
+        container.restart.side_effect = _docker_errors.APIError(
+            "\x1b[31mred\x1b[0m error\x00null"
+        )
+
+        result = execute(docker, "restart", "nginx")
+
+        assert result.success is False
+        assert "\x1b" not in (result.error or "")
+        assert "\x00" not in (result.error or "")

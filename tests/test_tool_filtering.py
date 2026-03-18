@@ -7,28 +7,25 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from roustabout.session import PermissionTier, _capabilities_for_tier
+from roustabout.session import PermissionTier, capabilities_for_tier
 
-# ---------------------------------------------------------------------------
 # Capabilities
-# ---------------------------------------------------------------------------
-
 
 class TestCapabilities:
     def test_observe_capabilities(self):
-        caps = _capabilities_for_tier(PermissionTier.OBSERVE)
+        caps = capabilities_for_tier(PermissionTier.OBSERVE)
         assert "can_snapshot" in caps
         assert "can_restart" not in caps
         assert "can_exec" not in caps
 
     def test_operate_capabilities(self):
-        caps = _capabilities_for_tier(PermissionTier.OPERATE)
+        caps = capabilities_for_tier(PermissionTier.OPERATE)
         assert "can_snapshot" in caps
         assert "can_restart" in caps
         assert "can_exec" not in caps
 
     def test_elevate_capabilities(self):
-        caps = _capabilities_for_tier(PermissionTier.ELEVATE)
+        caps = capabilities_for_tier(PermissionTier.ELEVATE)
         assert "can_snapshot" in caps
         assert "can_restart" in caps
         assert "can_exec" in caps
@@ -52,7 +49,7 @@ class TestListCapabilities:
             id="test",
             docker=docker,
             tier=PermissionTier.OBSERVE,
-            capabilities=_capabilities_for_tier(PermissionTier.OBSERVE),
+            capabilities=capabilities_for_tier(PermissionTier.OBSERVE),
             rate_limiter=RateLimiter(),
             created_at="",
         )

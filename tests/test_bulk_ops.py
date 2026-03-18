@@ -18,13 +18,10 @@ from roustabout.session import (
     PermissionTier,
     RateLimiter,
     Session,
-    _capabilities_for_tier,
+    capabilities_for_tier,
 )
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
-
 
 def _make_session() -> Session:
     docker = DockerSession(client=MagicMock(), host="localhost")
@@ -32,7 +29,7 @@ def _make_session() -> Session:
         id="test",
         docker=docker,
         tier=PermissionTier.OPERATE,
-        capabilities=_capabilities_for_tier(PermissionTier.OPERATE),
+        capabilities=capabilities_for_tier(PermissionTier.OPERATE),
         rate_limiter=RateLimiter(),
         created_at="",
     )
@@ -47,10 +44,7 @@ def _mock_container(name: str, project: str | None = None, labels=None):
     return c
 
 
-# ---------------------------------------------------------------------------
 # Selection
-# ---------------------------------------------------------------------------
-
 
 class TestSelectByProject:
     def test_selects_matching_project(self):
@@ -93,10 +87,7 @@ class TestSelectByLabel:
         assert len(selected) == 0
 
 
-# ---------------------------------------------------------------------------
 # Bulk manage
-# ---------------------------------------------------------------------------
-
 
 class TestBulkManage:
     def test_blast_radius_cap(self):

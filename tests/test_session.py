@@ -45,24 +45,24 @@ class TestCapabilities:
     """Each tier has correct capabilities."""
 
     def test_observe_capabilities(self) -> None:
-        caps = session._capabilities_for_tier(session.PermissionTier.OBSERVE)
+        caps = session.capabilities_for_tier(session.PermissionTier.OBSERVE)
         assert "can_snapshot" in caps
         assert "can_audit" in caps
         assert "can_dr_plan" in caps
         assert "can_start" not in caps
 
     def test_operate_superset_of_observe(self) -> None:
-        obs = session._capabilities_for_tier(session.PermissionTier.OBSERVE)
-        ops = session._capabilities_for_tier(session.PermissionTier.OPERATE)
+        obs = session.capabilities_for_tier(session.PermissionTier.OBSERVE)
+        ops = session.capabilities_for_tier(session.PermissionTier.OPERATE)
         assert obs < ops
 
     def test_elevate_superset_of_operate(self) -> None:
-        ops = session._capabilities_for_tier(session.PermissionTier.OPERATE)
-        elv = session._capabilities_for_tier(session.PermissionTier.ELEVATE)
+        ops = session.capabilities_for_tier(session.PermissionTier.OPERATE)
+        elv = session.capabilities_for_tier(session.PermissionTier.ELEVATE)
         assert ops < elv
 
     def test_operate_has_mutation_caps(self) -> None:
-        caps = session._capabilities_for_tier(session.PermissionTier.OPERATE)
+        caps = session.capabilities_for_tier(session.PermissionTier.OPERATE)
         assert "can_start" in caps
         assert "can_stop" in caps
         assert "can_restart" in caps

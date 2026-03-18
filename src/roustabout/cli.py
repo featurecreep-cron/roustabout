@@ -451,7 +451,7 @@ def _run_mutation(
         PermissionTier,
         RateLimiter,
         Session,
-        _capabilities_for_tier,
+        capabilities_for_tier,
     )
 
     cfg = _load_cfg(config_path, docker_host=docker_host)
@@ -462,7 +462,7 @@ def _run_mutation(
         id="cli",
         docker=docker_session,
         tier=PermissionTier.OPERATE,
-        capabilities=_capabilities_for_tier(PermissionTier.OPERATE),
+        capabilities=capabilities_for_tier(PermissionTier.OPERATE),
         rate_limiter=RateLimiter(),
         created_at="",
     )

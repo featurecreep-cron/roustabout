@@ -21,8 +21,12 @@ from roustabout.generator import generate
 from roustabout.models import DockerEnvironment, make_environment
 from roustabout.redactor import redact, resolve_patterns, sanitize, sanitize_environment
 from roustabout.renderer import render
+from roustabout.session import RateLimiter
 
 RESPONSE_ENVELOPE = "[roustabout]"
+
+# Shared across all docker_manage calls so rate limiting persists
+_mcp_rate_limiter = RateLimiter()
 
 mcp = FastMCP(
     "roustabout",
@@ -277,7 +281,7 @@ async def docker_capabilities() -> str:
         PermissionTier,
         RateLimiter,
         Session,
-        _capabilities_for_tier,
+        capabilities_for_tier,
     )
 
     # Default MCP session is OPERATE tier
@@ -286,7 +290,7 @@ async def docker_capabilities() -> str:
         id="mcp",
         docker=DockerSession(client=None, host="localhost"),
         tier=tier,
-        capabilities=_capabilities_for_tier(tier),
+        capabilities=capabilities_for_tier(tier),
         rate_limiter=RateLimiter(),
         created_at="",
     )
@@ -302,9 +306,9 @@ async def docker_capabilities() -> str:
     caps = list_capabilities(session)
 
     try:
-        from importlib.metadata import version
+        from importlib.metadata import PackageNotFoundError, version
         ver = version("roustabout")
-    except Exception:
+    except PackageNotFoundError:
         ver = "unknown"
 
     result = {
@@ -331,6 +335,9 @@ async def docker_health(container_name: str | None = None) -> str:
     Args:
         container_name: Optional — filter to a single container.
     """
+    if container_name:
+        container_name = sanitize(container_name)[:128]
+
     try:
         cfg = _load_cfg()
 
@@ -343,10 +350,9 @@ async def docker_health(container_name: str | None = None) -> str:
             finally:
                 client.close()
             if container_name:
-                name = sanitize(container_name)[:128]
-                healths = [h for h in healths if h.name == name]
+                healths = [h for h in healths if h.name == container_name]
                 if not healths:
-                    return f"Container '{name}' not found"
+                    return f"Container '{container_name}' not found"
             return render_health(healths)
 
         result = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
@@ -365,6 +371,9 @@ async def docker_stats(container_name: str | None = None) -> str:
     Args:
         container_name: Optional — filter to a single container.
     """
+    if container_name:
+        container_name = sanitize(container_name)[:128]
+
     try:
         cfg = _load_cfg()
 
@@ -523,9 +532,8 @@ async def docker_manage(
         from roustabout.session import (
             DockerSession,
             PermissionTier,
-            RateLimiter,
             Session,
-            _capabilities_for_tier,
+            capabilities_for_tier,
         )
 
         cfg = _load_cfg()
@@ -537,8 +545,8 @@ async def docker_manage(
             id="mcp",
             docker=docker_session,
             tier=PermissionTier.OPERATE,
-            capabilities=_capabilities_for_tier(PermissionTier.OPERATE),
-            rate_limiter=RateLimiter(),
+            capabilities=capabilities_for_tier(PermissionTier.OPERATE),
+            rate_limiter=_mcp_rate_limiter,
             created_at="",
         )
 

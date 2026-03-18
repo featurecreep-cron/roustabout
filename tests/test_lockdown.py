@@ -78,6 +78,16 @@ class TestLockdownCheck:
             lockdown.check(lock_file)
         assert str(lock_file) in exc_info.value.status.path
 
+    def test_io_error_fails_closed(self, tmp_path: Path) -> None:
+        """Non-ENOENT OSError should fail closed (deny mutations)."""
+        lock_file = tmp_path / "lockdown"
+        # EIO (errno 5) — disk I/O error on a configured lockdown path
+        io_error = OSError(5, "Input/output error")
+        with patch("os.stat", side_effect=io_error):
+            with pytest.raises(lockdown.LockdownError) as exc_info:
+                lockdown.check(lock_file)
+            assert exc_info.value.status.locked is True
+
     def test_zero_internal_imports(self) -> None:
         """lockdown.py must import nothing from roustabout."""
         import ast

@@ -61,6 +61,14 @@ def collect(client: docker.DockerClient) -> DockerEnvironment:
     )
 
 
+def container_to_info(container: Any) -> ContainerInfo:
+    """Extract a ContainerInfo from a docker-py Container object.
+
+    Public API — used by gateway for single-container pre-gate inspect.
+    """
+    return _collect_container(container)
+
+
 def _collect_container(container: Any) -> ContainerInfo:
     """Extract a ContainerInfo from a docker-py Container object."""
     attrs = container.attrs

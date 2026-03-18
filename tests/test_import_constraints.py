@@ -7,6 +7,10 @@ Ensures boundaries are maintained:
 - Only state_db.py imports sqlite3
 - Only connection.py creates Docker clients
 - No upward layer imports
+- No section dividers
+- No broad except Exception without justification
+- No stdlib logging in new modules
+- All dataclasses frozen
 """
 
 from __future__ import annotations
@@ -231,5 +235,132 @@ class TestConnectionRestriction:
                     )
         assert not violations, (
             "Docker client created outside connection.py:\n"
+            + "\n".join(violations)
+        )
+
+
+# Convention enforcement lint tests (E1 experiment — prose rules converted to tests)
+
+class TestNoSectionDividers:
+    """Section dividers (# ----) are banned by coding conventions."""
+
+    def test_no_dividers_in_source(self):
+        import re
+        violations = []
+        for path in SRC.glob("*.py"):
+            for i, line in enumerate(path.read_text().splitlines(), 1):
+                if re.match(r"^# -{5,}", line):
+                    violations.append(f"{path.name}:{i}")
+        assert not violations, (
+            "Section dividers found (use '# Section name' instead):\n"
+            + "\n".join(violations)
+        )
+
+
+class TestNoBroadExcept:
+    """No bare 'except Exception' without noqa justification."""
+
+    # Pre-convention code — remove as modules are updated
+    _GRANDFATHERED = frozenset({
+        "notifications.py", "connection.py", "collector.py", "cli.py",
+    })
+
+    def test_no_broad_except_in_source(self):
+        import re
+        pattern = re.compile(r"^\s*except\s+Exception\s*(?:as\s+\w+\s*)?:")
+        violations = []
+        for path in SRC.glob("*.py"):
+            if path.name in self._GRANDFATHERED:
+                continue
+            for i, line in enumerate(path.read_text().splitlines(), 1):
+                if pattern.match(line) and "# noqa" not in line:
+                    violations.append(f"{path.name}:{i}: {line.strip()}")
+        assert not violations, (
+            "Broad 'except Exception' without noqa justification:\n"
+            + "\n".join(violations)
+        )
+
+
+class TestNoStdlibLogging:
+    """New modules should use structlog, not stdlib logging.
+
+    Existing modules grandfathered until structlog is added as a dependency.
+    This test tracks which modules still use stdlib logging.
+    """
+
+    # Modules that predate the structlog convention — remove as they're migrated
+    _GRANDFATHERED = frozenset({
+        "bulk_ops.py", "collector.py", "gateway.py", "health_stats.py",
+        "log_access.py", "mutations.py", "notifications.py",
+    })
+
+    def test_no_new_stdlib_logging(self):
+        violations = []
+        for path in _python_files():
+            if path.name in self._GRANDFATHERED:
+                continue
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module == "logging":
+                    violations.append(f"{path.name}:{node.lineno}")
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name == "logging":
+                            violations.append(f"{path.name}:{node.lineno}")
+        assert not violations, (
+            "New module uses stdlib logging (use structlog instead):\n"
+            + "\n".join(violations)
+        )
+
+
+class TestFrozenDataclasses:
+    """All dataclasses should be frozen unless mutability is required."""
+
+    # Modules with intentionally mutable dataclasses (with justification)
+    _MUTABLE_ALLOWED = {
+        # RateLimiter and _TokenBucket need mutable state for token tracking
+        ("session.py", "RateLimiter"),
+        ("session.py", "_TokenBucket"),
+        # DockerSession tracks is_alive state
+        ("session.py", "DockerSession"),
+        # Exception subclasses — Exception.__init__ sets self.args,
+        # which is incompatible with frozen=True
+        ("permissions.py", "PermissionDenied"),
+        ("gateway.py", "CircuitOpen"),
+        ("gateway.py", "BlastRadiusExceeded"),
+        ("gateway.py", "TargetNotFound"),
+        ("gateway.py", "ConcurrentMutation"),
+    }
+
+    def test_dataclasses_are_frozen(self):
+        violations = []
+        for path in SRC.glob("*.py"):
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ClassDef):
+                    continue
+                for decorator in node.decorator_list:
+                    # Check @dataclass without frozen=True
+                    if isinstance(decorator, ast.Call):
+                        func = decorator.func
+                        if isinstance(func, ast.Name) and func.id == "dataclass":
+                            frozen = any(
+                                kw.arg == "frozen" and isinstance(kw.value, ast.Constant) and kw.value.value is True
+                                for kw in decorator.keywords
+                            )
+                            if not frozen and (path.name, node.name) not in self._MUTABLE_ALLOWED:
+                                violations.append(
+                                    f"{path.name}:{node.lineno} class {node.name} "
+                                    f"— @dataclass without frozen=True"
+                                )
+                    elif isinstance(decorator, ast.Name) and decorator.id == "dataclass":
+                        # Plain @dataclass with no arguments
+                        if (path.name, node.name) not in self._MUTABLE_ALLOWED:
+                            violations.append(
+                                f"{path.name}:{node.lineno} class {node.name} "
+                                f"— @dataclass without frozen=True"
+                            )
+        assert not violations, (
+            "Dataclass not frozen (add frozen=True or add to _MUTABLE_ALLOWED with justification):\n"
             + "\n".join(violations)
         )

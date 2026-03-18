@@ -1,11 +1,14 @@
-"""MCP server for safe, read-only Docker environment access.
+"""MCP server for Docker environment access with session isolation.
 
-All output passes through the redactor before leaving. Secrets never
-reach the AI model. No mutation operations are exposed.
+All output passes through sanitization and redaction before leaving.
+Handlers are async, dispatching sync Docker API calls to threads.
 """
 
 from __future__ import annotations
 
+import re
+
+import anyio
 from mcp.server.fastmcp import FastMCP
 
 from roustabout.audit_renderer import render_findings
@@ -15,8 +18,10 @@ from roustabout.config import Config, load_config
 from roustabout.connection import connect
 from roustabout.generator import generate
 from roustabout.models import DockerEnvironment, make_environment
-from roustabout.redactor import redact, resolve_patterns
+from roustabout.redactor import redact, resolve_patterns, sanitize, sanitize_environment
 from roustabout.renderer import render
+
+RESPONSE_ENVELOPE = "[roustabout]"
 
 mcp = FastMCP(
     "roustabout",
@@ -33,77 +38,109 @@ def _load_cfg() -> Config:
 
 
 def _collect_redacted() -> tuple[DockerEnvironment, Config]:
-    """Collect and redact the Docker environment using config patterns."""
+    """Collect, sanitize, and redact the Docker environment."""
     cfg = _load_cfg()
     client = connect(cfg.docker_host)
     try:
         env = collect(client)
     finally:
         client.close()
+    env = sanitize_environment(env)
     patterns = resolve_patterns(cfg.redact_patterns)
     return redact(env, patterns=patterns), cfg
 
 
-@mcp.tool()
-def docker_snapshot(show_env: bool = False, show_labels: bool = True) -> str:
-    """Generate a complete markdown snapshot of the Docker environment.
+def _envelope(text: str) -> str:
+    """Wrap response in roustabout envelope for structural framing."""
+    return f"{RESPONSE_ENVELOPE} {text}"
 
-    Returns structured markdown with all containers, their configuration,
-    ports, volumes, networks, and metadata. Secrets are automatically redacted.
+
+def _safe_error(exc: Exception) -> str:
+    """Return a sanitized error string, stripping potential credential leaks."""
+    msg = sanitize(str(exc))
+    # Strip URL credentials (user:pass@host patterns)
+    msg = re.sub(r"://[^@\s]+@", "://***@", msg)
+    return msg
+
+
+def _enforce_size_limit(text: str, cap: int = 262144) -> str:
+    """Truncate response if it exceeds the byte limit."""
+    encoded = text.encode("utf-8")
+    if len(encoded) <= cap:
+        return text
+    truncated = encoded[:cap].decode("utf-8", errors="ignore")
+    return truncated + "\n\n[Response truncated. Use container-specific queries for details.]"
+
+
+@mcp.tool()
+async def docker_snapshot(show_env: bool = False, show_labels: bool = True) -> str:
+    """[OBSERVE] Generate a markdown snapshot of the Docker environment.
+
+    Use when: you need an overview of all running containers.
+    Returns: markdown with containers, ports, volumes, networks.
 
     Args:
         show_env: Include environment variables in output (redacted).
         show_labels: Include container labels in output.
     """
     try:
-        env, _cfg = _collect_redacted()
+        env, cfg = await anyio.to_thread.run_sync(
+            _collect_redacted, abandon_on_cancel=False
+        )
     except Exception as exc:
-        return f"Error: Cannot connect to Docker: {exc}"
-    return render(env, show_env=show_env, show_labels=show_labels)
+        return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
+    result = render(env, show_env=show_env, show_labels=show_labels)
+    return _enforce_size_limit(result, cfg.response_size_cap)
 
 
 @mcp.tool()
-def docker_audit() -> str:
-    """Run security checks against the Docker environment.
+async def docker_audit() -> str:
+    """[OBSERVE] Run security checks against the Docker environment.
 
-    Returns prioritized findings covering: Docker socket exposure, secrets in
-    environment variables, exposed sensitive ports, missing health checks,
-    running as root, restart loops, OOM kills, flat networking, missing
-    restart policies, and stale images.
+    Use when: you want to find security issues in the Docker setup.
+    Returns: prioritized findings with severity, explanation, and fix.
     """
-    # Audit needs unredacted env to detect secrets by key name.
-    # Rendered output only includes key names, never secret values.
     try:
         cfg = _load_cfg()
-        client = connect(cfg.docker_host)
-        try:
-            env = collect(client)
-        finally:
-            client.close()
+
+        def _run_audit() -> str:
+            client = connect(cfg.docker_host)
+            try:
+                env = collect(client)
+            finally:
+                client.close()
+            findings = audit(env, patterns=cfg.redact_patterns)
+            return render_findings(findings)
+
+        result = await anyio.to_thread.run_sync(
+            _run_audit, abandon_on_cancel=False
+        )
     except Exception as exc:
-        return f"Error: Cannot connect to Docker: {exc}"
-    findings = audit(env, patterns=cfg.redact_patterns)
-    return render_findings(findings)
+        return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
+    return _enforce_size_limit(result, cfg.response_size_cap)
 
 
 @mcp.tool()
-def docker_container(name: str) -> str:
-    """Get details for a single named container.
+async def docker_container(name: str) -> str:
+    """[OBSERVE] Get details for a single named container.
+
+    Use when: you need full details on one specific container.
+    Returns: markdown for that container with env vars and labels.
 
     Args:
         name: The container name to look up.
-
-    Returns markdown for that container, or an error message if not found.
-    Secrets are automatically redacted.
     """
+    name = sanitize(name)[:128]
     try:
-        env, _cfg = _collect_redacted()
+        env, _cfg = await anyio.to_thread.run_sync(
+            _collect_redacted, abandon_on_cancel=False
+        )
     except Exception as exc:
-        return f"Error: Cannot connect to Docker: {exc}"
+        return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     matches = [c for c in env.containers if c.name == name]
     if not matches:
         available = ", ".join(c.name for c in env.containers)
-        return f"Container '{name}' not found. Available: {available}"
+        return _envelope(f"Container '{name}' not found. Available: {available}")
 
     single_env = make_environment(
         containers=matches,
@@ -114,16 +151,18 @@ def docker_container(name: str) -> str:
 
 
 @mcp.tool()
-def docker_networks() -> str:
-    """Get network topology showing which containers share which networks.
+async def docker_networks() -> str:
+    """[OBSERVE] Get network topology showing container connectivity.
 
-    Returns a summary of Docker networks and their container memberships.
-    Useful for understanding container connectivity and isolation.
+    Use when: you need to understand which containers can talk to each other.
+    Returns: network list with container memberships.
     """
     try:
-        env, _cfg = _collect_redacted()
+        env, _cfg = await anyio.to_thread.run_sync(
+            _collect_redacted, abandon_on_cancel=False
+        )
     except Exception as exc:
-        return f"Error: Cannot connect to Docker: {exc}"
+        return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
 
     from roustabout.renderer import render_network_topology
 
@@ -131,20 +170,21 @@ def docker_networks() -> str:
 
 
 @mcp.tool()
-def docker_generate(include_stopped: bool = False) -> str:
-    """Generate a docker-compose.yml from running containers.
+async def docker_generate(include_stopped: bool = False) -> str:
+    """[OBSERVE] Generate docker-compose.yml from running containers.
 
-    Reconstructs a compose file from the live Docker environment. Environment
-    variable secrets are automatically redacted — the output is safe to share
-    but will need real values filled in before use.
+    Use when: you need a compose file reconstructed from live state.
+    Returns: YAML with secrets redacted.
 
     Args:
         include_stopped: Include stopped containers (default: running only).
     """
     try:
-        env, cfg = _collect_redacted()
+        env, cfg = await anyio.to_thread.run_sync(
+            _collect_redacted, abandon_on_cancel=False
+        )
     except Exception as exc:
-        return f"Error: Cannot connect to Docker: {exc}"
+        return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     return generate(env, include_stopped=include_stopped)
 
 

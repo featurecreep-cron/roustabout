@@ -260,6 +260,67 @@ async def docker_dr_detail(name: str) -> str:
 
 
 @mcp.tool()
+async def docker_capabilities() -> str:
+    """[OBSERVE] Get operational context — session tier, available tools, lockdown status.
+
+    Use when: you need to understand what operations are available, check
+    rate limits, or plan multi-step workflows.
+    Returns: JSON with session info, capabilities, and system status.
+    """
+    import json as _json
+
+    from roustabout.lockdown import LockdownError
+    from roustabout.lockdown import check as lockdown_check
+    from roustabout.permissions import list_capabilities
+    from roustabout.session import (
+        DockerSession,
+        PermissionTier,
+        RateLimiter,
+        Session,
+        _capabilities_for_tier,
+    )
+
+    # Default MCP session is OPERATE tier
+    tier = PermissionTier.OPERATE
+    session = Session(
+        id="mcp",
+        docker=DockerSession(client=None, host="localhost"),
+        tier=tier,
+        capabilities=_capabilities_for_tier(tier),
+        rate_limiter=RateLimiter(),
+        created_at="",
+    )
+
+    locked = False
+    lockdown_reason = None
+    try:
+        lockdown_check()
+    except LockdownError as e:
+        locked = True
+        lockdown_reason = str(e)
+
+    caps = list_capabilities(session)
+
+    try:
+        from importlib.metadata import version
+        ver = version("roustabout")
+    except Exception:
+        ver = "unknown"
+
+    result = {
+        "version": ver,
+        "session_tier": tier.value,
+        "lockdown": {
+            "active": locked,
+            "reason": lockdown_reason,
+        },
+        "capabilities": caps,
+    }
+
+    return _json.dumps(result, indent=2)
+
+
+@mcp.tool()
 async def docker_health(container_name: str | None = None) -> str:
     """[OBSERVE] Get container health status and diagnostic detail.
 

@@ -16,9 +16,7 @@ import pytest
 
 from roustabout import session
 
-# ---------------------------------------------------------------------------
 # S1.2.1: Session lifecycle
-# ---------------------------------------------------------------------------
 
 
 class TestPermissionTier:
@@ -208,9 +206,7 @@ class TestContextVar:
         session.destroy_session(s2)
 
 
-# ---------------------------------------------------------------------------
 # S1.2.2: Rate limiting
-# ---------------------------------------------------------------------------
 
 
 class TestRateLimiter:
@@ -285,9 +281,7 @@ class TestRateLimiter:
         assert 0 < exc_info.value.retry_after <= 300
 
 
-# ---------------------------------------------------------------------------
 # Lint test: only connection.py calls docker.DockerClient
-# ---------------------------------------------------------------------------
 
 
 class TestArchitecturalLint:

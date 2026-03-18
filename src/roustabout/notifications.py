@@ -15,6 +15,22 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
+# Prevent HTTP redirects from bypassing SSRF validation — a redirect
+# from a validated host to localhost/metadata would defeat URL checks.
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> None:
+        return None  # type: ignore[return-value]
+
+_no_redirect_opener = urllib.request.build_opener(_NoRedirectHandler)
+
 logger = logging.getLogger(__name__)
 
 
@@ -130,7 +146,7 @@ def _send_ntfy(url: str, event: NotificationEvent) -> None:
     req.add_header("Priority", _ntfy_priority(event.severity))
     if event.event_type:
         req.add_header("Tags", event.event_type)
-    urllib.request.urlopen(req, timeout=10)  # noqa: S310
+    _no_redirect_opener.open(req, timeout=10)  # noqa: S310
 
 
 # Convenience senders

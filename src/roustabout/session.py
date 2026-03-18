@@ -20,10 +20,7 @@ from time import monotonic
 
 from roustabout import connection
 
-# ---------------------------------------------------------------------------
 # Permission tiers
-# ---------------------------------------------------------------------------
-
 
 @functools.total_ordering
 class PermissionTier(Enum):
@@ -44,9 +41,7 @@ class PermissionTier(Enum):
         return hash(self.value)
 
 
-# ---------------------------------------------------------------------------
 # Capability sets
-# ---------------------------------------------------------------------------
 
 _OBSERVE_CAPABILITIES: frozenset[str] = frozenset({
     "can_snapshot", "can_audit", "can_diff", "can_generate",
@@ -72,9 +67,7 @@ def capabilities_for_tier(tier: PermissionTier) -> frozenset[str]:
     }[tier]
 
 
-# ---------------------------------------------------------------------------
 # Docker session
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -90,9 +83,7 @@ class DockerSession:
             self.client.close()  # type: ignore[union-attr]
 
 
-# ---------------------------------------------------------------------------
 # Rate limiter
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -182,9 +173,7 @@ class RateLimiter:
             global_bucket.tokens = min(global_bucket.tokens + 1, global_bucket.max_tokens)
 
 
-# ---------------------------------------------------------------------------
 # Session
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -199,9 +188,7 @@ class Session:
     created_at: str
 
 
-# ---------------------------------------------------------------------------
 # Errors
-# ---------------------------------------------------------------------------
 
 
 class SessionError(Exception):
@@ -216,9 +203,7 @@ class NoSessionError(SessionError):
     """No session established in current context."""
 
 
-# ---------------------------------------------------------------------------
 # ContextVar
-# ---------------------------------------------------------------------------
 
 current_session: ContextVar[Session] = ContextVar("current_session")
 
@@ -243,9 +228,7 @@ def get_current_session() -> Session:
         )
 
 
-# ---------------------------------------------------------------------------
 # Session lifecycle
-# ---------------------------------------------------------------------------
 
 
 def create_session(

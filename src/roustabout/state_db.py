@@ -22,9 +22,7 @@ from typing import Any
 
 from roustabout.redactor import is_secret_key
 
-# ---------------------------------------------------------------------------
 # Constants
-# ---------------------------------------------------------------------------
 
 GENESIS = "roustabout-genesis"
 SEPARATOR = "\x1f"  # ASCII Unit Separator
@@ -84,9 +82,7 @@ _DEFAULT_DB_PATHS = (
 )
 
 
-# ---------------------------------------------------------------------------
 # Types
-# ---------------------------------------------------------------------------
 
 
 class StateDB:
@@ -140,9 +136,7 @@ class ChainVerification:
     partial: bool = False
 
 
-# ---------------------------------------------------------------------------
 # Errors
-# ---------------------------------------------------------------------------
 
 
 class StateDBError(Exception):
@@ -157,9 +151,7 @@ class ChainIntegrityError(StateDBError):
     """Hash chain verification failed."""
 
 
-# ---------------------------------------------------------------------------
 # Hash chain internals
-# ---------------------------------------------------------------------------
 
 
 def _length_prefix(value: str) -> str:
@@ -201,9 +193,7 @@ def _compute_chain_hash(previous_chain_hash: str, row_data: str) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-# ---------------------------------------------------------------------------
 # Detail scrubbing
-# ---------------------------------------------------------------------------
 
 
 def _scrub_detail(detail: dict[str, Any]) -> dict[str, Any]:
@@ -235,9 +225,7 @@ def _scrub_detail(detail: dict[str, Any]) -> dict[str, Any]:
     return scrubbed
 
 
-# ---------------------------------------------------------------------------
 # Connection setup
-# ---------------------------------------------------------------------------
 
 
 def _make_connection(path: Path) -> sqlite3.Connection:
@@ -255,9 +243,7 @@ def _make_connection(path: Path) -> sqlite3.Connection:
     return conn
 
 
-# ---------------------------------------------------------------------------
 # Schema bootstrap
-# ---------------------------------------------------------------------------
 
 
 def _bootstrap_schema(db: StateDB, toml_search_paths: tuple[Path, ...]) -> None:
@@ -307,9 +293,7 @@ def _bootstrap_schema(db: StateDB, toml_search_paths: tuple[Path, ...]) -> None:
         raise
 
 
-# ---------------------------------------------------------------------------
 # TOML migration
-# ---------------------------------------------------------------------------
 
 
 def _try_toml_migration(
@@ -363,9 +347,7 @@ def _try_toml_migration(
         raise
 
 
-# ---------------------------------------------------------------------------
 # Database lifecycle
-# ---------------------------------------------------------------------------
 
 
 def open_db(
@@ -384,6 +366,25 @@ def open_db(
         resolved = path
 
     resolved.parent.mkdir(parents=True, exist_ok=True)
+
+    # If the DB file already exists, verify we can read+write it before
+    # opening a connection — catches permission issues early with a
+    # clear error instead of a cryptic SQLite message.
+    if resolved.exists():
+        import os
+        import stat
+
+        mode = resolved.stat().st_mode
+        if not (mode & stat.S_IRUSR and mode & stat.S_IWUSR):
+            raise StateDBError(
+                f"Database file {resolved} is not readable/writable by current user. "
+                f"Current mode: {oct(mode)}. Fix with: chmod u+rw {resolved}"
+            )
+        if not os.access(resolved, os.R_OK | os.W_OK):
+            raise StateDBError(
+                f"Database file {resolved} access denied. "
+                "Check file ownership and permissions."
+            )
 
     writer = _make_connection(resolved)
 
@@ -407,9 +408,7 @@ def close_db(db: StateDB) -> None:
     db._writer.close()
 
 
-# ---------------------------------------------------------------------------
 # Audit log (internal helper for use within transactions)
-# ---------------------------------------------------------------------------
 
 
 def _log_audit_internal(
@@ -460,9 +459,7 @@ def _log_audit_internal(
         raise
 
 
-# ---------------------------------------------------------------------------
 # Audit log (public API)
-# ---------------------------------------------------------------------------
 
 
 def log_audit(
@@ -555,9 +552,7 @@ def verify_chain(db: StateDB, host: str | None = None) -> ChainVerification:
         reader.close()
 
 
-# ---------------------------------------------------------------------------
 # Session tracking
-# ---------------------------------------------------------------------------
 
 
 def create_session(
@@ -634,9 +629,7 @@ def get_session(db: StateDB, *, session_id: str) -> SessionRow | None:
         reader.close()
 
 
-# ---------------------------------------------------------------------------
 # Finding triage
-# ---------------------------------------------------------------------------
 
 
 def set_finding_state(
@@ -720,9 +713,7 @@ def clear_resolved_finding(db: StateDB, *, key: str, host: str) -> None:
             raise
 
 
-# ---------------------------------------------------------------------------
 # Circuit breaker queries
-# ---------------------------------------------------------------------------
 
 
 def check_circuit(
@@ -796,9 +787,7 @@ def reset_circuit(
     )
 
 
-# ---------------------------------------------------------------------------
 # Previous findings comparison
-# ---------------------------------------------------------------------------
 
 
 def load_previous_audit(

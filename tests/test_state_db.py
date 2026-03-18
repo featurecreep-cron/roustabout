@@ -15,9 +15,7 @@ import pytest
 
 from roustabout import state_db
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 def _manual_chain_hash(previous: str, row_data: str) -> str:
     """Independent hash computation for verification."""
@@ -33,9 +31,7 @@ def _manual_row_data(*fields: str) -> str:
     return "\x1f".join(_manual_length_prefix(f) for f in fields)
 
 
-# ---------------------------------------------------------------------------
 # S1.1.1: Schema, connection management, finding triage
-# ---------------------------------------------------------------------------
 
 
 class TestOpenDB:
@@ -127,6 +123,18 @@ class TestOpenDB:
 
         with pytest.raises(state_db.StateDBVersionError):
             state_db.open_db(db_path)
+
+    def test_unreadable_db_raises_state_db_error(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        db = state_db.open_db(db_path)
+        state_db.close_db(db)
+
+        db_path.chmod(0o000)
+        try:
+            with pytest.raises(state_db.StateDBError, match="not readable"):
+                state_db.open_db(db_path)
+        finally:
+            db_path.chmod(0o644)
 
 
 class TestFindingTriage:
@@ -226,9 +234,7 @@ class TestFindingTriage:
         assert row[2] == "success"
 
 
-# ---------------------------------------------------------------------------
 # S1.1.2: TOML migration
-# ---------------------------------------------------------------------------
 
 
 class TestTOMLMigration:
@@ -330,9 +336,7 @@ class TestTOMLMigration:
         assert toml_path.exists()
 
 
-# ---------------------------------------------------------------------------
 # S1.1.3: Audit log with hash chain
-# ---------------------------------------------------------------------------
 
 
 class TestAuditLog:
@@ -541,9 +545,7 @@ class TestAuditLog:
         assert result.partial is True
 
 
-# ---------------------------------------------------------------------------
 # Session tracking (used by S1.1.1 and S1.2.1)
-# ---------------------------------------------------------------------------
 
 
 class TestSessionTracking:
@@ -583,9 +585,7 @@ class TestSessionTracking:
         assert state_db.get_session(db, session_id="nope") is None
 
 
-# ---------------------------------------------------------------------------
 # Circuit breaker queries
-# ---------------------------------------------------------------------------
 
 
 class TestCircuitBreaker:
@@ -703,9 +703,7 @@ class TestCircuitBreaker:
         assert result.open is False
 
 
-# ---------------------------------------------------------------------------
 # Previous findings comparison
-# ---------------------------------------------------------------------------
 
 
 class TestPreviousFindings:
@@ -731,9 +729,7 @@ class TestPreviousFindings:
         assert loaded == summary
 
 
-# ---------------------------------------------------------------------------
 # Hash chain internals
-# ---------------------------------------------------------------------------
 
 
 class TestHashChainInternals:
@@ -768,9 +764,7 @@ class TestHashChainInternals:
         assert result == expected
 
 
-# ---------------------------------------------------------------------------
 # Lint test: only state_db.py imports sqlite3
-# ---------------------------------------------------------------------------
 
 
 class TestArchitecturalLint:

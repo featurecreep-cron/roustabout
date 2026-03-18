@@ -146,6 +146,24 @@ class TestNtfySend:
         assert _ntfy_priority("unknown") == "3"
 
 
+class TestNtfyRedirectProtection:
+    def test_no_redirect_handler_prevents_redirects(self):
+        """_NoRedirectHandler returns None for redirect requests."""
+        from roustabout.notifications import _NoRedirectHandler
+
+        handler = _NoRedirectHandler()
+        result = handler.redirect_request(None, None, 302, "", {}, "http://evil.com")
+        assert result is None
+
+    def test_opener_uses_no_redirect_handler(self):
+        """The module-level opener blocks redirects."""
+        from roustabout.notifications import _no_redirect_opener
+
+        # Verify _NoRedirectHandler is in the handler chain
+        handler_types = [type(h).__name__ for h in _no_redirect_opener.handlers]
+        assert "_NoRedirectHandler" in handler_types
+
+
 class TestNtfyUrlValidation:
     def test_https_allowed(self):
         from roustabout.notifications import _validate_ntfy_url

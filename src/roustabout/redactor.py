@@ -23,9 +23,7 @@ from roustabout.models import ContainerInfo, DockerEnvironment, make_environment
 
 REDACTED = "[REDACTED]"
 
-# ---------------------------------------------------------------------------
 # Sanitization patterns (NFR-01)
-# ---------------------------------------------------------------------------
 
 # ASCII control characters except \n (0x0A) and \t (0x09), plus C1 codes
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\x80-\x9f]")

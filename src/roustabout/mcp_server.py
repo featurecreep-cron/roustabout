@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 
 import anyio
+import docker.errors as _docker_errors
 from mcp.server.fastmcp import FastMCP
 
 from roustabout.audit_renderer import render_findings
@@ -92,7 +93,7 @@ async def docker_snapshot(show_env: bool = False, show_labels: bool = True) -> s
         env, cfg = await anyio.to_thread.run_sync(
             _collect_redacted, abandon_on_cancel=False
         )
-    except Exception as exc:
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     result = render(env, show_env=show_env, show_labels=show_labels)
     return _enforce_size_limit(result, cfg.response_size_cap)
@@ -120,7 +121,7 @@ async def docker_audit() -> str:
         result = await anyio.to_thread.run_sync(
             _run_audit, abandon_on_cancel=False
         )
-    except Exception as exc:
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     return _enforce_size_limit(result, cfg.response_size_cap)
 
@@ -140,7 +141,7 @@ async def docker_container(name: str) -> str:
         env, _cfg = await anyio.to_thread.run_sync(
             _collect_redacted, abandon_on_cancel=False
         )
-    except Exception as exc:
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     matches = [c for c in env.containers if c.name == name]
     if not matches:
@@ -166,7 +167,7 @@ async def docker_networks() -> str:
         env, _cfg = await anyio.to_thread.run_sync(
             _collect_redacted, abandon_on_cancel=False
         )
-    except Exception as exc:
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
 
     from roustabout.renderer import render_network_topology
@@ -188,7 +189,7 @@ async def docker_generate(include_stopped: bool = False) -> str:
         env, cfg = await anyio.to_thread.run_sync(
             _collect_redacted, abandon_on_cancel=False
         )
-    except Exception as exc:
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     return generate(env, include_stopped=include_stopped)
 
@@ -206,7 +207,7 @@ async def docker_dr_plan() -> str:
         env, cfg = await anyio.to_thread.run_sync(
             _collect_redacted, abandon_on_cancel=False
         )
-    except Exception as exc:
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
 
     def _build_summary() -> str:
@@ -247,7 +248,7 @@ async def docker_dr_detail(name: str) -> str:
         env, cfg = await anyio.to_thread.run_sync(
             _collect_redacted, abandon_on_cancel=False
         )
-    except Exception as exc:
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
 
     matches = [c for c in env.containers if c.name == name]
@@ -356,7 +357,7 @@ async def docker_health(container_name: str | None = None) -> str:
             return render_health(healths)
 
         result = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
-    except Exception as exc:
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: {_safe_error(exc)}")
     return _enforce_size_limit(result, cfg.response_size_cap)
 
@@ -388,7 +389,7 @@ async def docker_stats(container_name: str | None = None) -> str:
             return render_stats(stats)
 
         result = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
-    except Exception as exc:
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: {_safe_error(exc)}")
     return _enforce_size_limit(result, cfg.response_size_cap)
 
@@ -438,7 +439,7 @@ async def docker_logs(
                 client.close()
 
         result = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
-    except Exception as exc:
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: {_safe_error(exc)}")
     return _enforce_size_limit(result, cfg.response_size_cap)
 
@@ -463,7 +464,7 @@ async def docker_findings(
         env, cfg = await anyio.to_thread.run_sync(
             _collect_redacted, abandon_on_cancel=False
         )
-    except Exception as exc:
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: {_safe_error(exc)}")
 
     from roustabout.auditor import audit as run_audit
@@ -569,7 +570,7 @@ async def docker_manage(
 
     try:
         msg = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
-    except Exception as exc:
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: {_safe_error(exc)}")
     return _envelope(msg)
 

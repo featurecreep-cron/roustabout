@@ -1,0 +1,44 @@
+# Roustabout — Docker environment documentation and management
+#
+# Usage:
+#   docker compose -f docker-compose.example.yml up -d
+#
+# Required volumes:
+#   - Docker socket: lets roustabout inspect and manage containers
+#   - /etc/roustabout/: lockdown file location (create /etc/roustabout/lockdown to halt mutations)
+#   - roustabout-data: persists SQLite state database (audit log, finding triage)
+#
+# Environment variables:
+#   - DOCKER_HOST: override Docker socket path (default: /var/run/docker.sock)
+#   - ROUSTABOUT_CONFIG: config file path inside container (default: /etc/roustabout/config.toml)
+
+services:
+  roustabout:
+    image: ghcr.io/featurecreep-cron/roustabout:latest
+    container_name: roustabout
+    restart: unless-stopped
+    # Run the MCP server for AI access
+    entrypoint: ["roustabout-mcp"]
+    volumes:
+      # Docker socket — required for container inspection and management
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Lockdown directory — create /etc/roustabout/lockdown to halt all mutations
+      - ./roustabout-config:/etc/roustabout
+      # State persistence — audit log, finding triage, session data
+      - roustabout-data:/data
+    environment:
+      # Override if your Docker socket is elsewhere
+      # DOCKER_HOST: unix:///var/run/docker.sock
+      ROUSTABOUT_CONFIG: /etc/roustabout/config.toml
+    # Match the host's docker group GID for socket access
+    # Find your GID with: stat -c '%g' /var/run/docker.sock
+    group_add:
+      - "999"
+    healthcheck:
+      test: ["CMD", "roustabout", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  roustabout-data:

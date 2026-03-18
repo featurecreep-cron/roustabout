@@ -303,3 +303,11 @@ def resolve_finding(finding_key: str, reason: str, state_file: str | None) -> No
         Path(state_file) if state_file else None,
     )
     click.echo(f"Marked {finding_key} as resolved. State saved to {path}")
+
+
+@main.command("version")
+def version_cmd() -> None:
+    """Show roustabout version."""
+    from importlib.metadata import version
+
+    click.echo(f"roustabout {version('roustabout')}")

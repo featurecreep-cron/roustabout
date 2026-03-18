@@ -260,6 +260,64 @@ async def docker_dr_detail(name: str) -> str:
 
 
 @mcp.tool()
+async def docker_findings(
+    severity: str | None = None,
+    container: str | None = None,
+) -> str:
+    """[OBSERVE] Get structured security findings with remediation actions.
+
+    Use when: you need machine-readable audit findings or want to fix issues.
+    Returns: JSON array of findings with keys, severity, remediation actions.
+
+    Args:
+        severity: Filter by severity (critical, warning, info).
+        container: Filter by container name.
+    """
+    import json as _json
+
+    try:
+        env, cfg = await anyio.to_thread.run_sync(
+            _collect_redacted, abandon_on_cancel=False
+        )
+    except Exception as exc:
+        return _envelope(f"Error: {_safe_error(exc)}")
+
+    from roustabout.auditor import audit as run_audit
+
+    findings = run_audit(
+        env, patterns=cfg.redact_patterns,
+        severity_overrides=cfg.severity_overrides,
+    )
+
+    if severity:
+        severity = sanitize(severity).lower()
+        findings = [f for f in findings if f.severity.value == severity]
+
+    if container:
+        container = sanitize(container)[:128]
+        findings = [f for f in findings if f.container == container]
+
+    result = [
+        {
+            "key": f.key,
+            "severity": f.severity.value,
+            "category": f.category,
+            "container": f.container,
+            "explanation": f.explanation,
+            "fix": f.fix,
+            "remediation": f.remediation,
+            "remediation_action": f.remediation_action,
+            "remediation_tier": f.remediation_tier,
+        }
+        for f in findings
+    ]
+
+    return _enforce_size_limit(
+        _json.dumps(result, indent=2), cfg.response_size_cap,
+    )
+
+
+@mcp.tool()
 async def docker_manage(
     action: str,
     container_name: str,

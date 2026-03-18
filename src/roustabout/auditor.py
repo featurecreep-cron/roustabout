@@ -83,6 +83,9 @@ class Finding:
     explanation: str
     fix: str
     detail: str = field(default="", compare=True)
+    remediation: str | None = field(default=None, compare=False)
+    remediation_action: str | None = field(default=None, compare=False)
+    remediation_tier: str | None = field(default=None, compare=False)
 
     @property
     def key(self) -> str:
@@ -488,6 +491,9 @@ def _check_no_restart_policy(c: ContainerInfo) -> list[Finding]:
                 explanation="No restart policy configured. This container will not "
                 "automatically restart after a host reboot or crash.",
                 fix="Set `restart: unless-stopped` or `restart: always` in docker-compose.yml.",
+                remediation="Recreate with unless-stopped restart policy",
+                remediation_action=f"recreate:{c.name}:restart_policy=unless-stopped",
+                remediation_tier="operate",
             )
         ]
     return []

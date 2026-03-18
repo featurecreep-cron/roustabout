@@ -13,14 +13,12 @@ import threading
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Event type
-# ---------------------------------------------------------------------------
-
 
 @dataclass(frozen=True)
 class NotificationEvent:
@@ -34,10 +32,7 @@ class NotificationEvent:
     session_id: str | None = None
 
 
-# ---------------------------------------------------------------------------
 # Channel state
-# ---------------------------------------------------------------------------
-
 _channels: list[dict[str, Any]] = []
 _lock = threading.Lock()
 
@@ -52,6 +47,9 @@ def configure(channels: list[dict[str, Any]]) -> None:
             if not url:
                 logger.warning("ntfy channel missing url, skipping")
                 continue
+            if not _validate_ntfy_url(url):
+                logger.warning("ntfy channel URL rejected: %s", url)
+                continue
             validated.append({"type": "ntfy", "url": url})
         else:
             logger.warning("Unknown notification channel type: %s", ch_type)
@@ -60,10 +58,7 @@ def configure(channels: list[dict[str, Any]]) -> None:
         _channels = validated
 
 
-# ---------------------------------------------------------------------------
 # Delivery
-# ---------------------------------------------------------------------------
-
 
 def send_event(event: NotificationEvent) -> None:
     """Route an event to all configured channels. Never raises."""
@@ -93,9 +88,33 @@ def send_event(event: NotificationEvent) -> None:
             )
 
 
-# ---------------------------------------------------------------------------
 # ntfy channel
-# ---------------------------------------------------------------------------
+
+_SAFE_SCHEMES = frozenset({"https", "http"})
+
+# RFC 1918, loopback, link-local — reject for SSRF prevention
+_BLOCKED_HOSTS = frozenset({
+    "localhost", "127.0.0.1", "::1", "0.0.0.0",
+    "169.254.169.254",  # cloud metadata
+    "metadata.google.internal",
+})
+
+
+def _validate_ntfy_url(url: str) -> bool:
+    """Reject URLs that could be used for SSRF."""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme not in _SAFE_SCHEMES:
+        return False
+    host = (parsed.hostname or "").lower()
+    if host in _BLOCKED_HOSTS:
+        return False
+    # Reject RFC 1918 ranges by prefix
+    if host.startswith(("10.", "192.168.", "172.")):
+        return False
+    return True
 
 
 def _ntfy_priority(severity: str) -> str:
@@ -114,10 +133,7 @@ def _send_ntfy(url: str, event: NotificationEvent) -> None:
     urllib.request.urlopen(req, timeout=10)  # noqa: S310
 
 
-# ---------------------------------------------------------------------------
 # Convenience senders
-# ---------------------------------------------------------------------------
-
 
 def send_mutation_event(
     *,

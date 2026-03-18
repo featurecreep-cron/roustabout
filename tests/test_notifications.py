@@ -14,10 +14,7 @@ from roustabout.notifications import (
     send_mutation_event,
 )
 
-# ---------------------------------------------------------------------------
 # NotificationEvent dataclass
-# ---------------------------------------------------------------------------
-
 
 class TestNotificationEvent:
     def test_fields(self):
@@ -43,10 +40,7 @@ class TestNotificationEvent:
         assert event.session_id is None
 
 
-# ---------------------------------------------------------------------------
 # Channel configuration
-# ---------------------------------------------------------------------------
-
 
 class TestConfigure:
     def test_empty_config(self):
@@ -65,10 +59,7 @@ class TestConfigure:
         configure([{"type": "carrier_pigeon", "url": "lol"}])
 
 
-# ---------------------------------------------------------------------------
 # Event delivery
-# ---------------------------------------------------------------------------
-
 
 class TestSendEvent:
     def test_no_channels_no_error(self):
@@ -112,10 +103,7 @@ class TestSendEvent:
             send_event(event)
 
 
-# ---------------------------------------------------------------------------
 # Convenience senders
-# ---------------------------------------------------------------------------
-
 
 class TestSendMutationEvent:
     def test_success_event(self):
@@ -146,10 +134,7 @@ class TestSendMutationEvent:
             assert event.severity == "warning"
 
 
-# ---------------------------------------------------------------------------
 # ntfy specifics
-# ---------------------------------------------------------------------------
-
 
 class TestNtfySend:
     def test_priority_mapping(self):
@@ -159,3 +144,52 @@ class TestNtfySend:
         assert _ntfy_priority("warning") == "3"
         assert _ntfy_priority("info") == "2"
         assert _ntfy_priority("unknown") == "3"
+
+
+class TestNtfyUrlValidation:
+    def test_https_allowed(self):
+        from roustabout.notifications import _validate_ntfy_url
+
+        assert _validate_ntfy_url("https://ntfy.sh/roustabout") is True
+
+    def test_http_allowed(self):
+        from roustabout.notifications import _validate_ntfy_url
+
+        assert _validate_ntfy_url("http://ntfy.example.com/topic") is True
+
+    def test_file_scheme_rejected(self):
+        from roustabout.notifications import _validate_ntfy_url
+
+        assert _validate_ntfy_url("file:///etc/passwd") is False
+
+    def test_localhost_rejected(self):
+        from roustabout.notifications import _validate_ntfy_url
+
+        assert _validate_ntfy_url("http://localhost:8080/topic") is False
+        assert _validate_ntfy_url("http://127.0.0.1/topic") is False
+
+    def test_cloud_metadata_rejected(self):
+        from roustabout.notifications import _validate_ntfy_url
+
+        assert _validate_ntfy_url("http://169.254.169.254/latest") is False
+
+    def test_rfc1918_rejected(self):
+        from roustabout.notifications import _validate_ntfy_url
+
+        assert _validate_ntfy_url("http://10.0.0.1/topic") is False
+        assert _validate_ntfy_url("http://192.168.1.1/topic") is False
+
+    def test_configure_rejects_bad_url(self):
+        """configure() should skip channels with blocked URLs."""
+        from roustabout.notifications import _lock
+
+        # Reset state, then configure with a blocked URL
+        configure([])
+        configure([{"type": "ntfy", "url": "http://localhost/topic"}])
+        from roustabout import notifications
+        with _lock:
+            assert len(notifications._channels) == 0
+
+        configure([{"type": "ntfy", "url": "https://ntfy.sh/ok"}])
+        with _lock:
+            assert len(notifications._channels) == 1

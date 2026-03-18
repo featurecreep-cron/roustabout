@@ -19,10 +19,7 @@ from roustabout.health_stats import (
     render_stats,
 )
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
-
 
 def _mock_container(**overrides):
     c = MagicMock()
@@ -121,10 +118,7 @@ def _mock_stats_cgroup_v1():
     }
 
 
-# ---------------------------------------------------------------------------
 # Health collection
-# ---------------------------------------------------------------------------
-
 
 class TestCollectHealth:
     def test_healthy_container(self):
@@ -158,10 +152,7 @@ class TestCollectHealth:
         assert results[0].health_log[0]["ExitCode"] == 0
 
 
-# ---------------------------------------------------------------------------
 # Stats collection
-# ---------------------------------------------------------------------------
-
 
 class TestCollectStats:
     def test_cgroup_v2_stats(self):
@@ -213,10 +204,7 @@ class TestCollectStats:
         assert results[0].block_write_bytes is None
 
 
-# ---------------------------------------------------------------------------
 # Disk usage
-# ---------------------------------------------------------------------------
-
 
 class TestCollectDiskUsage:
     def test_disk_usage(self):
@@ -245,10 +233,7 @@ class TestCollectDiskUsage:
         assert du.containers_count == 1
 
 
-# ---------------------------------------------------------------------------
 # Rendering
-# ---------------------------------------------------------------------------
-
 
 class TestRendering:
     def test_render_health(self):

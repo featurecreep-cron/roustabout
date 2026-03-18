@@ -11,15 +11,13 @@ from dataclasses import dataclass
 
 import docker.errors as _docker_errors
 
+from roustabout.redactor import sanitize
 from roustabout.session import DockerSession
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Result type
-# ---------------------------------------------------------------------------
-
 
 @dataclass(frozen=True)
 class MutationResult:
@@ -32,10 +30,7 @@ class MutationResult:
     error_type: str | None = None  # connection_error, not_found, mutation_error
 
 
-# ---------------------------------------------------------------------------
 # Individual operations
-# ---------------------------------------------------------------------------
-
 
 def _stop(docker: DockerSession, target: str) -> MutationResult:
     container = docker.client.containers.get(target)
@@ -55,10 +50,7 @@ def _restart(docker: DockerSession, target: str) -> MutationResult:
     return MutationResult(success=True, action="restart", target=target)
 
 
-# ---------------------------------------------------------------------------
 # Dispatch
-# ---------------------------------------------------------------------------
-
 _DISPATCH = {
     "start": _start,
     "stop": _stop,
@@ -97,12 +89,12 @@ def execute(
     except ConnectionError as e:
         return MutationResult(
             success=False, action=action, target=target,
-            error=str(e),
+            error=sanitize(str(e)),
             error_type="connection_error",
         )
     except _docker_errors.APIError as e:
         return MutationResult(
             success=False, action=action, target=target,
-            error=str(e),
+            error=sanitize(str(e)),
             error_type="mutation_error",
         )

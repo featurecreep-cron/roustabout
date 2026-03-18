@@ -25,10 +25,7 @@ _SUPPORTED_DRIVERS = frozenset({"json-file", "local", "journald"})
 _RELATIVE_RE = re.compile(r"^(\d+)([smhd])$")
 
 
-# ---------------------------------------------------------------------------
 # Exceptions
-# ---------------------------------------------------------------------------
-
 
 class ContainerNotFoundError(Exception):
     """Container does not exist."""
@@ -38,10 +35,7 @@ class UnsupportedLogDriver(Exception):
     """Container uses a log driver that doesn't support the logs API."""
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
-
 
 def collect_logs(
     client: Any,
@@ -115,10 +109,7 @@ def collect_logs(
     return "\n".join(processed)
 
 
-# ---------------------------------------------------------------------------
 # Since parsing
-# ---------------------------------------------------------------------------
-
 
 def parse_since(value: str) -> int | str:
     """Parse a since parameter into a Docker-compatible value.

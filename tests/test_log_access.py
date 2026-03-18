@@ -18,10 +18,7 @@ from roustabout.log_access import (
     parse_since,
 )
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
-
 
 def _mock_container(
     name: str = "nginx",
@@ -39,10 +36,7 @@ def _mock_container(
     return c
 
 
-# ---------------------------------------------------------------------------
 # Log retrieval
-# ---------------------------------------------------------------------------
-
 
 class TestCollectLogs:
     def test_basic_retrieval(self):
@@ -121,10 +115,7 @@ class TestCollectLogs:
         assert "info: all good" not in result
 
 
-# ---------------------------------------------------------------------------
 # Since parsing
-# ---------------------------------------------------------------------------
-
 
 class TestParseSince:
     def test_relative_minutes(self):

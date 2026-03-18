@@ -7,16 +7,15 @@ No mutations — read-only operations only.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
+
+import docker.errors as _docker_errors
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Data types
-# ---------------------------------------------------------------------------
-
 
 @dataclass(frozen=True)
 class ContainerHealth:
@@ -28,7 +27,7 @@ class ContainerHealth:
     restart_count: int
     oom_killed: bool
     started_at: str
-    health_log: list[dict[str, Any]] = field(default_factory=list)
+    health_log: tuple[dict[str, Any], ...] = ()
     healthcheck_config: dict[str, Any] | None = None
 
 
@@ -60,10 +59,7 @@ class DiskUsage:
     build_cache_size_bytes: int
 
 
-# ---------------------------------------------------------------------------
 # Collection
-# ---------------------------------------------------------------------------
-
 
 def collect_health(client: Any) -> list[ContainerHealth]:
     """Collect health status for all containers."""
@@ -82,7 +78,7 @@ def collect_health(client: Any) -> list[ContainerHealth]:
             restart_count=c.attrs.get("RestartCount", 0),
             oom_killed=state.get("OOMKilled", False),
             started_at=state.get("StartedAt", ""),
-            health_log=health_info.get("Log", []) if health_info else [],
+            health_log=tuple(health_info.get("Log", [])) if health_info else (),
             healthcheck_config=hc_config,
         ))
     return results
@@ -106,7 +102,7 @@ def collect_stats(
         try:
             raw = c.stats(stream=False)
             results.append(_parse_stats(c.name, raw))
-        except Exception:
+        except _docker_errors.DockerException:
             logger.warning("Failed to collect stats for %s", c.name)
     return results
 
@@ -140,10 +136,7 @@ def collect_disk_usage(client: Any) -> DiskUsage:
     )
 
 
-# ---------------------------------------------------------------------------
 # Stats parsing
-# ---------------------------------------------------------------------------
-
 
 def _parse_stats(name: str, raw: dict[str, Any]) -> ContainerStats:
     """Parse docker stats JSON into ContainerStats."""
@@ -235,10 +228,7 @@ def _parse_block_io(raw: dict[str, Any]) -> tuple[int | None, int | None]:
     return read_bytes, write_bytes
 
 
-# ---------------------------------------------------------------------------
 # Rendering
-# ---------------------------------------------------------------------------
-
 
 def _human_size(n: int | None) -> str:
     """Convert bytes to human-readable string."""

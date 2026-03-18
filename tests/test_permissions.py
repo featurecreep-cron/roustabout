@@ -19,14 +19,14 @@ def _make_session(tier: PermissionTier):
     """Create a minimal session-like object for permission checks."""
     from unittest.mock import MagicMock
 
-    from roustabout.session import DockerSession, RateLimiter, Session, _capabilities_for_tier
+    from roustabout.session import DockerSession, RateLimiter, Session, capabilities_for_tier
 
     docker = DockerSession(client=MagicMock(), host="localhost")
     return Session(
         id="test-session",
         docker=docker,
         tier=tier,
-        capabilities=_capabilities_for_tier(tier),
+        capabilities=capabilities_for_tier(tier),
         rate_limiter=RateLimiter(),
         created_at="2026-03-17T00:00:00Z",
     )

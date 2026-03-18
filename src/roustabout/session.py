@@ -64,7 +64,7 @@ _ELEVATE_CAPABILITIES: frozenset[str] = _OPERATE_CAPABILITIES | frozenset({
 })
 
 
-def _capabilities_for_tier(tier: PermissionTier) -> frozenset[str]:
+def capabilities_for_tier(tier: PermissionTier) -> frozenset[str]:
     return {
         PermissionTier.OBSERVE: _OBSERVE_CAPABILITIES,
         PermissionTier.OPERATE: _OPERATE_CAPABILITIES,
@@ -260,7 +260,7 @@ def create_session(
     docker_session = DockerSession(client=client, host=host)
 
     sid = session_id or str(uuid.uuid4())
-    caps = _capabilities_for_tier(tier)
+    caps = capabilities_for_tier(tier)
     now = datetime.now(UTC).isoformat()
 
     return Session(
@@ -278,7 +278,7 @@ def elevate_session(sess: Session, new_tier: PermissionTier) -> Session:
     return dataclasses.replace(
         sess,
         tier=new_tier,
-        capabilities=_capabilities_for_tier(new_tier),
+        capabilities=capabilities_for_tier(new_tier),
     )
 
 

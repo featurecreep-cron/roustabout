@@ -13,12 +13,10 @@ import re
 from dataclasses import dataclass
 
 from roustabout.models import ContainerInfo
+from roustabout.redactor import sanitize
 from roustabout.session import PermissionTier, Session
 
-# ---------------------------------------------------------------------------
 # Default deny list — image patterns that force ELEVATE tier for mutations
-# ---------------------------------------------------------------------------
-
 _DEFAULT_ELEVATE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
@@ -37,10 +35,7 @@ _DEFAULT_ELEVATE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 )
 
 
-# ---------------------------------------------------------------------------
 # Action → capability mapping
-# ---------------------------------------------------------------------------
-
 ACTION_CAPABILITY: dict[str, str] = {
     # Read operations (Observe tier)
     "snapshot": "can_snapshot",
@@ -88,10 +83,7 @@ CAPABILITY_TIER: dict[str, PermissionTier] = {
 }
 
 
-# ---------------------------------------------------------------------------
 # Exception
-# ---------------------------------------------------------------------------
-
 
 @dataclass
 class PermissionDenied(Exception):
@@ -110,10 +102,7 @@ class PermissionDenied(Exception):
         return self.reason
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
-
 
 def check(
     session: Session,
@@ -178,10 +167,7 @@ def list_capabilities(session: Session) -> list[dict[str, str | bool]]:
     ]
 
 
-# ---------------------------------------------------------------------------
 # Internal helpers
-# ---------------------------------------------------------------------------
-
 
 def _resolve_container_tier(
     container: ContainerInfo,
@@ -194,7 +180,9 @@ def _resolve_container_tier(
     2. Default deny list (database, auth, proxy images)
     """
     labels = dict(container.labels)
-    tier_label = labels.get("roustabout.tier")
+    raw_tier = labels.get("roustabout.tier")
+    # Labels are untrusted Docker input — sanitize before security decisions
+    tier_label = sanitize(raw_tier) if raw_tier else None
     if tier_label == "elevate-only":
         return PermissionTier.ELEVATE
 

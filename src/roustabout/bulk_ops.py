@@ -7,7 +7,7 @@ Blast radius cap prevents accidentally affecting too many containers.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from roustabout.session import Session
@@ -17,25 +17,19 @@ logger = logging.getLogger(__name__)
 DEFAULT_BLAST_RADIUS_CAP = 5
 
 
-# ---------------------------------------------------------------------------
 # Result type
-# ---------------------------------------------------------------------------
 
-
-@dataclass
+@dataclass(frozen=True)
 class BulkResult:
     """Outcome of a bulk operation."""
 
     success: bool
     action: str
-    per_container: list[dict[str, Any]] = field(default_factory=list)
+    per_container: tuple[dict[str, Any], ...] = ()
     error: str | None = None
 
 
-# ---------------------------------------------------------------------------
 # Selectors
-# ---------------------------------------------------------------------------
-
 
 def select_by_project(containers: list[Any], project: str) -> list[Any]:
     """Select containers belonging to a compose project."""
@@ -58,10 +52,7 @@ def select_by_label(containers: list[Any], selector: str) -> list[Any]:
     return [c for c in containers if selector in c.labels]
 
 
-# ---------------------------------------------------------------------------
 # Bulk execution
-# ---------------------------------------------------------------------------
-
 
 def bulk_manage(
     *,
@@ -83,7 +74,7 @@ def bulk_manage(
             error=(
                 f"Blast radius cap exceeded: {len(targets)} containers "
                 f"exceeds limit of {blast_radius_cap}. "
-                f"Use --force or increase blast_radius_cap to override."
+                f"Narrow the target set or increase blast_radius_cap."
             ),
         )
 
@@ -91,10 +82,10 @@ def bulk_manage(
         return BulkResult(
             success=True,
             action=action,
-            per_container=[
+            per_container=tuple(
                 {"target": t, "success": True, "result": "dry-run"}
                 for t in targets
-            ],
+            ),
         )
 
     results = []
@@ -108,7 +99,7 @@ def bulk_manage(
     return BulkResult(
         success=all_success,
         action=action,
-        per_container=results,
+        per_container=tuple(results),
     )
 
 

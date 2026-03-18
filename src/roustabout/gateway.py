@@ -319,6 +319,16 @@ def execute(
 
         result_str = "success" if mutation_result.success else "failed"
 
+        # Step 10: Notification (fire-and-forget)
+        from roustabout import notifications
+
+        notifications.send_mutation_event(
+            action=command.action,
+            target=command.target,
+            success=mutation_result.success,
+            session_id=s.id,
+        )
+
         # Audit log
         audit_id = None
         if database is not None:

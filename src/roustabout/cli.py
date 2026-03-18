@@ -281,6 +281,98 @@ def dr_plan(
         click.echo(result)
 
 
+@main.command("health")
+@click.option("--container", default=None, help="Filter to a single container.")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+def health_cmd(
+    container: str | None,
+    config_path: str | None,
+    docker_host: str | None,
+) -> None:
+    """Show container health status."""
+    from roustabout.health_stats import collect_health, render_health
+
+    cfg = _load_cfg(config_path, docker_host=docker_host)
+    client = _connect(cfg.docker_host)
+    healths = collect_health(client)
+    if container:
+        healths = [h for h in healths if h.name == container]
+    click.echo(render_health(healths))
+
+
+@main.command("stats")
+@click.option("--container", default=None, help="Filter to a single container.")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+def stats_cmd(
+    container: str | None,
+    config_path: str | None,
+    docker_host: str | None,
+) -> None:
+    """Show container resource usage."""
+    from roustabout.health_stats import collect_stats, render_stats
+
+    cfg = _load_cfg(config_path, docker_host=docker_host)
+    client = _connect(cfg.docker_host)
+    stats = collect_stats(client, target=container)
+    click.echo(render_stats(stats))
+
+
+@main.command("logs")
+@click.argument("container_name")
+@click.option("--tail", default=100, help="Number of lines (default 100).")
+@click.option("--since", default=None, help="Time filter (5m, 1h, or ISO 8601).")
+@click.option("--grep", default=None, help="Substring filter.")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+def logs_cmd(
+    container_name: str,
+    tail: int,
+    since: str | None,
+    grep: str | None,
+    config_path: str | None,
+    docker_host: str | None,
+) -> None:
+    """Read container logs."""
+    from roustabout.log_access import (
+        ContainerNotFoundError,
+        UnsupportedLogDriver,
+        collect_logs,
+    )
+
+    cfg = _load_cfg(config_path, docker_host=docker_host)
+    client = _connect(cfg.docker_host)
+    try:
+        result = collect_logs(
+            client, container_name,
+            tail=tail, since=since, grep=grep,
+        )
+        click.echo(result)
+    except ContainerNotFoundError:
+        raise click.ClickException(f"Container '{container_name}' not found")
+    except UnsupportedLogDriver as e:
+        raise click.ClickException(str(e))
+
+
 @main.command("stop")
 @click.argument("container_name")
 @click.option("--dry-run", is_flag=True, default=False, help="Preview without executing.")

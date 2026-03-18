@@ -189,3 +189,134 @@ class TestConfigPriority:
         # but CWD should win when both exist
         cfg = load_config()
         assert cfg.show_env is True
+
+    def test_env_var_override(self, tmp_path, monkeypatch):
+        config_file = tmp_path / "custom.toml"
+        config_file.write_text("show_env = true\n")
+        monkeypatch.setenv("ROUSTABOUT_CONFIG", str(config_file))
+        cfg = load_config()
+        assert cfg.show_env is True
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 config fields
+# ---------------------------------------------------------------------------
+
+
+class TestPhase1ConfigFields:
+    """S1.3.1: Phase 1 configuration fields."""
+
+    def test_phase1_defaults(self):
+        cfg = Config()
+        assert cfg.rate_limit_per_container == 3
+        assert cfg.rate_limit_window_seconds == 300
+        assert cfg.rate_limit_global == 10
+        assert cfg.blast_radius_cap == 5
+        assert cfg.ntfy_url is None
+        assert cfg.apprise_urls == ()
+        assert cfg.notification_routing == {}
+        assert cfg.default_tier == "operate"
+        assert len(cfg.elevate_only_images) > 0
+        assert "postgres" in cfg.elevate_only_images
+        assert cfg.allowlist_patterns == ()
+        assert cfg.log_tail_default == 100
+        assert cfg.response_size_cap == 262144
+        assert cfg.state_db is None
+
+    def test_rate_limit_config(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            "rate_limit_per_container = 5\n"
+            "rate_limit_window_seconds = 600\n"
+            "rate_limit_global = 20\n"
+        )
+        cfg = load_config(config_file)
+        assert cfg.rate_limit_per_container == 5
+        assert cfg.rate_limit_window_seconds == 600
+        assert cfg.rate_limit_global == 20
+
+    def test_negative_rate_limit_raises(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("rate_limit_per_container = -1\n")
+        with pytest.raises(ValueError, match="rate_limit_per_container must be a positive"):
+            load_config(config_file)
+
+    def test_blast_radius_cap(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("blast_radius_cap = 10\n")
+        cfg = load_config(config_file)
+        assert cfg.blast_radius_cap == 10
+
+    def test_notification_config(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            'ntfy_url = "https://ntfy.example.com/roustabout"\n'
+            'apprise_urls = ["discord://webhook", "tgram://token/chat"]\n'
+        )
+        cfg = load_config(config_file)
+        assert cfg.ntfy_url == "https://ntfy.example.com/roustabout"
+        assert cfg.apprise_urls == ("discord://webhook", "tgram://token/chat")
+
+    def test_default_tier(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('default_tier = "observe"\n')
+        cfg = load_config(config_file)
+        assert cfg.default_tier == "observe"
+
+    def test_invalid_default_tier(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('default_tier = "admin"\n')
+        with pytest.raises(ValueError, match="default_tier must be one of"):
+            load_config(config_file)
+
+    def test_custom_elevate_only_images(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('elevate_only_images = ["postgres", "custom-db"]\n')
+        cfg = load_config(config_file)
+        assert cfg.elevate_only_images == ("postgres", "custom-db")
+
+    def test_allowlist_patterns(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('allowlist_patterns = ["app-*", "web-*"]\n')
+        cfg = load_config(config_file)
+        assert cfg.allowlist_patterns == ("app-*", "web-*")
+
+    def test_unknown_sections_ignored(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            "show_env = true\n"
+            "[phase2_feature]\n"
+            "some_setting = true\n"
+        )
+        cfg = load_config(config_file)
+        assert cfg.show_env is True
+
+    def test_state_db_path(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('state_db = "/data/roustabout.db"\n')
+        cfg = load_config(config_file)
+        assert cfg.state_db == "/data/roustabout.db"
+
+
+class TestFirstRun:
+    """S1.3.2: Zero-config first run."""
+
+    def test_zero_config_produces_valid_config(self):
+        cfg = Config()
+        # Should be usable without any config file
+        assert cfg.default_tier == "operate"
+        assert cfg.rate_limit_per_container > 0
+        assert cfg.blast_radius_cap > 0
+
+    def test_default_tier_is_operate(self):
+        """Operate tier means mutations work out of the box."""
+        cfg = Config()
+        assert cfg.default_tier == "operate"
+
+    def test_default_deny_list_present(self):
+        """Databases, auth, proxies are elevate-only by default."""
+        cfg = Config()
+        assert "postgres" in cfg.elevate_only_images
+        assert "mysql" in cfg.elevate_only_images
+        assert "authentik" in cfg.elevate_only_images
+        assert "traefik" in cfg.elevate_only_images

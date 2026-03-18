@@ -11,9 +11,7 @@ import pytest
 from roustabout.models import make_container
 from roustabout.session import PermissionTier
 
-# ---------------------------------------------------------------------------
 # Fixtures
-# ---------------------------------------------------------------------------
 
 def _make_session(tier: PermissionTier):
     """Create a minimal session-like object for permission checks."""
@@ -43,9 +41,7 @@ def _make_container_with_label(label_key: str, label_value: str):
     )
 
 
-# ---------------------------------------------------------------------------
 # Action → capability mapping
-# ---------------------------------------------------------------------------
 
 
 class TestActionCapabilityMapping:
@@ -74,9 +70,7 @@ class TestActionCapabilityMapping:
             assert action in ACTION_CAPABILITY
 
 
-# ---------------------------------------------------------------------------
 # Capability → tier mapping
-# ---------------------------------------------------------------------------
 
 
 class TestCapabilityTierMapping:
@@ -108,9 +102,7 @@ class TestCapabilityTierMapping:
             assert CAPABILITY_TIER[cap] == PermissionTier.ELEVATE
 
 
-# ---------------------------------------------------------------------------
 # Permission check — tier-based
-# ---------------------------------------------------------------------------
 
 
 class TestCheckPermission:
@@ -165,9 +157,7 @@ class TestCheckPermission:
             check(session, "nonexistent-action", target_info=None)
 
 
-# ---------------------------------------------------------------------------
 # Per-container tier overrides (S2.1.2)
-# ---------------------------------------------------------------------------
 
 
 class TestPerContainerOverrides:
@@ -251,9 +241,7 @@ class TestPerContainerOverrides:
         check(session, "restart", target_info=None)
 
 
-# ---------------------------------------------------------------------------
 # can_session_do (MCP tool filtering)
-# ---------------------------------------------------------------------------
 
 
 class TestCanSessionDo:
@@ -276,9 +264,7 @@ class TestCanSessionDo:
         assert can_session_do(session, "nonexistent") is False
 
 
-# ---------------------------------------------------------------------------
 # list_capabilities (meta-tool)
-# ---------------------------------------------------------------------------
 
 
 class TestListCapabilities:
@@ -307,9 +293,7 @@ class TestListCapabilities:
         assert all(c["available"] is True for c in caps)
 
 
-# ---------------------------------------------------------------------------
 # PermissionDenied exception
-# ---------------------------------------------------------------------------
 
 
 class TestPermissionDenied:

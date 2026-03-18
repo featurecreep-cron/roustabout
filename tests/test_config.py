@@ -198,9 +198,7 @@ class TestConfigPriority:
         assert cfg.show_env is True
 
 
-# ---------------------------------------------------------------------------
 # Phase 1 config fields
-# ---------------------------------------------------------------------------
 
 
 class TestPhase1ConfigFields:

@@ -17,9 +17,7 @@ from roustabout.models import (
     make_environment,
 )
 
-# ---------------------------------------------------------------------------
 # Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -98,9 +96,7 @@ def multi_container_env():
     )
 
 
-# ---------------------------------------------------------------------------
 # Document structure tests
-# ---------------------------------------------------------------------------
 
 
 class TestDRPlanStructure:
@@ -151,9 +147,7 @@ class TestDRPlanStructure:
         assert "roustabout" not in result.lower()
 
 
-# ---------------------------------------------------------------------------
 # Docker run command generation
-# ---------------------------------------------------------------------------
 
 
 class TestRunCommand:
@@ -599,9 +593,7 @@ class TestRunCommand:
         assert "--memory 512m" in result
 
 
-# ---------------------------------------------------------------------------
 # Shell quoting
-# ---------------------------------------------------------------------------
 
 
 class TestShellQuoting:
@@ -626,9 +618,7 @@ class TestShellQuoting:
         assert "simple" in result
 
 
-# ---------------------------------------------------------------------------
 # Dependency ordering
-# ---------------------------------------------------------------------------
 
 
 class TestDependencyOrder:
@@ -694,9 +684,7 @@ class TestDependencyOrder:
         assert len(ordered) == 2
 
 
-# ---------------------------------------------------------------------------
 # Network setup section
-# ---------------------------------------------------------------------------
 
 
 class TestNetworkSetup:
@@ -730,9 +718,7 @@ class TestNetworkSetup:
         assert len(create_lines) == 0
 
 
-# ---------------------------------------------------------------------------
 # External dependency warnings (S5.1.2)
-# ---------------------------------------------------------------------------
 
 
 class TestExternalWarnings:
@@ -796,9 +782,7 @@ class TestExternalWarnings:
         assert "anonymous" in result.lower()
 
 
-# ---------------------------------------------------------------------------
 # Backup checklist (S5.1.2)
-# ---------------------------------------------------------------------------
 
 
 class TestBackupChecklist:
@@ -857,9 +841,7 @@ class TestBackupChecklist:
         assert checklist.count("/shared/data") == 1
 
 
-# ---------------------------------------------------------------------------
 # Init container detection (S5.1.1 edge case)
-# ---------------------------------------------------------------------------
 
 
 class TestInitContainerDetection:
@@ -883,9 +865,7 @@ class TestInitContainerDetection:
         assert "ran once" in result.lower() or "init" in result.lower()
 
 
-# ---------------------------------------------------------------------------
 # Post-start verification
-# ---------------------------------------------------------------------------
 
 
 class TestPostStartVerification:
@@ -921,9 +901,7 @@ class TestPostStartVerification:
         assert "Health" in result or "health" in result
 
 
-# ---------------------------------------------------------------------------
 # Empty environment
-# ---------------------------------------------------------------------------
 
 
 class TestEmptyEnvironment:

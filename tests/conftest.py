@@ -15,9 +15,7 @@ from roustabout.models import (
     make_environment,
 )
 
-# ---------------------------------------------------------------------------
 # Mock Docker API container attrs — mirrors docker-py's container.attrs
-# ---------------------------------------------------------------------------
 
 
 def _make_mock_container(
@@ -319,9 +317,7 @@ def mock_docker_client(mock_nginx, mock_postgres, mock_standalone, mock_exited):
     return client
 
 
-# ---------------------------------------------------------------------------
 # Pre-built model fixtures for renderer / redactor tests
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture

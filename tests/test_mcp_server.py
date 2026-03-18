@@ -170,7 +170,7 @@ class TestDockerConnectionError:
             patch("roustabout.mcp_server._load_cfg", return_value=Config()),
             patch(
                 "roustabout.mcp_server.connect",
-                side_effect=Exception("connection refused"),
+                side_effect=ConnectionError("connection refused"),
             ),
         ):
             result = _run(docker_snapshot())
@@ -184,7 +184,7 @@ class TestDockerConnectionError:
             patch("roustabout.mcp_server._load_cfg", return_value=Config()),
             patch(
                 "roustabout.mcp_server.connect",
-                side_effect=Exception("connection refused"),
+                side_effect=ConnectionError("connection refused"),
             ),
         ):
             result = _run(docker_audit())
@@ -197,7 +197,7 @@ class TestDockerConnectionError:
             patch("roustabout.mcp_server._load_cfg", return_value=Config()),
             patch(
                 "roustabout.mcp_server.connect",
-                side_effect=Exception("connection refused"),
+                side_effect=ConnectionError("connection refused"),
             ),
         ):
             result = _run(docker_container("nginx"))
@@ -210,7 +210,7 @@ class TestDockerConnectionError:
             patch("roustabout.mcp_server._load_cfg", return_value=Config()),
             patch(
                 "roustabout.mcp_server.connect",
-                side_effect=Exception("connection refused"),
+                side_effect=ConnectionError("connection refused"),
             ),
         ):
             result = _run(docker_networks())
@@ -250,7 +250,7 @@ class TestDockerGenerate:
             patch("roustabout.mcp_server._load_cfg", return_value=Config()),
             patch(
                 "roustabout.mcp_server.connect",
-                side_effect=Exception("connection refused"),
+                side_effect=ConnectionError("connection refused"),
             ),
         ):
             result = _run(docker_generate())
@@ -275,7 +275,7 @@ class TestDockerDRPlan:
             patch("roustabout.mcp_server._load_cfg", return_value=Config()),
             patch(
                 "roustabout.mcp_server.connect",
-                side_effect=Exception("connection refused"),
+                side_effect=ConnectionError("connection refused"),
             ),
         ):
             result = _run(docker_dr_plan())
@@ -356,7 +356,7 @@ class TestResponseEnvelope:
             patch("roustabout.mcp_server._load_cfg", return_value=Config()),
             patch(
                 "roustabout.mcp_server.connect",
-                side_effect=Exception("tcp://user:pass@host:2375 refused"),
+                side_effect=ConnectionError("tcp://user:pass@host:2375 refused"),
             ),
         ):
             result = _run(docker_snapshot())

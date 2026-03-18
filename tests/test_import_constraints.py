@@ -137,6 +137,82 @@ class TestSqliteRestriction:
         )
 
 
+class TestLayerViolation:
+    """No upward layer imports.
+
+    Layer hierarchy (top to bottom):
+    - Interface: cli.py, mcp_server.py
+    - Gateway: gateway.py, permissions.py, lockdown.py, mutations.py, state_db.py
+    - Logic: collector.py, auditor.py, diff.py, redactor.py, generator.py,
+             dr_plan.py, audit_renderer.py, notifications.py, session.py,
+             health_stats.py, log_access.py, bulk_ops.py
+    - Output: renderer.py, json_output.py
+    - Foundation: models.py, config.py, connection.py, constants.py
+    """
+
+    _LAYERS: dict[str, int] = {
+        # Foundation = 0
+        "models.py": 0, "config.py": 0, "connection.py": 0, "constants.py": 0,
+        # Output = 1
+        "renderer.py": 1,
+        # Logic = 2
+        "collector.py": 2, "auditor.py": 2, "diff.py": 2, "redactor.py": 2,
+        "generator.py": 2, "dr_plan.py": 2, "audit_renderer.py": 2,
+        "notifications.py": 2, "session.py": 2, "health_stats.py": 2,
+        "log_access.py": 2, "json_output.py": 2,
+        # Gateway = 3
+        "gateway.py": 3, "permissions.py": 3, "lockdown.py": 3,
+        "mutations.py": 3, "state_db.py": 3,
+        # Gateway consumers — import gateway to route operations
+        "bulk_ops.py": 3,
+        # Interface = 4
+        "cli.py": 4, "mcp_server.py": 4,
+    }
+
+    def test_no_upward_imports(self):
+        """Modules must not import from a layer above them."""
+        # Build reverse map: module_name -> set of roustabout modules it imports
+        violations = []
+        for path in _python_files():
+            src_layer = self._LAYERS.get(path.name)
+            if src_layer is None:
+                continue
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                imported_module = None
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    if node.module.startswith("roustabout."):
+                        imported_module = node.module.split(".")[-1] + ".py"
+                    elif node.module == "roustabout":
+                        # `from roustabout import X` — check each imported name
+                        for alias in node.names:
+                            target = alias.name + ".py"
+                            target_layer = self._LAYERS.get(target)
+                            if target_layer is not None and target_layer > src_layer:
+                                violations.append(
+                                    f"{path.name}:{node.lineno} imports "
+                                    f"{alias.name} (layer {target_layer}) "
+                                    f"from layer {src_layer}"
+                                )
+                        continue
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.startswith("roustabout."):
+                            imported_module = alias.name.split(".")[-1] + ".py"
+                if imported_module:
+                    target_layer = self._LAYERS.get(imported_module)
+                    if target_layer is not None and target_layer > src_layer:
+                        violations.append(
+                            f"{path.name}:{node.lineno} imports "
+                            f"{imported_module[:-3]} (layer {target_layer}) "
+                            f"from layer {src_layer}"
+                        )
+        assert not violations, (
+            "Upward layer imports detected:\n"
+            + "\n".join(violations)
+        )
+
+
 class TestConnectionRestriction:
     """Only connection.py creates Docker clients."""
 

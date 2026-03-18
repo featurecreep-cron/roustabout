@@ -260,6 +260,120 @@ async def docker_dr_detail(name: str) -> str:
 
 
 @mcp.tool()
+async def docker_health(container_name: str | None = None) -> str:
+    """[OBSERVE] Get container health status and diagnostic detail.
+
+    Use when: you need to check if containers are healthy, see restart
+    counts, OOM events, or health check results.
+    Returns: markdown table with health status for all or one container.
+
+    Args:
+        container_name: Optional — filter to a single container.
+    """
+    try:
+        cfg = _load_cfg()
+
+        def _run() -> str:
+            from roustabout.health_stats import collect_health, render_health
+
+            client = connect(cfg.docker_host)
+            try:
+                healths = collect_health(client)
+            finally:
+                client.close()
+            if container_name:
+                name = sanitize(container_name)[:128]
+                healths = [h for h in healths if h.name == name]
+                if not healths:
+                    return f"Container '{name}' not found"
+            return render_health(healths)
+
+        result = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
+    except Exception as exc:
+        return _envelope(f"Error: {_safe_error(exc)}")
+    return _enforce_size_limit(result, cfg.response_size_cap)
+
+
+@mcp.tool()
+async def docker_stats(container_name: str | None = None) -> str:
+    """[OBSERVE] Get live resource usage (CPU, memory, network, I/O).
+
+    Use when: you need to diagnose performance issues or check resource usage.
+    Returns: markdown table with resource stats.
+
+    Args:
+        container_name: Optional — filter to a single container.
+    """
+    try:
+        cfg = _load_cfg()
+
+        def _run() -> str:
+            from roustabout.health_stats import collect_stats, render_stats
+
+            client = connect(cfg.docker_host)
+            try:
+                stats = collect_stats(client, target=container_name)
+            finally:
+                client.close()
+            return render_stats(stats)
+
+        result = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
+    except Exception as exc:
+        return _envelope(f"Error: {_safe_error(exc)}")
+    return _enforce_size_limit(result, cfg.response_size_cap)
+
+
+@mcp.tool()
+async def docker_logs(
+    container_name: str,
+    tail: int = 100,
+    since: str | None = None,
+    grep: str | None = None,
+) -> str:
+    """[OBSERVE] Read recent container logs.
+
+    Use when: you need to diagnose container issues from log output.
+    Note: logs may contain application-generated secrets.
+    Returns: sanitized log text.
+
+    Args:
+        container_name: The container to read logs from.
+        tail: Number of lines from end (default 100).
+        since: Time filter — relative ("5m", "1h") or ISO 8601.
+        grep: Substring filter — only return matching lines.
+    """
+    container_name = sanitize(container_name)[:128]
+
+    try:
+        cfg = _load_cfg()
+
+        def _run() -> str:
+            from roustabout.log_access import (
+                ContainerNotFoundError,
+                UnsupportedLogDriver,
+                collect_logs,
+            )
+
+            client = connect(cfg.docker_host)
+            try:
+                return collect_logs(
+                    client, container_name,
+                    tail=tail, since=since, grep=grep,
+                )
+            except ContainerNotFoundError:
+                return f"Container '{container_name}' not found"
+            except UnsupportedLogDriver as e:
+                return str(e)
+            finally:
+                client.close()
+
+        result = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
+    except Exception as exc:
+        return _envelope(f"Error: {_safe_error(exc)}")
+    return _enforce_size_limit(result, cfg.response_size_cap)
+
+
+@mcp.tool()
 async def docker_findings(
     severity: str | None = None,
     container: str | None = None,

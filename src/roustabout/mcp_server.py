@@ -16,6 +16,7 @@ from roustabout.auditor import audit
 from roustabout.collector import collect
 from roustabout.config import Config, load_config
 from roustabout.connection import connect
+from roustabout.dr_plan import generate as gen_dr_plan
 from roustabout.generator import generate
 from roustabout.models import DockerEnvironment, make_environment
 from roustabout.redactor import redact, resolve_patterns, sanitize, sanitize_environment
@@ -186,6 +187,76 @@ async def docker_generate(include_stopped: bool = False) -> str:
     except Exception as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     return generate(env, include_stopped=include_stopped)
+
+
+@mcp.tool()
+async def docker_dr_plan() -> str:
+    """[OBSERVE] Generate a disaster recovery plan summary.
+
+    Use when: you need rebuild instructions for the Docker environment.
+    Returns: summary with one line per container showing name, image,
+    volume count, network, and restore order position. Use
+    docker_dr_detail for full per-container instructions.
+    """
+    try:
+        env, cfg = await anyio.to_thread.run_sync(
+            _collect_redacted, abandon_on_cancel=False
+        )
+    except Exception as exc:
+        return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
+
+    def _build_summary() -> str:
+        from roustabout.dr_plan import _resolve_dependency_order
+
+        ordered = _resolve_dependency_order(env)
+        lines = [
+            f"# DR Plan Summary ({len(ordered)} containers)",
+            f"Generated: {env.generated_at}",
+            "",
+            "| # | Container | Image | Volumes | Networks | Status |",
+            "|---|-----------|-------|---------|----------|--------|",
+        ]
+        for i, c in enumerate(ordered, 1):
+            nets = ", ".join(n.name for n in c.networks) or c.network_mode or "default"
+            lines.append(
+                f"| {i} | {c.name} | {c.image} | {len(c.mounts)} | {nets} | {c.status} |"
+            )
+        lines.append("")
+        lines.append("Use `docker_dr_detail(container_name)` for full restore steps.")
+        return "\n".join(lines)
+
+    return _enforce_size_limit(_build_summary(), cfg.response_size_cap)
+
+
+@mcp.tool()
+async def docker_dr_detail(name: str) -> str:
+    """[OBSERVE] Get full DR restore instructions for one container.
+
+    Use when: you need step-by-step restore commands for a specific container.
+    Returns: volumes, docker run command, network setup, verification steps.
+
+    Args:
+        name: The container name to get DR detail for.
+    """
+    name = sanitize(name)[:128]
+    try:
+        env, cfg = await anyio.to_thread.run_sync(
+            _collect_redacted, abandon_on_cancel=False
+        )
+    except Exception as exc:
+        return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
+
+    matches = [c for c in env.containers if c.name == name]
+    if not matches:
+        available = ", ".join(c.name for c in env.containers)
+        return _envelope(f"Container '{name}' not found. Available: {available}")
+
+    single_env = make_environment(
+        containers=matches,
+        generated_at=env.generated_at,
+        docker_version=env.docker_version,
+    )
+    return _enforce_size_limit(gen_dr_plan(single_env), cfg.response_size_cap)
 
 
 def main() -> None:

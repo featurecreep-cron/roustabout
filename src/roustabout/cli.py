@@ -239,6 +239,48 @@ def generate(
         click.echo(yaml_output)
 
 
+@main.command("dr-plan")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Write output to file.")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+@click.option("--project", "filter_project", default=None, help="Filter by compose project.")
+def dr_plan(
+    output: str | None,
+    config_path: str | None,
+    docker_host: str | None,
+    filter_project: str | None,
+) -> None:
+    """Generate a disaster recovery plan from running containers."""
+    from roustabout.dr_plan import generate as gen_dr
+    from roustabout.redactor import sanitize_environment
+
+    cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
+
+    client = _connect(cfg.docker_host)
+    env = collect(client)
+
+    if filter_project:
+        env = filter_by_project(env, filter_project)
+
+    env = sanitize_environment(env)
+    patterns = resolve_patterns(cfg.redact_patterns)
+    env = redact_env(env, patterns=patterns)
+
+    result = gen_dr(env)
+
+    if cfg.output:
+        Path(cfg.output).write_text(result)
+        click.echo(f"DR plan written to {cfg.output}")
+    else:
+        click.echo(result)
+
+
 @main.command("diff")
 @click.argument("old_snapshot", type=click.Path(exists=True))
 @click.argument("new_snapshot", type=click.Path(exists=True))

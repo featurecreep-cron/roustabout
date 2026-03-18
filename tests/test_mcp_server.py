@@ -258,6 +258,46 @@ class TestDockerGenerate:
         assert "connection refused" in result
 
 
+class TestDockerDRPlan:
+    def test_returns_summary_table(self, mock_client):
+        from roustabout.mcp_server import docker_dr_plan
+
+        result = _run(docker_dr_plan())
+        assert "DR Plan Summary" in result
+        assert "nginx" in result
+        assert "postgres" in result
+        assert "docker_dr_detail" in result
+
+    def test_connection_error(self):
+        from roustabout.mcp_server import docker_dr_plan
+
+        with (
+            patch("roustabout.mcp_server._load_cfg", return_value=Config()),
+            patch(
+                "roustabout.mcp_server.connect",
+                side_effect=Exception("connection refused"),
+            ),
+        ):
+            result = _run(docker_dr_plan())
+        assert "Error" in result
+
+
+class TestDockerDRDetail:
+    def test_existing_container(self, mock_client):
+        from roustabout.mcp_server import docker_dr_detail
+
+        result = _run(docker_dr_detail("nginx"))
+        assert "Disaster Recovery Plan" in result
+        assert "nginx" in result
+        assert "docker run" in result
+
+    def test_nonexistent_container(self, mock_client):
+        from roustabout.mcp_server import docker_dr_detail
+
+        result = _run(docker_dr_detail("nonexistent"))
+        assert "not found" in result
+
+
 class TestMCPServerSetup:
     def test_mcp_instance_exists(self):
         from roustabout.mcp_server import mcp
@@ -335,6 +375,7 @@ class TestAsyncBoundary:
             "collector", "auditor", "redactor", "renderer", "generator",
             "diff", "audit_renderer", "json_output", "models", "config",
             "connection", "constants", "lockdown", "state_db", "session",
+            "dr_plan",
         ]
         src_dir = Path(__file__).parent.parent / "src" / "roustabout"
         for mod in sync_modules:

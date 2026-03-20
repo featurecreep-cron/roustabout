@@ -1,0 +1,29 @@
+services:
+  roustabout:
+    build:
+      context: .
+      args:
+        DOCKER_GID: ${DOCKER_GID:-999}
+    image: ghcr.io/featurecreep-cron/roustabout:latest
+    container_name: roustabout
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=50M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "1000:${DOCKER_GID:-999}"
+    ports:
+      - "127.0.0.1:8077:8077"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - roustabout-data:/data
+      - ./config:/etc/roustabout:ro
+    environment:
+      - ROUSTABOUT_CONFIG=/etc/roustabout/config.toml
+      - ROUSTABOUT_STATE_DB=/data/roustabout.db
+
+volumes:
+  roustabout-data:

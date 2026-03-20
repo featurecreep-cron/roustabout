@@ -37,6 +37,11 @@ Issues = "https://github.com/featurecreep-cron/roustabout/issues"
 mcp = [
     "mcp[cli]>=1.0",
 ]
+server = [
+    "fastapi>=0.100",
+    "uvicorn>=0.20",
+    "httpx>=0.24",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -49,6 +54,7 @@ dev = [
 [project.scripts]
 roustabout = "roustabout.cli:main"
 roustabout-mcp = "roustabout.mcp_server:main"
+roustabout-server = "roustabout.api.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -68,7 +74,7 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["docker.*", "ruamel.*", "mcp.*", "tomli"]
+module = ["docker.*", "ruamel.*", "mcp.*", "tomli", "fastapi.*", "uvicorn.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

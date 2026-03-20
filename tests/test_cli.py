@@ -19,8 +19,8 @@ def mock_docker_env(sample_environment):
     mock_client = MagicMock()
 
     with (
-        patch("roustabout.cli.connect", return_value=mock_client) as mock_connect,
-        patch("roustabout.cli.collect", return_value=sample_environment) as mock_collect,
+        patch("roustabout.cli.main.connect", return_value=mock_client) as mock_connect,
+        patch("roustabout.cli.main.collect", return_value=sample_environment) as mock_collect,
     ):
         yield {
             "client": mock_client,
@@ -82,7 +82,7 @@ class TestSnapshotCommand:
 class TestSnapshotErrors:
     def test_docker_connection_failure(self, runner):
         with patch(
-            "roustabout.cli.connect",
+            "roustabout.cli.main.connect",
             side_effect=Exception("Connection refused"),
         ):
             result = runner.invoke(main, ["snapshot"])
@@ -168,7 +168,7 @@ class TestAuditCommand:
 
     def test_audit_docker_failure(self, runner):
         with patch(
-            "roustabout.cli.connect",
+            "roustabout.cli.main.connect",
             side_effect=Exception("Connection refused"),
         ):
             result = runner.invoke(main, ["audit"])
@@ -204,7 +204,7 @@ class TestGenerateCommand:
 
     def test_generate_docker_failure(self, runner):
         with patch(
-            "roustabout.cli.connect",
+            "roustabout.cli.main.connect",
             side_effect=Exception("Connection refused"),
         ):
             result = runner.invoke(main, ["generate"])

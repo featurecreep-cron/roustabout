@@ -215,8 +215,8 @@ class TestLayerViolation:
         "mutations.py": 3, "state_db.py": 3,
         # Gateway consumers — import gateway to route operations
         "bulk_ops.py": 3,
-        # Interface = 4
-        "cli.py": 4, "mcp_server.py": 4,
+        # Interface = 4 (cli is now a package, not checked by _python_files)
+        "mcp_server.py": 4,
     }
 
     def test_no_upward_imports(self):
@@ -308,7 +308,7 @@ class TestNoBroadExcept:
 
     # Pre-convention code — remove as modules are updated
     _GRANDFATHERED = frozenset({
-        "notifications.py", "connection.py", "collector.py", "cli.py",
+        "notifications.py", "connection.py", "collector.py",
     })
 
     def test_no_broad_except_in_source(self):

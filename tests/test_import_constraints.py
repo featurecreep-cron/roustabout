@@ -4,6 +4,7 @@ Ensures boundaries are maintained:
 - Only mutations.py calls docker-py mutation methods
 - Only gateway.py imports mutations.py
 - No asyncio in sync core modules
+- No transport libraries in core modules (Phase 1.5 package split)
 - Only state_db.py imports sqlite3
 - Only connection.py creates Docker clients
 - No upward layer imports
@@ -116,6 +117,51 @@ class TestAsyncBoundary:
                         violations.append(f"{path.name}:{node.lineno}")
         assert not violations, (
             "asyncio imported in sync core module:\n"
+            + "\n".join(violations)
+        )
+
+
+# Transport libraries that must not appear in core modules.
+# Phase 1.5 splits core from server — core must stay transport-free.
+_TRANSPORT_LIBRARIES = frozenset({
+    "fastapi", "uvicorn", "starlette", "httpx", "mcp", "pydantic",
+})
+
+
+class TestTransportIsolation:
+    """Core modules must not import transport libraries.
+
+    Phase 1.5 splits roustabout into 4 packages. The core library
+    (all current modules) must have no transport dependencies so it
+    can be used standalone via `pip install roustabout`.
+    """
+
+    def test_no_transport_imports_in_core(self):
+        violations = []
+        for path in SRC.glob("*.py"):
+            if path.name not in _CORE_MODULES:
+                continue
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        top_level = alias.name.split(".")[0]
+                        if top_level in _TRANSPORT_LIBRARIES:
+                            violations.append(
+                                f"{path.name}:{node.lineno} imports "
+                                f"{alias.name}"
+                            )
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module:
+                        top_level = node.module.split(".")[0]
+                        if top_level in _TRANSPORT_LIBRARIES:
+                            violations.append(
+                                f"{path.name}:{node.lineno} imports from "
+                                f"{node.module}"
+                            )
+        assert not violations, (
+            "Transport library imported in core module "
+            "(breaks Phase 1.5 package split):\n"
             + "\n".join(violations)
         )
 

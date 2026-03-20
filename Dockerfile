@@ -13,9 +13,10 @@ RUN pip install --no-cache-dir --prefix=/install ".[server,mcp]"
 # --- Runtime stage ---
 FROM python:3.13-slim
 
-# Create non-root user with a GID that can be overridden at runtime
-# to match the host's docker group GID.
-RUN groupadd -g 999 docker && \
+ARG DOCKER_GID=999
+
+# Create non-root user with a GID matching the host's docker group.
+RUN groupadd -g ${DOCKER_GID} docker && \
     useradd -r -u 1000 -g docker roustabout && \
     mkdir -p /etc/roustabout /data && \
     chown roustabout:docker /data

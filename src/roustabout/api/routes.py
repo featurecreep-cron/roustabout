@@ -6,15 +6,22 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from roustabout.api.auth import KeyInfo
-from roustabout.session import PermissionTier, capabilities_for_tier
+from roustabout.session import PermissionTier, RateLimiter, capabilities_for_tier
 
 router = APIRouter(prefix="/v1")
 
 _VALID_MUTATIONS = frozenset({"start", "stop", "restart", "recreate"})
 
-_MUTATION_TIERS = frozenset({"operate", "elevate"})
-
 _TIER_ORDER = {"observe": 0, "operate": 1, "elevate": 2}
+
+# Server-wide shared rate limiter — set by server.py at startup
+_rate_limiter: RateLimiter | None = None
+
+
+def set_rate_limiter(limiter: RateLimiter) -> None:
+    """Set the server-wide rate limiter. Called once at startup."""
+    global _rate_limiter  # noqa: PLW0603
+    _rate_limiter = limiter
 
 
 def _has_tier(key_tier: str, required: str) -> bool:
@@ -22,8 +29,11 @@ def _has_tier(key_tier: str, required: str) -> bool:
     return _TIER_ORDER.get(key_tier, -1) >= _TIER_ORDER.get(required, 99)
 
 
+# Read helpers — ephemeral Docker client per request, no gateway
+
+
 def _snapshot() -> dict:
-    """Execute snapshot via core logic. Separated for testability."""
+    """Execute snapshot via core logic."""
     from roustabout.collector import collect
     from roustabout.config import load_config
     from roustabout.connection import connect
@@ -40,14 +50,13 @@ def _snapshot() -> dict:
                 {"name": c.name, "image": c.image, "status": c.status}
                 for c in redacted.containers
             ],
-            "daemon": None,
         }
     finally:
         client.close()
 
 
 def _audit() -> dict:
-    """Execute audit via core logic. Separated for testability."""
+    """Execute audit via core logic."""
     from roustabout.auditor import audit
     from roustabout.collector import collect
     from roustabout.config import load_config
@@ -75,10 +84,115 @@ def _audit() -> dict:
         client.close()
 
 
-def _mutate(container_name: str, action: str) -> dict:
-    """Execute mutation via gateway. Separated for testability."""
-    # Gateway integration — will wire to gateway.execute() in next step
-    return {"result": "success", "container": container_name, "action": action}
+def _health(container_name: str) -> dict:
+    """Collect health stats for a single container."""
+    from roustabout.connection import connect
+    from roustabout.health_stats import collect_health
+
+    client = connect()
+    try:
+        healths = collect_health(client)
+        for h in healths:
+            if h.name == container_name:
+                return {
+                    "name": h.name,
+                    "status": h.status,
+                    "health": h.health,
+                    "restart_count": h.restart_count,
+                    "oom_killed": h.oom_killed,
+                }
+        return None  # type: ignore[return-value]
+    finally:
+        client.close()
+
+
+def _logs(container_name: str, tail: int) -> dict:
+    """Collect logs for a single container."""
+    from roustabout.connection import connect
+    from roustabout.log_access import collect_logs
+
+    client = connect()
+    try:
+        text = collect_logs(client, container_name, tail=tail)
+        return {"container": container_name, "lines": text}
+    finally:
+        client.close()
+
+
+def _dr_plan() -> dict:
+    """Generate disaster recovery plan."""
+    from roustabout.collector import collect
+    from roustabout.config import load_config
+    from roustabout.connection import connect
+    from roustabout.dr_plan import generate
+    from roustabout.redactor import redact, resolve_patterns
+
+    config = load_config()
+    client = connect()
+    try:
+        env = collect(client)
+        patterns = resolve_patterns(config)
+        redacted = redact(env, patterns)
+        plan = generate(redacted)
+        return {"plan": plan}
+    finally:
+        client.close()
+
+
+# Mutation helper — routes through gateway with full gate sequence
+
+# Gateway exception → HTTP status mapping
+_GATEWAY_ERROR_MAP: dict[str, int] = {
+    "LockdownError": 503,
+    "PermissionDenied": 403,
+    "RateLimitExceeded": 429,
+    "CircuitOpen": 503,
+    "BlastRadiusExceeded": 403,
+    "TargetNotFound": 404,
+    "ConcurrentMutation": 409,
+}
+
+
+def _mutate(container_name: str, action: str, key_info: KeyInfo) -> tuple[int, dict]:
+    """Execute mutation via gateway. Returns (status_code, response_dict)."""
+    from uuid import uuid4
+
+    from roustabout.connection import connect
+    from roustabout.gateway import GatewayResult, MutationCommand, execute
+    from roustabout.session import create_session, destroy_session
+
+    tier = PermissionTier(key_info.tier)
+    session = create_session(tier=tier, session_id=f"api-{uuid4().hex[:8]}")
+
+    # Inject server-wide rate limiter if available
+    if _rate_limiter is not None:
+        # Session is frozen, but gateway reads rate_limiter from it.
+        # We replace it via object.__setattr__ on the frozen dataclass.
+        object.__setattr__(session, "rate_limiter", _rate_limiter)
+
+    try:
+        command = MutationCommand(action=action, target=container_name)
+        result: GatewayResult = execute(command, session=session)
+
+        response = {
+            "result": result.result,
+            "container": container_name,
+            "action": action,
+            "pre_hash": result.pre_state_hash,
+            "post_hash": result.post_state_hash,
+        }
+
+        if not result.success:
+            status = _GATEWAY_ERROR_MAP.get(result.gate_failed or "", 500)
+            response["error"] = result.error
+            return status, response
+
+        return 200, response
+    finally:
+        destroy_session(session)
+
+
+# Route handlers
 
 
 @router.get("/snapshot")
@@ -95,6 +209,42 @@ async def audit_route(request: Request) -> dict:
     import anyio
 
     return await anyio.to_thread.run_sync(_audit)
+
+
+@router.get("/health/{name}")
+async def health_route(name: str, request: Request) -> JSONResponse:
+    """Get health status for a specific container."""
+    import anyio
+
+    result = await anyio.to_thread.run_sync(lambda: _health(name))
+    if result is None:
+        return JSONResponse(status_code=404, content={"error": f"container '{name}' not found"})
+    return JSONResponse(content=result)
+
+
+@router.get("/logs/{name}")
+async def logs_route(name: str, request: Request, tail: int = 100) -> JSONResponse:
+    """Get recent logs for a specific container."""
+    import anyio
+
+    try:
+        result = await anyio.to_thread.run_sync(lambda: _logs(name, tail))
+        return JSONResponse(content=result)
+    except Exception as exc:
+        error_name = type(exc).__name__
+        if error_name == "ContainerNotFoundError":
+            return JSONResponse(status_code=404, content={"error": f"container '{name}' not found"})
+        if error_name == "UnsupportedLogDriver":
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+        raise
+
+
+@router.get("/dr-plan")
+async def dr_plan_route(request: Request) -> dict:
+    """Generate disaster recovery plan."""
+    import anyio
+
+    return await anyio.to_thread.run_sync(_dr_plan)
 
 
 @router.post("/containers/{name}/{action}")
@@ -115,8 +265,8 @@ async def container_mutation(name: str, action: str, request: Request) -> JSONRe
 
     import anyio
 
-    result = await anyio.to_thread.run_sync(lambda: _mutate(name, action))
-    return JSONResponse(content=result)
+    status, result = await anyio.to_thread.run_sync(lambda: _mutate(name, action, key_info))
+    return JSONResponse(status_code=status, content=result)
 
 
 @router.get("/capabilities")

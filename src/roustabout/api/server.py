@@ -19,7 +19,9 @@ def main() -> None:
 
     from roustabout.api.app import create_app
     from roustabout.api.auth import AuthConfig
+    from roustabout.api.routes import set_rate_limiter
     from roustabout.config import load_config
+    from roustabout.session import RateLimiter
 
     config = load_config()
 
@@ -29,6 +31,14 @@ def main() -> None:
         auth_raw = config.raw.get("auth", {})
 
     auth_config = AuthConfig.from_dict(auth_raw)
+
+    # Server-wide rate limiter — shared across all API requests
+    rate_limiter = RateLimiter(
+        max_tokens=config.rate_limit_per_container,
+        window_seconds=float(config.rate_limit_window_seconds),
+        global_max_tokens=config.rate_limit_global,
+    )
+    set_rate_limiter(rate_limiter)
 
     app = create_app(auth_config=auth_config)
 

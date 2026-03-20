@@ -54,6 +54,7 @@ dev = [
 [project.scripts]
 roustabout = "roustabout.cli:main"
 roustabout-mcp = "roustabout.mcp_server:main"
+roustabout-mcp-proxy = "roustabout.mcp_proxy.server:main"
 roustabout-server = "roustabout.api.server:main"
 
 [tool.setuptools.packages.find]

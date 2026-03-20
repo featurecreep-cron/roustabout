@@ -1,0 +1,131 @@
+"""DirectBackend — calls roustabout core inline, no server required.
+
+Used for read operations when no ROUSTABOUT_URL is configured.
+"""
+
+from __future__ import annotations
+
+
+class DirectBackend:
+    """Executes roustabout operations by importing core directly."""
+
+    def snapshot(self, *, redact: bool = True) -> dict:
+        from roustabout.collector import collect
+        from roustabout.config import load_config
+        from roustabout.connection import connect
+        from roustabout.redactor import redact as redact_env
+        from roustabout.redactor import resolve_patterns
+
+        config = load_config()
+        client = connect(config.docker_host)
+        try:
+            env = collect(client)
+            if redact:
+                patterns = resolve_patterns(config)
+                env = redact_env(env, patterns)
+            return {
+                "containers": [
+                    {"name": c.name, "image": c.image, "status": c.status}
+                    for c in env.containers
+                ],
+            }
+        finally:
+            client.close()
+
+    def audit(self) -> dict:
+        from roustabout.auditor import audit as run_audit
+        from roustabout.collector import collect
+        from roustabout.config import load_config
+        from roustabout.connection import connect
+        from roustabout.redactor import resolve_patterns
+
+        config = load_config()
+        client = connect(config.docker_host)
+        try:
+            env = collect(client)
+            patterns = resolve_patterns(config)
+            findings = run_audit(env, patterns)
+            return {
+                "findings": [
+                    {
+                        "check": f.check,
+                        "severity": f.severity.value,
+                        "container": f.container,
+                        "message": f.message,
+                    }
+                    for f in findings
+                ],
+            }
+        finally:
+            client.close()
+
+    def health(self, name: str | None = None) -> dict:
+        from roustabout.config import load_config
+        from roustabout.connection import connect
+        from roustabout.health_stats import collect_health
+
+        config = load_config()
+        client = connect(config.docker_host)
+        try:
+            healths = collect_health(client)
+            if name:
+                healths = [h for h in healths if h.name == name]
+            return {
+                "entries": [
+                    {
+                        "name": h.name,
+                        "status": h.status,
+                        "health": h.health,
+                        "restart_count": h.restart_count,
+                        "oom_killed": h.oom_killed,
+                    }
+                    for h in healths
+                ],
+            }
+        finally:
+            client.close()
+
+    def logs(
+        self,
+        name: str,
+        tail: int = 100,
+        since: str | None = None,
+        grep: str | None = None,
+    ) -> dict:
+        from roustabout.config import load_config
+        from roustabout.connection import connect
+        from roustabout.log_access import collect_logs
+
+        config = load_config()
+        client = connect(config.docker_host)
+        try:
+            text = collect_logs(client, name, tail=tail, since=since, grep=grep)
+            return {"container": name, "lines": text}
+        finally:
+            client.close()
+
+    def dr_plan(self) -> dict:
+        from roustabout.collector import collect
+        from roustabout.config import load_config
+        from roustabout.connection import connect
+        from roustabout.dr_plan import generate
+        from roustabout.redactor import redact as redact_env
+        from roustabout.redactor import resolve_patterns, sanitize_environment
+
+        config = load_config()
+        client = connect(config.docker_host)
+        try:
+            env = collect(client)
+            env = sanitize_environment(env)
+            patterns = resolve_patterns(config)
+            env = redact_env(env, patterns)
+            plan = generate(env)
+            return {"plan": plan}
+        finally:
+            client.close()
+
+    def mutate(self, name: str, action: str, dry_run: bool = False) -> dict:
+        raise RuntimeError("DirectBackend cannot execute mutations — server required")
+
+    def capabilities(self) -> dict:
+        raise RuntimeError("DirectBackend has no auth context — server required")

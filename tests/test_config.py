@@ -295,6 +295,24 @@ class TestPhase1ConfigFields:
         cfg = load_config(config_file)
         assert cfg.state_db == "/data/roustabout.db"
 
+    def test_raw_preserves_full_toml(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            "show_env = true\n"
+            "[auth]\n"
+            "[auth.keys]\n"
+            '"sk-test" = { tier = "observe", label = "test" }\n'
+        )
+        cfg = load_config(config_file)
+        assert cfg.show_env is True
+        assert "auth" in cfg.raw
+        assert "keys" in cfg.raw["auth"]
+        assert "sk-test" in cfg.raw["auth"]["keys"]
+
+    def test_raw_empty_for_defaults(self):
+        cfg = Config()
+        assert cfg.raw == {}
+
 
 class TestFirstRun:
     """S1.3.2: Zero-config first run."""

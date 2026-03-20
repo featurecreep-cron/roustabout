@@ -74,6 +74,10 @@ class Config:
     # State database path
     state_db: str | None = None
 
+    # Raw TOML data — preserved for sections not modeled as Config fields
+    # (e.g., [auth] for API server). Empty dict if no file loaded.
+    raw: dict[str, Any] = field(default_factory=dict)
+
     _UNSET = object()
 
     def merge(self, **overrides: Any) -> Config:
@@ -222,6 +226,7 @@ def _parse_config(path: Path) -> Config:
             raise ValueError(f"state_db must be a string in {path}")
         kwargs["state_db"] = data["state_db"]
 
+    kwargs["raw"] = data
     return Config(**kwargs)
 
 

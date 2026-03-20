@@ -1,0 +1,27 @@
+# Roustabout server configuration
+# Copy to config.toml and customize.
+
+# Rate limiting
+rate_limit_per_container = 3
+rate_limit_window_seconds = 300
+rate_limit_global = 10
+
+# Blast radius cap (max containers affected per batch)
+blast_radius_cap = 5
+
+# Default permission tier for unauthenticated local access
+default_tier = "operate"
+
+# Notification channels (optional)
+# ntfy_url = "https://ntfy.example.com/roustabout"
+# apprise_urls = ["discord://webhook", "tgram://token/chat"]
+
+# State database (persists audit trail, circuit breaker state)
+# state_db = "/data/roustabout.db"
+
+# API key authentication
+# Each key maps to a tier (observe/operate/elevate) and a label for audit trail.
+[auth.keys]
+# "sk-mcp-abc123" = { tier = "operate", label = "mcp-proxy" }
+# "sk-ha-def456" = { tier = "observe", label = "home-assistant" }
+# "sk-admin-ghi789" = { tier = "elevate", label = "admin" }

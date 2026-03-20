@@ -26,9 +26,7 @@ def main() -> None:
     config = load_config()
 
     # Load auth config from roustabout.toml [auth] section
-    auth_raw = {}
-    if hasattr(config, "raw") and isinstance(config.raw, dict):
-        auth_raw = config.raw.get("auth", {})
+    auth_raw = config.raw.get("auth", {})
 
     auth_config = AuthConfig.from_dict(auth_raw)
 

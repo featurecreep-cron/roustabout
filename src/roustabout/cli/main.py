@@ -32,9 +32,25 @@ from roustabout.state import FindingState, load_state, set_finding_state
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+_CONNECTION_CONFIG = Path.home() / ".config" / "roustabout" / "config.toml"
+
+
 def _is_remote() -> bool:
     """True when CLI should route commands through the REST API."""
     return bool(os.environ.get("ROUSTABOUT_URL"))
+
+
+def _load_connection_config() -> tuple[str | None, str | None]:
+    """Load URL and API key from user config file."""
+    import tomllib
+
+    if not _CONNECTION_CONFIG.exists():
+        return None, None
+    try:
+        data = tomllib.loads(_CONNECTION_CONFIG.read_text())
+        return data.get("url"), data.get("api_key")
+    except Exception:
+        return None, None
 
 
 def _run_remote(
@@ -115,6 +131,12 @@ def main(url: str | None, api_key: str | None) -> None:
       roustabout --url http://server:8077 snapshot # remote server
       ROUSTABOUT_URL=http://server:8077 roustabout snapshot
     """
+    # Load URL/key from config file if not provided via flags or env
+    if not url and not os.environ.get("ROUSTABOUT_URL"):
+        url, api_key_from_config = _load_connection_config()
+        if not api_key:
+            api_key = api_key_from_config
+
     if url:
         os.environ["ROUSTABOUT_URL"] = url
     if api_key:
@@ -689,6 +711,119 @@ def resolve_finding(finding_key: str, reason: str, state_file: str | None) -> No
         Path(state_file) if state_file else None,
     )
     click.echo(f"Marked {finding_key} as resolved. State saved to {path}")
+
+
+@main.command("connect")
+@click.argument("url")
+@click.option("--api-key", "key", prompt=True, hide_input=True, help="API key for authentication.")
+def connect_cmd(url: str, key: str) -> None:
+    """Save a server connection for future commands.
+
+    \b
+    Example:
+      roustabout connect http://server:8077
+      roustabout snapshot   # now uses the saved server
+    """
+    import httpx
+
+    # Verify the connection
+    try:
+        resp = httpx.get(
+            f"{url.rstrip('/')}/health",
+            headers={"Authorization": f"Bearer {key}"},
+            timeout=10.0,
+        )
+    except httpx.ConnectError:
+        raise click.ClickException(f"Cannot reach {url}")
+
+    if not resp.is_success:
+        raise click.ClickException(f"Server returned {resp.status_code}")
+
+    health = resp.json()
+    server_version = health.get("version", "unknown")
+
+    # Write config
+    config_dir = _CONNECTION_CONFIG.parent
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    # Preserve existing config, update connection fields
+    existing = ""
+    if _CONNECTION_CONFIG.exists():
+        existing = _CONNECTION_CONFIG.read_text()
+
+    # Simple TOML write — only url and api_key at top level
+    import tomllib
+
+    try:
+        data = tomllib.loads(existing) if existing else {}
+    except Exception:
+        data = {}
+
+    data["url"] = url.rstrip("/")
+    data["api_key"] = key
+
+    # Write back as TOML
+    lines = []
+    for k, v in data.items():
+        if isinstance(v, str):
+            lines.append(f'{k} = "{v}"')
+        elif isinstance(v, bool):
+            lines.append(f"{k} = {'true' if v else 'false'}")
+        elif isinstance(v, dict):
+            lines.append(f"\n[{k}]")
+            for sk, sv in v.items():
+                lines.append(f'{sk} = "{sv}"' if isinstance(sv, str) else f"{sk} = {sv}")
+        else:
+            lines.append(f"{k} = {v}")
+
+    _CONNECTION_CONFIG.write_text("\n".join(lines) + "\n")
+
+    click.echo(f"Connected to {url} (server v{server_version})")
+    click.echo(f"Config saved to {_CONNECTION_CONFIG}")
+    click.echo("Run 'roustabout snapshot' to verify.")
+
+
+@main.command("disconnect")
+def disconnect_cmd() -> None:
+    """Remove saved server connection."""
+    if not _CONNECTION_CONFIG.exists():
+        click.echo("No saved connection.")
+        return
+
+    import tomllib
+
+    try:
+        data = tomllib.loads(_CONNECTION_CONFIG.read_text())
+    except Exception:
+        data = {}
+
+    removed = False
+    for key in ("url", "api_key"):
+        if key in data:
+            del data[key]
+            removed = True
+
+    if not removed:
+        click.echo("No saved connection.")
+        return
+
+    if data:
+        # Other config remains — rewrite without connection fields
+        lines = []
+        for k, v in data.items():
+            if isinstance(v, str):
+                lines.append(f'{k} = "{v}"')
+            elif isinstance(v, dict):
+                lines.append(f"\n[{k}]")
+                for sk, sv in v.items():
+                    lines.append(f'{sk} = "{sv}"' if isinstance(sv, str) else f"{sk} = {sv}")
+            else:
+                lines.append(f"{k} = {v}")
+        _CONNECTION_CONFIG.write_text("\n".join(lines) + "\n")
+    else:
+        _CONNECTION_CONFIG.unlink()
+
+    click.echo("Disconnected. Commands will use local Docker.")
 
 
 @main.command("version")

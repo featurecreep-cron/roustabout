@@ -22,7 +22,7 @@ def create_app(auth_config: AuthConfig | None = None) -> FastAPI:
     app = FastAPI(
         title="Roustabout",
         description="Docker environment management API",
-        version="0.8.3",
+        version="0.9.0",
     )
 
     # Paths that don't require authentication
@@ -54,7 +54,9 @@ def create_app(auth_config: AuthConfig | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, str]:
-        return {"status": "ok"}
+        from roustabout import __version__
+
+        return {"status": "ok", "version": __version__}
 
     app.include_router(router)
 

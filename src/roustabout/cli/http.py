@@ -5,6 +5,7 @@ Used for mutations (always) and all operations when ROUSTABOUT_URL is set.
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import httpx
@@ -22,6 +23,28 @@ class HTTPBackend:
             headers=headers,
             timeout=30.0,
         )
+        self.server_version: str | None = None
+        self._check_server_version()
+
+    def _check_server_version(self) -> None:
+        """Check server version on connect and warn if mismatched."""
+        from roustabout import __version__
+
+        try:
+            resp = self._client.get("/health")
+            if resp.is_success:
+                data = resp.json()
+                self.server_version = data.get("version")
+                if self.server_version and self.server_version != __version__:
+                    msg = (
+                        f"Warning: server is v{self.server_version}, "
+                        f"CLI is v{__version__}. "
+                        f"Some features may not work. Update the server: "
+                        f"docker pull ghcr.io/featurecreep-cron/roustabout:latest"
+                    )
+                    print(msg, file=sys.stderr)
+        except Exception:
+            pass  # Connection errors will surface on the actual command
 
     def _get(self, path: str, **params: str | int) -> dict[str, Any]:
         resp = self._client.get(path, params=params or None)

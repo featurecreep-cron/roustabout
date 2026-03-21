@@ -125,9 +125,9 @@ def load_config(path: Path | None = None) -> Config:
     env_path = os.environ.get("ROUSTABOUT_CONFIG")
     if env_path:
         p = Path(env_path)
-        if not p.exists():
-            raise FileNotFoundError(f"Config file not found: {p} (from ROUSTABOUT_CONFIG)")
-        return _parse_config(p)
+        if p.exists():
+            return _parse_config(p)
+        # Env var set but file missing — fall through to defaults
 
     for candidate in DEFAULT_CONFIG_PATHS:
         if candidate.exists():

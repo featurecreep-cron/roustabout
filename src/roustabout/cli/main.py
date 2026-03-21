@@ -364,11 +364,18 @@ def generate(
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
 @click.option("--project", "filter_project", default=None, help="Filter by compose project.")
+@click.option(
+    "--strip-versions",
+    is_flag=True,
+    default=False,
+    help="Remove image version tags from output (useful when sharing externally).",
+)
 def dr_plan(
     output: str | None,
     config_path: str | None,
     docker_host: str | None,
     filter_project: str | None,
+    strip_versions: bool,
 ) -> None:
     """Generate a disaster recovery plan from running containers."""
     if _is_remote():
@@ -379,6 +386,8 @@ def dr_plan(
     from roustabout.redactor import sanitize_environment
 
     cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
+    # CLI flag overrides config; config default is False
+    should_strip = strip_versions or cfg.strip_versions
 
     client = _connect(cfg.docker_host)
     env = collect(client)
@@ -390,7 +399,7 @@ def dr_plan(
     patterns = resolve_patterns(cfg.redact_patterns)
     env = redact_env(env, patterns=patterns)
 
-    result = gen_dr(env)
+    result = gen_dr(env, strip_versions=should_strip)
 
     if cfg.output:
         Path(cfg.output).write_text(result)

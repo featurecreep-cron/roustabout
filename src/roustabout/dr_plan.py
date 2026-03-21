@@ -26,8 +26,30 @@ _INTERNAL_LABEL_PREFIXES = (
 )
 
 
-def generate(env: DockerEnvironment) -> str:
+def _strip_image_version(image: str) -> str:
+    """Remove the version tag from a Docker image reference.
+
+    Preserves the registry and repository. Handles digest references (@sha256:...)
+    and tag references (:tag). Returns the image without tag or digest.
+    """
+    # Handle digest references
+    if "@sha256:" in image:
+        return image.split("@sha256:")[0]
+    # Handle tag — split on last colon, but only if it's after any /
+    # (to avoid splitting on registry port like localhost:5000/image)
+    last_slash = image.rfind("/")
+    last_colon = image.rfind(":")
+    if last_colon > last_slash:
+        return image[:last_colon]
+    return image
+
+
+def generate(env: DockerEnvironment, *, strip_versions: bool = False) -> str:
     """Generate a DR plan from a collected, redacted DockerEnvironment.
+
+    Args:
+        strip_versions: If True, remove version tags from image references.
+            Useful when DR plan output is shared or exposed via API.
 
     Returns a complete Markdown document.
     """
@@ -72,7 +94,9 @@ def generate(env: DockerEnvironment) -> str:
     warnings: list[str] = []
 
     for i, container in enumerate(ordered, 1):
-        _render_container_section(lines, i, container, env, warnings)
+        _render_container_section(
+            lines, i, container, env, warnings, strip_versions=strip_versions
+        )
 
     # Warnings
     if warnings:
@@ -102,10 +126,13 @@ def _render_container_section(
     container: ContainerInfo,
     env: DockerEnvironment,
     warnings: list[str],
+    *,
+    strip_versions: bool = False,
 ) -> None:
     """Render one container's DR section."""
+    image = _strip_image_version(container.image) if strip_versions else container.image
     lines.append(f"### {index}. {container.name}")
-    lines.append(f"**Image:** {container.image}")
+    lines.append(f"**Image:** {image}")
 
     if container.compose_project:
         lines.append(f"**Compose project:** {container.compose_project}")
@@ -164,7 +191,7 @@ def _render_container_section(
         lines.append("# Create and start container")
 
     # Docker run command
-    lines.append(_build_run_command(container, env))
+    lines.append(_build_run_command(container, env, strip_versions=strip_versions))
     lines.append("```")
 
     # Additional networks (connect after creation)
@@ -216,7 +243,9 @@ def _render_container_section(
     lines.append("")
 
 
-def _build_run_command(container: ContainerInfo, env: DockerEnvironment) -> str:
+def _build_run_command(
+    container: ContainerInfo, env: DockerEnvironment, *, strip_versions: bool = False
+) -> str:
     """Generate a docker run command from ContainerInfo."""
     parts = ["docker run -d"]
     parts.append(f"  --name {_shell_quote(container.name)}")
@@ -352,7 +381,8 @@ def _build_run_command(container: ContainerInfo, env: DockerEnvironment) -> str:
         entrypoint_extra = list(container.entrypoint[1:])
 
     # Image (always last before command args)
-    parts.append(f"  {container.image}")
+    image = _strip_image_version(container.image) if strip_versions else container.image
+    parts.append(f"  {image}")
 
     # Command args: entrypoint extras first, then explicit command
     all_args = entrypoint_extra + list(container.command or ())

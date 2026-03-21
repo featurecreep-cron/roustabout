@@ -291,6 +291,22 @@ class TestPhase1ConfigFields:
         cfg = load_config(config_file)
         assert cfg.state_db == "/data/roustabout.db"
 
+    def test_strip_versions_default_false(self):
+        cfg = Config()
+        assert cfg.strip_versions is False
+
+    def test_strip_versions_from_config(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("strip_versions = true\n")
+        cfg = load_config(config_file)
+        assert cfg.strip_versions is True
+
+    def test_strip_versions_invalid_type(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('strip_versions = "yes"\n')
+        with pytest.raises(ValueError, match="strip_versions must be a boolean"):
+            load_config(config_file)
+
     def test_raw_preserves_full_toml(self, tmp_path):
         config_file = tmp_path / "config.toml"
         config_file.write_text(

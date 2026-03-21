@@ -164,7 +164,7 @@ def _logs(
         client.close()
 
 
-def _dr_plan() -> dict[str, Any]:
+def _dr_plan(*, strip_versions: bool = False) -> dict[str, Any]:
     """Generate disaster recovery plan."""
     from roustabout.collector import collect
     from roustabout.config import load_config
@@ -173,12 +173,13 @@ def _dr_plan() -> dict[str, Any]:
     from roustabout.redactor import redact, resolve_patterns
 
     config = load_config()
+    should_strip = strip_versions or config.strip_versions
     client = connect()
     try:
         env = collect(client)
         patterns = resolve_patterns(config.redact_patterns)
         redacted = redact(env, patterns)
-        plan = generate(redacted)
+        plan = generate(redacted, strip_versions=should_strip)
         return {"plan": plan}
     finally:
         client.close()
@@ -319,11 +320,11 @@ async def logs_route(
 
 
 @router.get("/dr-plan")
-async def dr_plan_route(request: Request) -> dict[str, Any]:
+async def dr_plan_route(request: Request, strip_versions: bool = False) -> dict[str, Any]:
     """Generate disaster recovery plan."""
     import anyio
 
-    return await anyio.to_thread.run_sync(_dr_plan)
+    return await anyio.to_thread.run_sync(lambda: _dr_plan(strip_versions=strip_versions))
 
 
 @router.post("/containers/{name}/{action}")

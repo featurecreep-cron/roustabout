@@ -34,12 +34,14 @@ def _has_tier(key_tier: str, required: str) -> bool:
 # Read helpers — ephemeral Docker client per request, no gateway
 
 
-def _snapshot() -> dict[str, Any]:
+def _snapshot(fmt: str = "json") -> dict[str, Any] | str:
     """Execute snapshot via core logic."""
     from roustabout.collector import collect
     from roustabout.config import load_config
     from roustabout.connection import connect
+    from roustabout.json_output import environment_to_dict
     from roustabout.redactor import redact, resolve_patterns
+    from roustabout.renderer import render
 
     config = load_config()
     client = connect()
@@ -47,11 +49,9 @@ def _snapshot() -> dict[str, Any]:
         env = collect(client)
         patterns = resolve_patterns(config.redact_patterns)
         redacted = redact(env, patterns)
-        return {
-            "containers": [
-                {"name": c.name, "image": c.image, "status": c.status} for c in redacted.containers
-            ],
-        }
+        if fmt == "markdown":
+            return render(redacted, show_env=config.show_env, show_labels=config.show_labels)
+        return environment_to_dict(redacted)
     finally:
         client.close()
 
@@ -143,14 +143,19 @@ def _health(container_name: str) -> dict[str, Any]:
         client.close()
 
 
-def _logs(container_name: str, tail: int) -> dict[str, Any]:
+def _logs(
+    container_name: str,
+    tail: int,
+    since: str | None = None,
+    grep: str | None = None,
+) -> dict[str, Any]:
     """Collect logs for a single container."""
     from roustabout.connection import connect
     from roustabout.log_access import collect_logs
 
     client = connect()
     try:
-        text = collect_logs(client, container_name, tail=tail)
+        text = collect_logs(client, container_name, tail=tail, since=since, grep=grep)
         return {"container": container_name, "lines": text}
     finally:
         client.close()
@@ -239,11 +244,15 @@ def _mutate(container_name: str, action: str, key_info: KeyInfo) -> tuple[int, d
 
 
 @router.get("/snapshot")
-async def snapshot(request: Request) -> dict[str, Any]:
+async def snapshot(request: Request, format: str = "json") -> Any:
     """Collect and return redacted Docker environment state."""
     import anyio
+    from fastapi.responses import PlainTextResponse
 
-    return await anyio.to_thread.run_sync(_snapshot)
+    result = await anyio.to_thread.run_sync(lambda: _snapshot(fmt=format))
+    if isinstance(result, str):
+        return PlainTextResponse(result)
+    return result
 
 
 @router.get("/audit")
@@ -277,12 +286,18 @@ async def health_route(name: str, request: Request) -> JSONResponse:
 
 
 @router.get("/logs/{name}")
-async def logs_route(name: str, request: Request, tail: int = 100) -> JSONResponse:
+async def logs_route(
+    name: str,
+    request: Request,
+    tail: int = 100,
+    since: str | None = None,
+    grep: str | None = None,
+) -> JSONResponse:
     """Get recent logs for a specific container."""
     import anyio
 
     try:
-        result = await anyio.to_thread.run_sync(lambda: _logs(name, tail))
+        result = await anyio.to_thread.run_sync(lambda: _logs(name, tail, since=since, grep=grep))
         return JSONResponse(content=result)
     except Exception as exc:
         error_name = type(exc).__name__

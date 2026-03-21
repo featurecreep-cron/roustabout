@@ -11,12 +11,14 @@ from typing import Any
 class DirectBackend:
     """Executes roustabout operations by importing core directly."""
 
-    def snapshot(self, *, redact: bool = True) -> dict[str, Any]:
+    def snapshot(self, *, redact: bool = True, fmt: str = "json") -> dict[str, Any] | str:
         from roustabout.collector import collect
         from roustabout.config import load_config
         from roustabout.connection import connect
+        from roustabout.json_output import environment_to_dict
         from roustabout.redactor import redact as redact_env
         from roustabout.redactor import resolve_patterns
+        from roustabout.renderer import render
 
         config = load_config()
         client = connect(config.docker_host)
@@ -25,11 +27,9 @@ class DirectBackend:
             if redact:
                 patterns = resolve_patterns(config.redact_patterns)
                 env = redact_env(env, patterns)
-            return {
-                "containers": [
-                    {"name": c.name, "image": c.image, "status": c.status} for c in env.containers
-                ],
-            }
+            if fmt == "markdown":
+                return render(env, show_env=config.show_env, show_labels=config.show_labels)
+            return environment_to_dict(env)
         finally:
             client.close()
 

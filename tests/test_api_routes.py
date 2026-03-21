@@ -185,7 +185,7 @@ class TestLogsRoute:
             mock.return_value = {"container": "nginx", "lines": "line1\n"}
             response = client.get("/v1/logs/nginx?tail=10", headers=_auth())
         assert response.status_code == 200
-        mock.assert_called_once_with("nginx", 10)
+        mock.assert_called_once_with("nginx", 10, since=None, grep=None)
 
     def test_container_not_found(self, client):
         class ContainerNotFoundError(Exception):

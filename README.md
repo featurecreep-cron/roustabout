@@ -198,7 +198,7 @@ Findings can be triaged with `roustabout accept`, `false-positive`, or `resolve`
 
 ## Requirements
 
-- Python 3.13+
+- Python 3.12+
 - Access to a Docker socket (local or remote)
 
 ## Contributing

@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roustabout"
-version = "0.8.1"
+version = "0.8.2"
 description = "Docker environment documentation, security auditing, and safe MCP server"
 license = "MIT"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 authors = [
     { name = "Cron", email = "cron@featurecreep.dev" },
     { name = "Chris", email = "chris@featurecreep.dev" },

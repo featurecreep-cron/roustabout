@@ -28,6 +28,11 @@ class HTTPBackend:
         self._check_response(resp)
         return resp.json()  # type: ignore[no-any-return]
 
+    def _get_text(self, path: str, **params: str | int) -> str:
+        resp = self._client.get(path, params=params or None)
+        self._check_response(resp)
+        return resp.text
+
     def _post(self, path: str) -> dict[str, Any]:
         resp = self._client.post(path)
         self._check_response(resp)
@@ -54,7 +59,9 @@ class HTTPBackend:
         msg = messages.get(status, f"Server error ({status}): {detail}")
         raise RuntimeError(msg)
 
-    def snapshot(self, *, redact: bool = True) -> dict[str, Any]:
+    def snapshot(self, *, redact: bool = True, fmt: str = "json") -> dict[str, Any] | str:
+        if fmt == "markdown":
+            return self._get_text("/v1/snapshot", format="markdown")
         return self._get("/v1/snapshot")
 
     def audit(self) -> dict[str, Any]:

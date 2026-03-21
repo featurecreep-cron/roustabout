@@ -152,7 +152,19 @@ def snapshot(
 ) -> None:
     """Generate a markdown snapshot of the Docker environment."""
     if _is_remote():
-        _run_remote("snapshot", output=output)
+        try:
+            backend = get_backend(command_is_mutation=False)
+            raw = backend.snapshot(fmt=output_format)
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc))
+
+        text = raw if isinstance(raw, str) else _json.dumps(raw, indent=2)
+
+        if output:
+            Path(output).write_text(text)
+            click.echo(f"Snapshot written to {output}")
+        else:
+            click.echo(text)
         return
 
     overrides: dict[str, Any] = {

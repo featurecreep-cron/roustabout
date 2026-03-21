@@ -542,20 +542,20 @@ async def docker_manage(
     container_name: str,
     dry_run: bool = False,
 ) -> str:
-    """[OPERATE] Start, stop, or restart a container.
+    """[OPERATE] Start, stop, restart, or recreate a container.
 
     Use when: you need to manage container lifecycle.
     Returns: result of the operation.
 
     Args:
-        action: One of 'start', 'stop', 'restart'.
+        action: One of 'start', 'stop', 'restart', 'recreate'.
         container_name: The container to act on.
         dry_run: Preview without executing (default: false).
     """
     container_name = sanitize(container_name)[:128]
     action = sanitize(action)[:32]
 
-    valid_actions = {"start", "stop", "restart"}
+    valid_actions = {"start", "stop", "restart", "recreate"}
     if action not in valid_actions:
         return _envelope(
             f"Invalid action '{action}'. Must be one of: {', '.join(sorted(valid_actions))}"

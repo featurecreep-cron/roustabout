@@ -6,6 +6,8 @@ Docker environment documentation and security findings.
 
 from __future__ import annotations
 
+import json as _json
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar
@@ -15,6 +17,7 @@ import docker
 
 from roustabout.audit_renderer import render_findings
 from roustabout.auditor import audit as run_audit
+from roustabout.cli.backend import get_backend
 from roustabout.collector import collect
 from roustabout.config import Config, load_config
 from roustabout.connection import connect
@@ -27,6 +30,36 @@ from roustabout.renderer import render
 from roustabout.state import FindingState, load_state, set_finding_state
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+def _is_remote() -> bool:
+    """True when CLI should route commands through the REST API."""
+    return bool(os.environ.get("ROUSTABOUT_URL"))
+
+
+def _run_remote(
+    method_name: str,
+    output: str | None = None,
+    text_key: str | None = None,
+    **kwargs: Any,
+) -> None:
+    """Execute a read command via HTTPBackend and print the result."""
+    try:
+        backend = get_backend(command_is_mutation=False)
+        data = getattr(backend, method_name)(**kwargs)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+
+    if text_key and text_key in data:
+        text = data[text_key]
+    else:
+        text = _json.dumps(data, indent=2)
+
+    if output:
+        Path(output).write_text(text)
+        click.echo(f"Output written to {output}")
+    else:
+        click.echo(text)
 
 
 def _connect(docker_host: str | None) -> docker.DockerClient:
@@ -91,6 +124,10 @@ def snapshot(
     output_format: str,
 ) -> None:
     """Generate a markdown snapshot of the Docker environment."""
+    if _is_remote():
+        _run_remote("snapshot", output=output)
+        return
+
     overrides: dict[str, Any] = {
         "show_env": show_env,
         "output": output,
@@ -156,6 +193,10 @@ def audit(
     output_format: str,
 ) -> None:
     """Run security checks against the Docker environment."""
+    if _is_remote():
+        _run_remote("audit", output=output)
+        return
+
     cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
 
     client = _connect(cfg.docker_host)
@@ -257,6 +298,10 @@ def dr_plan(
     filter_project: str | None,
 ) -> None:
     """Generate a disaster recovery plan from running containers."""
+    if _is_remote():
+        _run_remote("dr_plan", output=output, text_key="plan")
+        return
+
     from roustabout.dr_plan import generate as gen_dr
     from roustabout.redactor import sanitize_environment
 
@@ -297,6 +342,10 @@ def health_cmd(
     docker_host: str | None,
 ) -> None:
     """Show container health status."""
+    if _is_remote():
+        _run_remote("health", name=container)
+        return
+
     from roustabout.health_stats import collect_health, render_health
 
     cfg = _load_cfg(config_path, docker_host=docker_host)
@@ -353,6 +402,12 @@ def logs_cmd(
     docker_host: str | None,
 ) -> None:
     """Read container logs."""
+    if _is_remote():
+        _run_remote(
+            "logs", text_key="lines", name=container_name, tail=tail, since=since, grep=grep
+        )
+        return
+
     from roustabout.log_access import (
         ContainerNotFoundError,
         UnsupportedLogDriver,
@@ -446,7 +501,39 @@ def _run_mutation(
     config_path: str | None,
     docker_host: str | None,
 ) -> None:
-    """Execute a mutation through the gateway."""
+    """Execute a mutation through the backend (remote) or gateway (local)."""
+    try:
+        backend = get_backend(command_is_mutation=True)
+    except RuntimeError as exc:
+        if "No roustabout server found" in str(exc):
+            # No server available — fall back to direct gateway
+            _run_mutation_direct(action, container_name, dry_run, config_path, docker_host)
+            return
+        raise click.ClickException(str(exc))
+
+    try:
+        result = backend.mutate(container_name, action, dry_run=dry_run)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+
+    status = result.get("result", "")
+    if status == "dry-run":
+        click.echo(f"[dry-run] Would {action} {container_name}")
+    elif status == "success":
+        click.echo(f"{action.capitalize()}ed {container_name}")
+    else:
+        error = result.get("error", result.get("gate_failed", "unknown error"))
+        raise click.ClickException(f"{action} failed: {error}")
+
+
+def _run_mutation_direct(
+    action: str,
+    container_name: str,
+    dry_run: bool,
+    config_path: str | None,
+    docker_host: str | None,
+) -> None:
+    """Execute a mutation via direct gateway call (local Docker only)."""
     from roustabout.gateway import MutationCommand
     from roustabout.gateway import execute as gw_execute
     from roustabout.session import (

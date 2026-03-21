@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,6 +34,26 @@ class AuthConfig:
     def from_dict(cls, raw: dict[str, Any]) -> AuthConfig:
         """Construct from a raw config dict (e.g., from TOML)."""
         return cls(keys=raw.get("keys", {}))
+
+    @classmethod
+    def from_env(cls) -> AuthConfig:
+        """Construct from environment variables.
+
+        Reads ROUSTABOUT_API_KEY (required), ROUSTABOUT_API_TIER (default: operate),
+        and ROUSTABOUT_API_LABEL (default: env-key). Returns empty config if
+        ROUSTABOUT_API_KEY is not set.
+        """
+        secret = os.environ.get("ROUSTABOUT_API_KEY", "")
+        if not secret:
+            return cls(keys={})
+        tier = os.environ.get("ROUSTABOUT_API_TIER", "operate")
+        label = os.environ.get("ROUSTABOUT_API_LABEL", "env-key")
+        return cls(keys={secret: {"tier": tier, "label": label}})
+
+    def merge(self, other: AuthConfig) -> AuthConfig:
+        """Merge two configs. Keys from other override self on conflict."""
+        merged = {**self.keys, **other.keys}
+        return AuthConfig(keys=merged)
 
 
 def resolve_api_key(key: str | None, config: AuthConfig) -> KeyInfo:

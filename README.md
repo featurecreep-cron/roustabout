@@ -55,14 +55,21 @@ roustabout diff old.json new.json      # compare snapshots
 Connect to a running roustabout server instead of the local Docker socket:
 
 ```bash
-roustabout --url http://server:8077 --api-key mykey snapshot
-roustabout --url http://server:8077 --api-key mykey audit
+# Save connection (prompts for API key)
+roustabout connect http://server:8077
 
-# Or use environment variables
-export ROUSTABOUT_URL=http://server:8077
-export ROUSTABOUT_API_KEY=mykey
+# All commands now use the saved server
 roustabout snapshot
+roustabout audit
+
+# Or pass credentials explicitly
+roustabout --url http://server:8077 --api-key mykey snapshot
+
+# Remove saved connection
+roustabout disconnect
 ```
+
+Connection details are saved to `~/.config/roustabout/config.toml`.
 
 <details>
 <summary><strong>Full CLI reference</strong></summary>
@@ -200,6 +207,19 @@ Findings can be triaged with `roustabout accept`, `false-positive`, or `resolve`
 
 - Python 3.12+
 - Access to a Docker socket (local or remote)
+
+## Upgrading
+
+```bash
+# CLI
+pip install --upgrade roustabout
+
+# Server (if running the Docker image)
+docker pull ghcr.io/featurecreep-cron/roustabout:latest
+docker compose up -d  # or restart your container
+```
+
+Both the CLI and server should be on the same version. The CLI warns if the server is outdated.
 
 ## Contributing
 

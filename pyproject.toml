@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roustabout"
-version = "0.8.3"
+version = "0.9.0"
 description = "Docker environment documentation, security auditing, and safe MCP server"
 license = "MIT"
 requires-python = ">=3.12"

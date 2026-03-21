@@ -363,8 +363,11 @@ def logs_cmd(
     client = _connect(cfg.docker_host)
     try:
         result = collect_logs(
-            client, container_name,
-            tail=tail, since=since, grep=grep,
+            client,
+            container_name,
+            tail=tail,
+            since=since,
+            grep=grep,
         )
         click.echo(result)
     except ContainerNotFoundError:
@@ -481,9 +484,7 @@ def _run_mutation(
         else:
             click.echo(f"{action.capitalize()}ed {container_name}")
     else:
-        raise click.ClickException(
-            f"{action} failed: {result.error or result.gate_failed}"
-        )
+        raise click.ClickException(f"{action} failed: {result.error or result.gate_failed}")
 
 
 @main.command("diff")

@@ -11,6 +11,7 @@ from roustabout.session import PermissionTier, capabilities_for_tier
 
 # Capabilities
 
+
 class TestCapabilities:
     def test_observe_capabilities(self):
         caps = capabilities_for_tier(PermissionTier.OBSERVE)

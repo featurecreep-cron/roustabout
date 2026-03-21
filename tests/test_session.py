@@ -245,9 +245,7 @@ class TestRateLimiter:
         rl.commit(r2)
 
     def test_global_limit(self) -> None:
-        rl = session.RateLimiter(
-            max_tokens=3, window_seconds=300, global_max_tokens=2
-        )
+        rl = session.RateLimiter(max_tokens=3, window_seconds=300, global_max_tokens=2)
         r1 = rl.reserve("c1")
         rl.commit(r1)
         r2 = rl.reserve("c2")

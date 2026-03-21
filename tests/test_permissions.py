@@ -13,6 +13,7 @@ from roustabout.session import PermissionTier
 
 # Fixtures
 
+
 def _make_session(tier: PermissionTier):
     """Create a minimal session-like object for permission checks."""
     from unittest.mock import MagicMock
@@ -49,8 +50,13 @@ class TestActionCapabilityMapping:
         from roustabout.permissions import ACTION_CAPABILITY
 
         read_actions = [
-            "snapshot", "audit", "diff", "generate",
-            "read-logs", "read-health", "dr-plan",
+            "snapshot",
+            "audit",
+            "diff",
+            "generate",
+            "read-logs",
+            "read-health",
+            "dr-plan",
         ]
         for action in read_actions:
             assert action in ACTION_CAPABILITY
@@ -78,8 +84,13 @@ class TestCapabilityTierMapping:
         from roustabout.permissions import CAPABILITY_TIER
 
         observe_caps = [
-            "can_snapshot", "can_audit", "can_diff", "can_generate",
-            "can_read_logs", "can_read_health", "can_dr_plan",
+            "can_snapshot",
+            "can_audit",
+            "can_diff",
+            "can_generate",
+            "can_read_logs",
+            "can_read_health",
+            "can_dr_plan",
         ]
         for cap in observe_caps:
             assert CAPABILITY_TIER[cap] == PermissionTier.OBSERVE
@@ -95,8 +106,12 @@ class TestCapabilityTierMapping:
         from roustabout.permissions import CAPABILITY_TIER
 
         elevate_caps = [
-            "can_update_image", "can_prune", "can_exec",
-            "can_modify_compose", "can_modify_secrets", "can_modify_tier_labels",
+            "can_update_image",
+            "can_prune",
+            "can_exec",
+            "can_modify_compose",
+            "can_modify_secrets",
+            "can_modify_tier_labels",
         ]
         for cap in elevate_caps:
             assert CAPABILITY_TIER[cap] == PermissionTier.ELEVATE
@@ -194,8 +209,11 @@ class TestPerContainerOverrides:
 
         session = _make_session(PermissionTier.OPERATE)
         db_container = make_container(
-            name="mydb", id="db1", status="running",
-            image="postgres:16", image_id="sha256:db1",
+            name="mydb",
+            id="db1",
+            status="running",
+            image="postgres:16",
+            image_id="sha256:db1",
         )
         with pytest.raises(PermissionDenied):
             check(session, "restart", target_info=db_container)
@@ -205,8 +223,11 @@ class TestPerContainerOverrides:
 
         session = _make_session(PermissionTier.OPERATE)
         redis = make_container(
-            name="cache", id="r1", status="running",
-            image="redis:7-alpine", image_id="sha256:r1",
+            name="cache",
+            id="r1",
+            status="running",
+            image="redis:7-alpine",
+            image_id="sha256:r1",
         )
         with pytest.raises(PermissionDenied):
             check(session, "stop", target_info=redis)
@@ -216,8 +237,11 @@ class TestPerContainerOverrides:
 
         session = _make_session(PermissionTier.OPERATE)
         auth = make_container(
-            name="auth", id="a1", status="running",
-            image="ghcr.io/goauthentik/server:latest", image_id="sha256:a1",
+            name="auth",
+            id="a1",
+            status="running",
+            image="ghcr.io/goauthentik/server:latest",
+            image_id="sha256:a1",
         )
         with pytest.raises(PermissionDenied):
             check(session, "restart", target_info=auth)
@@ -228,8 +252,11 @@ class TestPerContainerOverrides:
 
         session = _make_session(PermissionTier.OBSERVE)
         db = make_container(
-            name="mydb", id="db1", status="running",
-            image="postgres:16", image_id="sha256:db1",
+            name="mydb",
+            id="db1",
+            status="running",
+            image="postgres:16",
+            image_id="sha256:db1",
         )
         # Read operations should pass even for deny-listed containers
         check(session, "snapshot", target_info=db)

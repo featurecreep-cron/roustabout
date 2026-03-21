@@ -19,6 +19,7 @@ DEFAULT_BLAST_RADIUS_CAP = 5
 
 # Result type
 
+
 @dataclass(frozen=True)
 class BulkResult:
     """Outcome of a bulk operation."""
@@ -31,12 +32,10 @@ class BulkResult:
 
 # Selectors
 
+
 def select_by_project(containers: list[Any], project: str) -> list[Any]:
     """Select containers belonging to a compose project."""
-    return [
-        c for c in containers
-        if c.labels.get("com.docker.compose.project") == project
-    ]
+    return [c for c in containers if c.labels.get("com.docker.compose.project") == project]
 
 
 def select_by_label(containers: list[Any], selector: str) -> list[Any]:
@@ -53,6 +52,7 @@ def select_by_label(containers: list[Any], selector: str) -> list[Any]:
 
 
 # Bulk execution
+
 
 def bulk_manage(
     *,
@@ -83,8 +83,7 @@ def bulk_manage(
             success=True,
             action=action,
             per_container=tuple(
-                {"target": t, "success": True, "result": "dry-run"}
-                for t in targets
+                {"target": t, "success": True, "result": "dry-run"} for t in targets
             ),
         )
 

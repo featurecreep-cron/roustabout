@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import patch, MagicMock
 
 from roustabout.cli.backend import Backend, get_backend
 from roustabout.cli.direct import DirectBackend
@@ -48,12 +48,14 @@ class TestGetBackend:
         with patch.dict(os.environ, {"ROUSTABOUT_URL": "http://localhost:8077"}):
             backend = get_backend(command_is_mutation=False)
         from roustabout.cli.http import HTTPBackend
+
         assert isinstance(backend, HTTPBackend)
 
     def test_url_set_returns_http_for_mutations(self):
         with patch.dict(os.environ, {"ROUSTABOUT_URL": "http://localhost:8077"}):
             backend = get_backend(command_is_mutation=True)
         from roustabout.cli.http import HTTPBackend
+
         assert isinstance(backend, HTTPBackend)
 
     def test_mutation_with_socket_returns_http(self):
@@ -62,15 +64,20 @@ class TestGetBackend:
             with patch("roustabout.cli.backend.os.path.exists", return_value=True):
                 backend = get_backend(command_is_mutation=True)
         from roustabout.cli.http import HTTPBackend
+
         assert isinstance(backend, HTTPBackend)
 
     def test_api_key_passed_to_http_backend(self):
-        with patch.dict(os.environ, {
-            "ROUSTABOUT_URL": "http://localhost:8077",
-            "ROUSTABOUT_API_KEY": "sk-test-123",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "ROUSTABOUT_URL": "http://localhost:8077",
+                "ROUSTABOUT_API_KEY": "sk-test-123",
+            },
+        ):
             backend = get_backend(command_is_mutation=False)
         from roustabout.cli.http import HTTPBackend
+
         assert isinstance(backend, HTTPBackend)
         assert "Authorization" in backend._client.headers
 
@@ -79,8 +86,8 @@ class TestHTTPBackend:
     """HTTPBackend HTTP call behavior."""
 
     def test_snapshot_calls_correct_endpoint(self):
+
         from roustabout.cli.http import HTTPBackend
-        import httpx
 
         backend = HTTPBackend.__new__(HTTPBackend)
         mock_client = MagicMock()
@@ -105,7 +112,7 @@ class TestHTTPBackend:
         mock_client.post.return_value = mock_resp
         backend._client = mock_client
 
-        result = backend.mutate("nginx", "restart")
+        backend.mutate("nginx", "restart")
         mock_client.post.assert_called_once_with("/v1/containers/nginx/restart")
 
     def test_401_raises_auth_error(self):

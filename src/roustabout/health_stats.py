@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Data types
 
+
 @dataclass(frozen=True)
 class ContainerHealth:
     """Container health and lifecycle state."""
@@ -61,6 +62,7 @@ class DiskUsage:
 
 # Collection
 
+
 def collect_health(client: Any) -> list[ContainerHealth]:
     """Collect health status for all containers."""
     containers = client.containers.list(all=True)
@@ -71,16 +73,18 @@ def collect_health(client: Any) -> list[ContainerHealth]:
         config = c.attrs.get("Config", {})
         hc_config = config.get("Healthcheck")
 
-        results.append(ContainerHealth(
-            name=c.name,
-            status=state.get("Status", c.status),
-            health=health_info.get("Status") if health_info else None,
-            restart_count=c.attrs.get("RestartCount", 0),
-            oom_killed=state.get("OOMKilled", False),
-            started_at=state.get("StartedAt", ""),
-            health_log=tuple(health_info.get("Log", [])) if health_info else (),
-            healthcheck_config=hc_config,
-        ))
+        results.append(
+            ContainerHealth(
+                name=c.name,
+                status=state.get("Status", c.status),
+                health=health_info.get("Status") if health_info else None,
+                restart_count=c.attrs.get("RestartCount", 0),
+                oom_killed=state.get("OOMKilled", False),
+                started_at=state.get("StartedAt", ""),
+                health_log=tuple(health_info.get("Log", [])) if health_info else (),
+                healthcheck_config=hc_config,
+            )
+        )
     return results
 
 
@@ -118,9 +122,7 @@ def collect_disk_usage(client: Any) -> DiskUsage:
     containers_size = sum(c.get("SizeRw", 0) for c in containers)
 
     volumes = df.get("Volumes", [])
-    volumes_size = sum(
-        v.get("UsageData", {}).get("Size", 0) for v in volumes
-    )
+    volumes_size = sum(v.get("UsageData", {}).get("Size", 0) for v in volumes)
 
     build_cache = df.get("BuildCache", [])
     cache_size = sum(b.get("Size", 0) for b in build_cache)
@@ -137,6 +139,7 @@ def collect_disk_usage(client: Any) -> DiskUsage:
 
 
 # Stats parsing
+
 
 def _parse_stats(name: str, raw: dict[str, Any]) -> ContainerStats:
     """Parse docker stats JSON into ContainerStats."""
@@ -163,14 +166,10 @@ def _parse_cpu(raw: dict[str, Any]) -> float:
     cpu_stats = raw.get("cpu_stats", {})
     pre_stats = raw.get("precpu_stats", {})
 
-    cpu_delta = (
-        cpu_stats.get("cpu_usage", {}).get("total_usage", 0)
-        - pre_stats.get("cpu_usage", {}).get("total_usage", 0)
-    )
-    system_delta = (
-        cpu_stats.get("system_cpu_usage", 0)
-        - pre_stats.get("system_cpu_usage", 0)
-    )
+    cpu_delta = cpu_stats.get("cpu_usage", {}).get("total_usage", 0) - pre_stats.get(
+        "cpu_usage", {}
+    ).get("total_usage", 0)
+    system_delta = cpu_stats.get("system_cpu_usage", 0) - pre_stats.get("system_cpu_usage", 0)
 
     if system_delta <= 0 or cpu_delta <= 0:
         return 0.0
@@ -229,6 +228,7 @@ def _parse_block_io(raw: dict[str, Any]) -> tuple[int | None, int | None]:
 
 
 # Rendering
+
 
 def _human_size(n: int | None) -> str:
     """Convert bytes to human-readable string."""

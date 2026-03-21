@@ -281,11 +281,7 @@ class TestPhase1ConfigFields:
 
     def test_unknown_sections_ignored(self, tmp_path):
         config_file = tmp_path / "config.toml"
-        config_file.write_text(
-            "show_env = true\n"
-            "[phase2_feature]\n"
-            "some_setting = true\n"
-        )
+        config_file.write_text("show_env = true\n[phase2_feature]\nsome_setting = true\n")
         cfg = load_config(config_file)
         assert cfg.show_env is True
 

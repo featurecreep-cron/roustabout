@@ -25,8 +25,7 @@ class DirectBackend:
                 env = redact_env(env, patterns)
             return {
                 "containers": [
-                    {"name": c.name, "image": c.image, "status": c.status}
-                    for c in env.containers
+                    {"name": c.name, "image": c.image, "status": c.status} for c in env.containers
                 ],
             }
         finally:

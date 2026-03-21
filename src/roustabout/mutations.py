@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Result type
 
+
 @dataclass(frozen=True)
 class MutationResult:
     """Outcome of a mutation operation."""
@@ -31,6 +32,7 @@ class MutationResult:
 
 
 # Individual operations
+
 
 def _stop(docker: DockerSession, target: str) -> MutationResult:
     container = docker.client.containers.get(target)
@@ -73,7 +75,9 @@ def execute(
     handler = _DISPATCH.get(action)
     if handler is None:
         return MutationResult(
-            success=False, action=action, target=target,
+            success=False,
+            action=action,
+            target=target,
             error=f"Unknown mutation action: {action!r}",
             error_type="mutation_error",
         )
@@ -82,19 +86,25 @@ def execute(
         return handler(docker, target)
     except _docker_errors.NotFound:
         return MutationResult(
-            success=False, action=action, target=target,
+            success=False,
+            action=action,
+            target=target,
             error=f"Container {target!r} not found",
             error_type="not_found",
         )
     except ConnectionError as e:
         return MutationResult(
-            success=False, action=action, target=target,
+            success=False,
+            action=action,
+            target=target,
             error=sanitize(str(e)),
             error_type="connection_error",
         )
     except _docker_errors.APIError as e:
         return MutationResult(
-            success=False, action=action, target=target,
+            success=False,
+            action=action,
+            target=target,
             error=sanitize(str(e)),
             error_type="mutation_error",
         )

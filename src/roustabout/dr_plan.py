@@ -148,8 +148,7 @@ def _render_container_section(
     # Volume prep
     has_bind = any(m.type == "bind" for m in container.mounts)
     has_volume = any(
-        m.type == "volume" and not _is_anonymous_volume(m.source)
-        for m in container.mounts
+        m.type == "volume" and not _is_anonymous_volume(m.source) for m in container.mounts
     )
     if has_bind or has_volume:
         lines.append("# 1. Restore volume data")
@@ -247,11 +246,7 @@ def _build_run_command(container: ContainerInfo, env: DockerEnvironment) -> str:
     if not is_host_net and not is_container_net:
         for port in container.ports:
             if port.host_port:
-                bind = (
-                    f"{port.host_ip}:"
-                    if port.host_ip and port.host_ip != "0.0.0.0"
-                    else ""
-                )
+                bind = f"{port.host_ip}:" if port.host_ip and port.host_ip != "0.0.0.0" else ""
                 parts.append(f"  -p {bind}{port.host_port}:{port.container_port}/{port.protocol}")
 
     # Volumes
@@ -434,9 +429,7 @@ def _resolve_dependency_order(env: DockerEnvironment) -> list[ContainerInfo]:
         queue.sort()  # maintain alphabetical order within tier
 
     # Cycle detection: add remaining nodes alphabetically
-    remaining = sorted(
-        name for name, deg in in_degree.items() if deg > 0
-    )
+    remaining = sorted(name for name, deg in in_degree.items() if deg > 0)
     for name in remaining:
         result.append(by_name[name])
 

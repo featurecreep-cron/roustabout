@@ -20,6 +20,7 @@ from roustabout.log_access import (
 
 # Helpers
 
+
 def _mock_container(
     name: str = "nginx",
     log_driver: str = "json-file",
@@ -37,6 +38,7 @@ def _mock_container(
 
 
 # Log retrieval
+
 
 class TestCollectLogs:
     def test_basic_retrieval(self):
@@ -66,9 +68,7 @@ class TestCollectLogs:
 
     def test_unsupported_log_driver(self):
         client = MagicMock()
-        client.containers.get.return_value = _mock_container(
-            log_driver="gelf"
-        )
+        client.containers.get.return_value = _mock_container(log_driver="gelf")
 
         with pytest.raises(UnsupportedLogDriver, match="gelf"):
             collect_logs(client, "nginx")
@@ -76,9 +76,7 @@ class TestCollectLogs:
     def test_supported_drivers(self):
         for driver in ("json-file", "local", "journald"):
             client = MagicMock()
-            client.containers.get.return_value = _mock_container(
-                log_driver=driver
-            )
+            client.containers.get.return_value = _mock_container(log_driver=driver)
             result = collect_logs(client, "nginx")
             assert isinstance(result, str)
 
@@ -95,9 +93,7 @@ class TestCollectLogs:
     def test_per_line_truncation(self):
         long_line = b"x" * 3000 + b"\n"
         client = MagicMock()
-        client.containers.get.return_value = _mock_container(
-            logs_output=long_line
-        )
+        client.containers.get.return_value = _mock_container(logs_output=long_line)
 
         result = collect_logs(client, "nginx", line_limit=1024)
         lines = result.strip().split("\n")
@@ -116,6 +112,7 @@ class TestCollectLogs:
 
 
 # Since parsing
+
 
 class TestParseSince:
     def test_relative_minutes(self):

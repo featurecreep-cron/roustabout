@@ -29,6 +29,7 @@ from roustabout.session import (
 
 # Helpers
 
+
 def _make_session(tier: PermissionTier = PermissionTier.OPERATE) -> Session:
     docker = DockerSession(client=MagicMock(), host="localhost")
     return Session(
@@ -69,13 +70,12 @@ def _mock_gates(**overrides):
         if value is None and key != "_inspect_target" and key != "_compute_target_hash":
             patches[key] = stack.enter_context(patch(target))
         else:
-            patches[key] = stack.enter_context(
-                patch(target, return_value=value)
-            )
+            patches[key] = stack.enter_context(patch(target, return_value=value))
     return stack
 
 
 # MutationCommand dataclass
+
 
 class TestMutationCommand:
     def test_frozen(self):
@@ -92,26 +92,37 @@ class TestMutationCommand:
 
 # GatewayResult dataclass
 
+
 class TestGatewayResult:
     def test_success_result(self):
         result = GatewayResult(
-            success=True, action="restart", target="nginx",
-            pre_state_hash="abc", post_state_hash="def", result="success",
+            success=True,
+            action="restart",
+            target="nginx",
+            pre_state_hash="abc",
+            post_state_hash="def",
+            result="success",
         )
         assert result.success is True
         assert result.gate_failed is None
 
     def test_denial_result(self):
         result = GatewayResult(
-            success=False, action="restart", target="nginx",
-            pre_state_hash="", post_state_hash=None, result="denied",
-            error="locked", gate_failed="LockdownError",
+            success=False,
+            action="restart",
+            target="nginx",
+            pre_state_hash="",
+            post_state_hash=None,
+            result="denied",
+            error="locked",
+            gate_failed="LockdownError",
         )
         assert result.success is False
         assert result.gate_failed == "LockdownError"
 
 
 # Gate exception types
+
 
 class TestGateExceptions:
     def test_circuit_open(self):
@@ -129,13 +140,12 @@ class TestGateExceptions:
         assert "ghost" in str(exc)
 
     def test_concurrent_mutation(self):
-        exc = ConcurrentMutation(
-            target="nginx", expected_hash="aaa", actual_hash="bbb"
-        )
+        exc = ConcurrentMutation(target="nginx", expected_hash="aaa", actual_hash="bbb")
         assert "TOCTOU" in str(exc)
 
 
 # Action validation
+
 
 class TestActionValidation:
     def test_read_action_rejected(self):
@@ -158,6 +168,7 @@ class TestActionValidation:
 
 # Gate sequence — lockdown
 
+
 class TestLockdownGate:
     def test_lockdown_blocks_mutation(self):
         from roustabout.lockdown import LockdownError, LockdownStatus
@@ -171,7 +182,8 @@ class TestLockdownGate:
                     "roustabout.gateway.lockdown.check",
                     side_effect=LockdownError(
                         LockdownStatus(
-                            locked=True, reason="emergency",
+                            locked=True,
+                            reason="emergency",
                             path="/etc/roustabout/lockdown",
                         )
                     ),
@@ -184,6 +196,7 @@ class TestLockdownGate:
 
 
 # Gate sequence — permission
+
 
 class TestPermissionGate:
     def test_observe_session_denied_mutation(self):
@@ -214,6 +227,7 @@ class TestPermissionGate:
 
 # Gate sequence — target not found
 
+
 class TestTargetNotFoundGate:
     def test_nonexistent_container(self):
         session = _make_session()
@@ -231,6 +245,7 @@ class TestTargetNotFoundGate:
 
 # Gate sequence — TOCTOU
 
+
 class TestTargetHashCompleteness:
     """TOCTOU hash must cover all security-relevant container fields."""
 
@@ -242,10 +257,24 @@ class TestTargetHashCompleteness:
 
         source = inspect.getsource(_compute_target_hash)
         required_fields = [
-            "Status", "Image", "Env", "Cmd", "Entrypoint", "User",
-            "Labels", "NetworkMode", "Privileged", "CapAdd", "CapDrop",
-            "PidMode", "IpcMode", "SecurityOpt", "ReadonlyRootfs",
-            "Devices", "Binds", "PortBindings",
+            "Status",
+            "Image",
+            "Env",
+            "Cmd",
+            "Entrypoint",
+            "User",
+            "Labels",
+            "NetworkMode",
+            "Privileged",
+            "CapAdd",
+            "CapDrop",
+            "PidMode",
+            "IpcMode",
+            "SecurityOpt",
+            "ReadonlyRootfs",
+            "Devices",
+            "Binds",
+            "PortBindings",
         ]
         for field in required_fields:
             assert field in source, (
@@ -301,6 +330,7 @@ class TestTOCTOU:
 
 # Gate sequence — dry run
 
+
 class TestDryRun:
     def test_dry_run_returns_preview(self):
         session = _make_session()
@@ -324,6 +354,7 @@ class TestDryRun:
 
 
 # Gate sequence — circuit breaker
+
 
 class TestCircuitBreakerGate:
     def test_circuit_open_denies(self):
@@ -353,7 +384,9 @@ class TestCircuitBreakerGate:
                         return_value=mock_circuit,
                     ):
                         result = execute(
-                            cmd, session=session, db=mock_db,
+                            cmd,
+                            session=session,
+                            db=mock_db,
                         )
 
         assert result.success is False
@@ -362,6 +395,7 @@ class TestCircuitBreakerGate:
 
 
 # Gate sequence — rate limit cleanup
+
 
 class TestRateLimitExhausted:
     def test_exhausted_rate_limit_returns_denied(self):
@@ -409,6 +443,7 @@ class TestRateLimitCleanup:
 
 # Full success path (mutation executes)
 
+
 class TestSuccessPath:
     def test_successful_mutation(self):
         """Full path through all gates to successful mutation."""
@@ -422,7 +457,9 @@ class TestSuccessPath:
         mock_info.name = "nginx"
 
         mock_mutation = MutationResult(
-            success=True, action="restart", target="nginx",
+            success=True,
+            action="restart",
+            target="nginx",
         )
 
         with patch("roustabout.gateway._inspect_target", return_value=mock_info):
@@ -455,7 +492,9 @@ class TestSuccessPath:
         mock_info.name = "nginx"
 
         mock_mutation = MutationResult(
-            success=False, action="stop", target="nginx",
+            success=False,
+            action="stop",
+            target="nginx",
             error="container already stopped",
         )
 

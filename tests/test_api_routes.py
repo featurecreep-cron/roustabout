@@ -6,8 +6,9 @@ with core logic mocked at the boundary.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from roustabout.api.app import create_app
 from roustabout.api.auth import AuthConfig
@@ -15,11 +16,13 @@ from roustabout.api.auth import AuthConfig
 
 @pytest.fixture
 def auth_config():
-    return AuthConfig(keys={
-        "sk-observe": {"tier": "observe", "label": "test-observe"},
-        "sk-operate": {"tier": "operate", "label": "test-operate"},
-        "sk-elevate": {"tier": "elevate", "label": "test-elevate"},
-    })
+    return AuthConfig(
+        keys={
+            "sk-observe": {"tier": "observe", "label": "test-observe"},
+            "sk-operate": {"tier": "operate", "label": "test-operate"},
+            "sk-elevate": {"tier": "elevate", "label": "test-elevate"},
+        }
+    )
 
 
 @pytest.fixture
@@ -30,6 +33,7 @@ def app(auth_config):
 @pytest.fixture
 def client(app):
     from fastapi.testclient import TestClient
+
     return TestClient(app)
 
 
@@ -82,7 +86,9 @@ class TestSnapshotRoute:
 
     def test_snapshot_returns_container_list(self, client):
         with patch("roustabout.api.routes._snapshot") as mock:
-            mock.return_value = {"containers": [{"name": "nginx", "image": "nginx:latest", "status": "running"}]}
+            mock.return_value = {
+                "containers": [{"name": "nginx", "image": "nginx:latest", "status": "running"}]
+            }
             response = client.get("/v1/snapshot", headers=_auth())
         data = response.json()
         assert len(data["containers"]) == 1
@@ -100,9 +106,16 @@ class TestAuditRoute:
 
     def test_audit_returns_findings(self, client):
         with patch("roustabout.api.routes._audit") as mock:
-            mock.return_value = {"findings": [
-                {"check": "privileged", "severity": "critical", "container": "nginx", "message": "running privileged"},
-            ]}
+            mock.return_value = {
+                "findings": [
+                    {
+                        "check": "privileged",
+                        "severity": "critical",
+                        "container": "nginx",
+                        "message": "running privileged",
+                    },
+                ]
+            }
             response = client.get("/v1/audit", headers=_auth())
         data = response.json()
         assert len(data["findings"]) == 1
@@ -206,7 +219,10 @@ class TestMutationRoutes:
 
     def test_operate_key_can_restart(self, client):
         with patch("roustabout.api.routes._mutate") as mock:
-            mock.return_value = (200, {"result": "success", "container": "nginx", "action": "restart"})
+            mock.return_value = (
+                200,
+                {"result": "success", "container": "nginx", "action": "restart"},
+            )
             response = client.post("/v1/containers/nginx/restart", headers=_auth("sk-operate"))
         assert response.status_code == 200
         assert response.json()["result"] == "success"
@@ -217,37 +233,80 @@ class TestMutationRoutes:
 
     def test_elevate_key_can_mutate(self, client):
         with patch("roustabout.api.routes._mutate") as mock:
-            mock.return_value = (200, {"result": "success", "container": "nginx", "action": "stop"})
+            mock.return_value = (
+                200,
+                {"result": "success", "container": "nginx", "action": "stop"},
+            )
             response = client.post("/v1/containers/nginx/stop", headers=_auth("sk-elevate"))
         assert response.status_code == 200
 
     def test_gateway_lockdown_returns_503(self, client):
         with patch("roustabout.api.routes._mutate") as mock:
-            mock.return_value = (503, {"result": "denied", "error": "system locked", "container": "nginx", "action": "restart"})
+            mock.return_value = (
+                503,
+                {
+                    "result": "denied",
+                    "error": "system locked",
+                    "container": "nginx",
+                    "action": "restart",
+                },
+            )
             response = client.post("/v1/containers/nginx/restart", headers=_auth("sk-operate"))
         assert response.status_code == 503
 
     def test_gateway_permission_denied_returns_403(self, client):
         with patch("roustabout.api.routes._mutate") as mock:
-            mock.return_value = (403, {"result": "denied", "error": "insufficient tier", "container": "nginx", "action": "restart"})
+            mock.return_value = (
+                403,
+                {
+                    "result": "denied",
+                    "error": "insufficient tier",
+                    "container": "nginx",
+                    "action": "restart",
+                },
+            )
             response = client.post("/v1/containers/nginx/restart", headers=_auth("sk-operate"))
         assert response.status_code == 403
 
     def test_gateway_rate_limit_returns_429(self, client):
         with patch("roustabout.api.routes._mutate") as mock:
-            mock.return_value = (429, {"result": "denied", "error": "rate limit exceeded", "container": "nginx", "action": "restart"})
+            mock.return_value = (
+                429,
+                {
+                    "result": "denied",
+                    "error": "rate limit exceeded",
+                    "container": "nginx",
+                    "action": "restart",
+                },
+            )
             response = client.post("/v1/containers/nginx/restart", headers=_auth("sk-operate"))
         assert response.status_code == 429
 
     def test_gateway_target_not_found_returns_404(self, client):
         with patch("roustabout.api.routes._mutate") as mock:
-            mock.return_value = (404, {"result": "denied", "error": "container not found", "container": "ghost", "action": "restart"})
+            mock.return_value = (
+                404,
+                {
+                    "result": "denied",
+                    "error": "container not found",
+                    "container": "ghost",
+                    "action": "restart",
+                },
+            )
             response = client.post("/v1/containers/ghost/restart", headers=_auth("sk-operate"))
         assert response.status_code == 404
 
     def test_gateway_concurrent_mutation_returns_409(self, client):
         with patch("roustabout.api.routes._mutate") as mock:
-            mock.return_value = (409, {"result": "denied", "error": "state changed", "container": "nginx", "action": "restart"})
+            mock.return_value = (
+                409,
+                {
+                    "result": "denied",
+                    "error": "state changed",
+                    "container": "nginx",
+                    "action": "restart",
+                },
+            )
             response = client.post("/v1/containers/nginx/restart", headers=_auth("sk-operate"))
         assert response.status_code == 409
 
@@ -321,15 +380,19 @@ class TestSchemas:
     def test_health_entry_serialization(self):
         from roustabout.api.schemas import HealthEntry
 
-        resp = HealthEntry(name="nginx", status="running", health="healthy", restart_count=0, oom_killed=False)
+        resp = HealthEntry(
+            name="nginx", status="running", health="healthy", restart_count=0, oom_killed=False
+        )
         data = resp.model_dump()
         assert data["health"] == "healthy"
 
     def test_snapshot_response_serialization(self):
-        from roustabout.api.schemas import SnapshotResponse, ContainerSummary
+        from roustabout.api.schemas import ContainerSummary, SnapshotResponse
 
-        resp = SnapshotResponse(containers=[
-            ContainerSummary(name="nginx", image="nginx:latest", status="running"),
-        ])
+        resp = SnapshotResponse(
+            containers=[
+                ContainerSummary(name="nginx", image="nginx:latest", status="running"),
+            ]
+        )
         data = resp.model_dump()
         assert len(data["containers"]) == 1

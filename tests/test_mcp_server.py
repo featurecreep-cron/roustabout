@@ -372,9 +372,21 @@ class TestAsyncBoundary:
         from pathlib import Path
 
         sync_modules = [
-            "collector", "auditor", "redactor", "renderer", "generator",
-            "diff", "audit_renderer", "json_output", "models", "config",
-            "connection", "constants", "lockdown", "state_db", "session",
+            "collector",
+            "auditor",
+            "redactor",
+            "renderer",
+            "generator",
+            "diff",
+            "audit_renderer",
+            "json_output",
+            "models",
+            "config",
+            "connection",
+            "constants",
+            "lockdown",
+            "state_db",
+            "session",
             "dr_plan",
         ]
         src_dir = Path(__file__).parent.parent / "src" / "roustabout"
@@ -389,7 +401,5 @@ class TestAsyncBoundary:
                     assert "asyncio" not in names, f"{mod}.py imports asyncio"
                     assert "anyio" not in names, f"{mod}.py imports anyio"
                 elif isinstance(node, ast.ImportFrom) and node.module:
-                    assert not node.module.startswith("asyncio"), \
-                        f"{mod}.py imports from asyncio"
-                    assert not node.module.startswith("anyio"), \
-                        f"{mod}.py imports from anyio"
+                    assert not node.module.startswith("asyncio"), f"{mod}.py imports from asyncio"
+                    assert not node.module.startswith("anyio"), f"{mod}.py imports from anyio"

@@ -14,6 +14,7 @@ from roustabout.mutations import MutationResult, execute
 
 # Helpers
 
+
 def _make_docker_session():
     """Create a mock DockerSession."""
     from roustabout.session import DockerSession
@@ -27,14 +28,18 @@ def _mock_container(**overrides):
     container.name = overrides.get("name", "nginx")
     container.status = overrides.get("status", "running")
     container.short_id = overrides.get("short_id", "abc123")
-    container.attrs = overrides.get("attrs", {
-        "State": {"Status": "running"},
-        "Config": {"Image": "nginx:latest"},
-    })
+    container.attrs = overrides.get(
+        "attrs",
+        {
+            "State": {"Status": "running"},
+            "Config": {"Image": "nginx:latest"},
+        },
+    )
     return container
 
 
 # MutationResult dataclass
+
 
 class TestMutationResult:
     def test_success(self):
@@ -44,7 +49,9 @@ class TestMutationResult:
 
     def test_failure(self):
         r = MutationResult(
-            success=False, action="stop", target="nginx",
+            success=False,
+            action="stop",
+            target="nginx",
             error="connection refused",
         )
         assert r.success is False
@@ -52,6 +59,7 @@ class TestMutationResult:
 
 
 # stop
+
 
 class TestStop:
     def test_stop_running_container(self):
@@ -67,9 +75,7 @@ class TestStop:
 
     def test_stop_not_found(self):
         docker = _make_docker_session()
-        docker.client.containers.get.side_effect = _docker_errors.NotFound(
-            "not found"
-        )
+        docker.client.containers.get.side_effect = _docker_errors.NotFound("not found")
 
         result = execute(docker, "stop", "ghost")
 
@@ -89,6 +95,7 @@ class TestStop:
 
 # start
 
+
 class TestStart:
     def test_start_stopped_container(self):
         docker = _make_docker_session()
@@ -102,9 +109,7 @@ class TestStart:
 
     def test_start_not_found(self):
         docker = _make_docker_session()
-        docker.client.containers.get.side_effect = _docker_errors.NotFound(
-            "not found"
-        )
+        docker.client.containers.get.side_effect = _docker_errors.NotFound("not found")
 
         result = execute(docker, "start", "ghost")
 
@@ -112,6 +117,7 @@ class TestStart:
 
 
 # restart
+
 
 class TestRestart:
     def test_restart_container(self):
@@ -126,9 +132,7 @@ class TestRestart:
 
     def test_restart_not_found(self):
         docker = _make_docker_session()
-        docker.client.containers.get.side_effect = _docker_errors.NotFound(
-            "not found"
-        )
+        docker.client.containers.get.side_effect = _docker_errors.NotFound("not found")
 
         result = execute(docker, "restart", "ghost")
 
@@ -136,6 +140,7 @@ class TestRestart:
 
 
 # execute dispatch
+
 
 class TestExecuteDispatch:
     def test_unknown_action(self):
@@ -157,12 +162,11 @@ class TestExecuteDispatch:
 
 # Error classification
 
+
 class TestErrorClassification:
     def test_connection_error_classified(self):
         docker = _make_docker_session()
-        docker.client.containers.get.side_effect = ConnectionError(
-            "connection refused"
-        )
+        docker.client.containers.get.side_effect = ConnectionError("connection refused")
 
         result = execute(docker, "restart", "nginx")
 
@@ -171,9 +175,7 @@ class TestErrorClassification:
 
     def test_not_found_classified(self):
         docker = _make_docker_session()
-        docker.client.containers.get.side_effect = _docker_errors.NotFound(
-            "not found"
-        )
+        docker.client.containers.get.side_effect = _docker_errors.NotFound("not found")
 
         result = execute(docker, "restart", "nginx")
 
@@ -197,9 +199,7 @@ class TestErrorClassification:
         container = _mock_container()
         docker.client.containers.get.return_value = container
         # Inject ANSI escape + control chars in error message
-        container.restart.side_effect = _docker_errors.APIError(
-            "\x1b[31mred\x1b[0m error\x00null"
-        )
+        container.restart.side_effect = _docker_errors.APIError("\x1b[31mred\x1b[0m error\x00null")
 
         result = execute(docker, "restart", "nginx")
 

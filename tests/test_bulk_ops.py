@@ -23,6 +23,7 @@ from roustabout.session import (
 
 # Helpers
 
+
 def _make_session() -> Session:
     docker = DockerSession(client=MagicMock(), host="localhost")
     return Session(
@@ -45,6 +46,7 @@ def _mock_container(name: str, project: str | None = None, labels=None):
 
 
 # Selection
+
 
 class TestSelectByProject:
     def test_selects_matching_project(self):
@@ -89,6 +91,7 @@ class TestSelectByLabel:
 
 # Bulk manage
 
+
 class TestBulkManage:
     def test_blast_radius_cap(self):
         """Too many containers should be denied."""
@@ -124,7 +127,9 @@ class TestBulkManage:
 
         with patch("roustabout.bulk_ops._execute_single") as mock_exec:
             mock_exec.return_value = {
-                "target": "web", "success": True, "result": "success",
+                "target": "web",
+                "success": True,
+                "result": "success",
             }
             result = bulk_manage(
                 action="restart",

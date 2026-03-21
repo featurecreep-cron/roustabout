@@ -40,7 +40,7 @@ def create_app(auth_config: AuthConfig | None = None) -> FastAPI:
                 content={"error": "missing or malformed Authorization header"},
             )
 
-        token = auth_header[len("Bearer "):]
+        token = auth_header[len("Bearer ") :]
         try:
             key_info = resolve_api_key(token, auth_config)
         except AuthError:

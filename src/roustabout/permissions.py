@@ -85,6 +85,7 @@ CAPABILITY_TIER: dict[str, PermissionTier] = {
 
 # Exception
 
+
 @dataclass
 class PermissionDenied(Exception):
     """Session lacks required capability or tier."""
@@ -103,6 +104,7 @@ class PermissionDenied(Exception):
 
 
 # Public API
+
 
 def check(
     session: Session,
@@ -168,6 +170,7 @@ def list_capabilities(session: Session) -> list[dict[str, str | bool]]:
 
 
 # Internal helpers
+
 
 def _resolve_container_tier(
     container: ContainerInfo,

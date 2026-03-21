@@ -56,8 +56,9 @@ def _snapshot(fmt: str = "json") -> dict[str, Any] | str:
         client.close()
 
 
-def _audit() -> dict[str, Any]:
+def _audit(fmt: str = "json") -> dict[str, Any] | str:
     """Execute audit via core logic."""
+    from roustabout.audit_renderer import render_findings
     from roustabout.auditor import audit
     from roustabout.collector import collect
     from roustabout.config import load_config
@@ -70,6 +71,8 @@ def _audit() -> dict[str, Any]:
         env = collect(client)
         patterns = resolve_patterns(config.redact_patterns)
         findings = audit(env, patterns)
+        if fmt == "markdown":
+            return render_findings(findings)
         return {
             "findings": [
                 {
@@ -256,11 +259,15 @@ async def snapshot(request: Request, format: str = "json") -> Any:
 
 
 @router.get("/audit")
-async def audit_route(request: Request) -> dict[str, Any]:
+async def audit_route(request: Request, format: str = "json") -> Any:
     """Run security audit and return findings."""
     import anyio
+    from fastapi.responses import PlainTextResponse
 
-    return await anyio.to_thread.run_sync(_audit)
+    result = await anyio.to_thread.run_sync(lambda: _audit(fmt=format))
+    if isinstance(result, str):
+        return PlainTextResponse(result)
+    return result
 
 
 @router.get("/containers/{name}")

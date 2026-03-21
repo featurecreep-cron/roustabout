@@ -233,7 +233,19 @@ def audit(
 ) -> None:
     """Run security checks against the Docker environment."""
     if _is_remote():
-        _run_remote("audit", output=output)
+        try:
+            backend = get_backend(command_is_mutation=False)
+            raw = backend.audit(fmt=output_format)
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc))
+
+        text = raw if isinstance(raw, str) else _json.dumps(raw, indent=2)
+
+        if output:
+            Path(output).write_text(text)
+            click.echo(f"Audit written to {output}")
+        else:
+            click.echo(text)
         return
 
     cfg = _load_cfg(config_path, output=output, docker_host=docker_host)

@@ -21,34 +21,38 @@ from roustabout.health_stats import (
 
 # Helpers
 
+
 def _mock_container(**overrides):
     c = MagicMock()
     c.name = overrides.get("name", "nginx")
     c.status = overrides.get("status", "running")
-    c.attrs = overrides.get("attrs", {
-        "State": {
-            "Status": "running",
-            "StartedAt": "2026-03-17T00:00:00Z",
-            "OOMKilled": False,
-            "Health": {
-                "Status": "healthy",
-                "Log": [
-                    {"ExitCode": 0, "Output": "OK", "Start": "2026-03-17T00:01:00Z"},
-                ],
+    c.attrs = overrides.get(
+        "attrs",
+        {
+            "State": {
+                "Status": "running",
+                "StartedAt": "2026-03-17T00:00:00Z",
+                "OOMKilled": False,
+                "Health": {
+                    "Status": "healthy",
+                    "Log": [
+                        {"ExitCode": 0, "Output": "OK", "Start": "2026-03-17T00:01:00Z"},
+                    ],
+                },
             },
-        },
-        "RestartCount": 0,
-        "Config": {
-            "Healthcheck": {
-                "Test": ["CMD-SHELL", "curl -f http://localhost/"],
-                "Interval": 30000000000,
-                "Timeout": 10000000000,
-                "Retries": 3,
-                "StartPeriod": 5000000000,
+            "RestartCount": 0,
+            "Config": {
+                "Healthcheck": {
+                    "Test": ["CMD-SHELL", "curl -f http://localhost/"],
+                    "Interval": 30000000000,
+                    "Timeout": 10000000000,
+                    "Retries": 3,
+                    "StartPeriod": 5000000000,
+                },
             },
+            "HostConfig": {"RestartPolicy": {"Name": "unless-stopped"}},
         },
-        "HostConfig": {"RestartPolicy": {"Name": "unless-stopped"}},
-    })
+    )
     return c
 
 
@@ -120,6 +124,7 @@ def _mock_stats_cgroup_v1():
 
 # Health collection
 
+
 class TestCollectHealth:
     def test_healthy_container(self):
         client = MagicMock()
@@ -145,14 +150,15 @@ class TestCollectHealth:
         assert results[0].health is None
 
     def test_health_log_entries(self):
-        results = collect_health(MagicMock(
-            containers=MagicMock(list=MagicMock(return_value=[_mock_container()]))
-        ))
+        results = collect_health(
+            MagicMock(containers=MagicMock(list=MagicMock(return_value=[_mock_container()])))
+        )
         assert len(results[0].health_log) == 1
         assert results[0].health_log[0]["ExitCode"] == 0
 
 
 # Stats collection
+
 
 class TestCollectStats:
     def test_cgroup_v2_stats(self):
@@ -206,6 +212,7 @@ class TestCollectStats:
 
 # Disk usage
 
+
 class TestCollectDiskUsage:
     def test_disk_usage(self):
         client = MagicMock()
@@ -235,14 +242,19 @@ class TestCollectDiskUsage:
 
 # Rendering
 
+
 class TestRendering:
     def test_render_health(self):
         healths = [
             ContainerHealth(
-                name="nginx", status="running", health="healthy",
-                restart_count=0, oom_killed=False,
+                name="nginx",
+                status="running",
+                health="healthy",
+                restart_count=0,
+                oom_killed=False,
                 started_at="2026-03-17T00:00:00Z",
-                health_log=[], healthcheck_config=None,
+                health_log=[],
+                healthcheck_config=None,
             ),
         ]
         result = render_health(healths)
@@ -252,7 +264,8 @@ class TestRendering:
     def test_render_stats(self):
         stats = [
             ContainerStats(
-                name="nginx", cpu_percent=2.5,
+                name="nginx",
+                cpu_percent=2.5,
                 memory_usage_bytes=104857600,
                 memory_limit_bytes=536870912,
                 memory_percent=19.5,

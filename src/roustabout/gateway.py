@@ -42,6 +42,7 @@ _MUTATION_ACTIONS = frozenset(
 
 # Command and result types
 
+
 @dataclass(frozen=True)
 class MutationCommand:
     """What to do."""
@@ -72,6 +73,7 @@ class GatewayResult:
 
 # Gate exceptions
 
+
 @dataclass
 class CircuitOpen(Exception):
     """Circuit breaker open — too many consecutive failures."""
@@ -81,8 +83,7 @@ class CircuitOpen(Exception):
 
     def __post_init__(self) -> None:
         super().__init__(
-            f"Circuit open for {self.target}: "
-            f"{self.consecutive_failures} consecutive failures"
+            f"Circuit open for {self.target}: {self.consecutive_failures} consecutive failures"
         )
 
 
@@ -94,9 +95,7 @@ class BlastRadiusExceeded(Exception):
     threshold: int
 
     def __post_init__(self) -> None:
-        super().__init__(
-            f"Blast radius {self.affected_count} exceeds threshold {self.threshold}"
-        )
+        super().__init__(f"Blast radius {self.affected_count} exceeds threshold {self.threshold}")
 
 
 @dataclass
@@ -135,6 +134,7 @@ def set_default_db(db: StateDB) -> None:
 
 
 # Gate helpers
+
 
 def _inspect_target(session: Session, target: str) -> Any:
     """Lightweight single-container inspect for pre-gate label reading.
@@ -180,13 +180,10 @@ def _compute_target_hash(session: Session, target: str) -> str | None:
             "cap_drop": sorted(host_config.get("CapDrop") or []),
             "pid_mode": host_config.get("PidMode", ""),
             "ipc_mode": host_config.get("IpcMode", ""),
-            "security_opt": sorted(
-                host_config.get("SecurityOpt") or []
-            ),
+            "security_opt": sorted(host_config.get("SecurityOpt") or []),
             "read_only": host_config.get("ReadonlyRootfs", False),
             "devices": sorted(
-                json.dumps(d, sort_keys=True)
-                for d in (host_config.get("Devices") or [])
+                json.dumps(d, sort_keys=True) for d in (host_config.get("Devices") or [])
             ),
             "binds": sorted(host_config.get("Binds") or []),
             "port_bindings": json.dumps(
@@ -199,7 +196,6 @@ def _compute_target_hash(session: Session, target: str) -> str | None:
     return hashlib.sha256(state_data.encode("utf-8")).hexdigest()
 
 
-
 def _check_blast_radius(command: MutationCommand, session: Session) -> None:
     """Check if operation affects too many containers.
 
@@ -208,6 +204,7 @@ def _check_blast_radius(command: MutationCommand, session: Session) -> None:
 
 
 # Public API
+
 
 def execute(
     command: MutationCommand,
@@ -226,10 +223,7 @@ def execute(
     try:
         # Validate action is a mutation
         if command.action not in _MUTATION_ACTIONS:
-            raise ValueError(
-                f"Gateway only handles mutations, "
-                f"got read action {command.action!r}"
-            )
+            raise ValueError(f"Gateway only handles mutations, got read action {command.action!r}")
 
         # Step 0: Pre-gate inspect (lightweight, for permission labels)
         target_info = _inspect_target(s, command.target)
@@ -248,9 +242,7 @@ def execute(
 
         # Step 4: Circuit breaker
         if database is not None:
-            circuit = sdb.check_circuit(
-                database, target=command.target, host=command.host
-            )
+            circuit = sdb.check_circuit(database, target=command.target, host=command.host)
             if circuit.open:
                 raise CircuitOpen(
                     target=command.target,
@@ -290,7 +282,9 @@ def execute(
         from roustabout import mutations
 
         mutation_result = mutations.execute(
-            s.docker, command.action, command.target,
+            s.docker,
+            command.action,
+            command.target,
             new_image=command.new_image,
         )
 

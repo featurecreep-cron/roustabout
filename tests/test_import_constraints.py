@@ -22,19 +22,26 @@ from pathlib import Path
 SRC = Path(__file__).parent.parent / "src" / "roustabout"
 
 # Docker-py methods that mutate container state
-_MUTATION_METHODS = frozenset({
-    "start", "stop", "restart", "remove", "kill", "pause", "unpause",
-    "rename", "update", "exec_run",
-})
+_MUTATION_METHODS = frozenset(
+    {
+        "start",
+        "stop",
+        "restart",
+        "remove",
+        "kill",
+        "pause",
+        "unpause",
+        "rename",
+        "update",
+        "exec_run",
+    }
+)
 
 
 def _python_files(exclude: set[str] | None = None) -> list[Path]:
     """All .py files in src/roustabout, excluding specified filenames."""
     exclude = exclude or set()
-    return [
-        p for p in SRC.glob("*.py")
-        if p.name not in exclude and p.name != "__init__.py"
-    ]
+    return [p for p in SRC.glob("*.py") if p.name not in exclude and p.name != "__init__.py"]
 
 
 class TestMutationMethodConstraint:
@@ -50,13 +57,9 @@ class TestMutationMethodConstraint:
                     and isinstance(node.func, ast.Attribute)
                     and node.func.attr in _MUTATION_METHODS
                 ):
-                    violations.append(
-                        f"{path.name}:{node.lineno} calls "
-                        f".{node.func.attr}()"
-                    )
+                    violations.append(f"{path.name}:{node.lineno} calls .{node.func.attr}()")
         assert not violations, (
-            "Docker mutation methods called outside mutations.py:\n"
-            + "\n".join(violations)
+            "Docker mutation methods called outside mutations.py:\n" + "\n".join(violations)
         )
 
 
@@ -71,31 +74,43 @@ class TestMutationsImportConstraint:
                 if isinstance(node, ast.Import):
                     for alias in node.names:
                         if "mutations" in (alias.name or ""):
-                            violations.append(
-                                f"{path.name}:{node.lineno} imports "
-                                f"{alias.name}"
-                            )
+                            violations.append(f"{path.name}:{node.lineno} imports {alias.name}")
                 elif isinstance(node, ast.ImportFrom):
                     if node.module and "mutations" in node.module:
-                        violations.append(
-                            f"{path.name}:{node.lineno} imports from "
-                            f"{node.module}"
-                        )
-        assert not violations, (
-            "mutations.py imported outside gateway.py:\n"
-            + "\n".join(violations)
+                        violations.append(f"{path.name}:{node.lineno} imports from {node.module}")
+        assert not violations, "mutations.py imported outside gateway.py:\n" + "\n".join(
+            violations
         )
 
 
 # Async boundary modules — sync core, no asyncio allowed
-_CORE_MODULES = frozenset({
-    "auditor.py", "bulk_ops.py", "collector.py", "config.py",
-    "connection.py", "constants.py", "diff.py", "dr_plan.py",
-    "gateway.py", "generator.py", "health_stats.py", "json_output.py",
-    "lockdown.py", "log_access.py", "models.py", "mutations.py",
-    "notifications.py", "permissions.py", "redactor.py", "renderer.py",
-    "audit_renderer.py", "session.py", "state_db.py",
-})
+_CORE_MODULES = frozenset(
+    {
+        "auditor.py",
+        "bulk_ops.py",
+        "collector.py",
+        "config.py",
+        "connection.py",
+        "constants.py",
+        "diff.py",
+        "dr_plan.py",
+        "gateway.py",
+        "generator.py",
+        "health_stats.py",
+        "json_output.py",
+        "lockdown.py",
+        "log_access.py",
+        "models.py",
+        "mutations.py",
+        "notifications.py",
+        "permissions.py",
+        "redactor.py",
+        "renderer.py",
+        "audit_renderer.py",
+        "session.py",
+        "state_db.py",
+    }
+)
 
 
 class TestAsyncBoundary:
@@ -115,17 +130,21 @@ class TestAsyncBoundary:
                 elif isinstance(node, ast.ImportFrom):
                     if node.module and node.module.startswith("asyncio"):
                         violations.append(f"{path.name}:{node.lineno}")
-        assert not violations, (
-            "asyncio imported in sync core module:\n"
-            + "\n".join(violations)
-        )
+        assert not violations, "asyncio imported in sync core module:\n" + "\n".join(violations)
 
 
 # Transport libraries that must not appear in core modules.
 # Phase 1.5 splits core from server — core must stay transport-free.
-_TRANSPORT_LIBRARIES = frozenset({
-    "fastapi", "uvicorn", "starlette", "httpx", "mcp", "pydantic",
-})
+_TRANSPORT_LIBRARIES = frozenset(
+    {
+        "fastapi",
+        "uvicorn",
+        "starlette",
+        "httpx",
+        "mcp",
+        "pydantic",
+    }
+)
 
 
 class TestTransportIsolation:
@@ -147,22 +166,17 @@ class TestTransportIsolation:
                     for alias in node.names:
                         top_level = alias.name.split(".")[0]
                         if top_level in _TRANSPORT_LIBRARIES:
-                            violations.append(
-                                f"{path.name}:{node.lineno} imports "
-                                f"{alias.name}"
-                            )
+                            violations.append(f"{path.name}:{node.lineno} imports {alias.name}")
                 elif isinstance(node, ast.ImportFrom):
                     if node.module:
                         top_level = node.module.split(".")[0]
                         if top_level in _TRANSPORT_LIBRARIES:
                             violations.append(
-                                f"{path.name}:{node.lineno} imports from "
-                                f"{node.module}"
+                                f"{path.name}:{node.lineno} imports from {node.module}"
                             )
         assert not violations, (
             "Transport library imported in core module "
-            "(breaks Phase 1.5 package split):\n"
-            + "\n".join(violations)
+            "(breaks Phase 1.5 package split):\n" + "\n".join(violations)
         )
 
 
@@ -181,10 +195,7 @@ class TestSqliteRestriction:
                 elif isinstance(node, ast.ImportFrom):
                     if node.module == "sqlite3":
                         violations.append(f"{path.name}:{node.lineno}")
-        assert not violations, (
-            "sqlite3 imported outside state_db.py:\n"
-            + "\n".join(violations)
-        )
+        assert not violations, "sqlite3 imported outside state_db.py:\n" + "\n".join(violations)
 
 
 class TestLayerViolation:
@@ -202,17 +213,31 @@ class TestLayerViolation:
 
     _LAYERS: dict[str, int] = {
         # Foundation = 0
-        "models.py": 0, "config.py": 0, "connection.py": 0, "constants.py": 0,
+        "models.py": 0,
+        "config.py": 0,
+        "connection.py": 0,
+        "constants.py": 0,
         # Output = 1
         "renderer.py": 1,
         # Logic = 2
-        "collector.py": 2, "auditor.py": 2, "diff.py": 2, "redactor.py": 2,
-        "generator.py": 2, "dr_plan.py": 2, "audit_renderer.py": 2,
-        "notifications.py": 2, "session.py": 2, "health_stats.py": 2,
-        "log_access.py": 2, "json_output.py": 2,
+        "collector.py": 2,
+        "auditor.py": 2,
+        "diff.py": 2,
+        "redactor.py": 2,
+        "generator.py": 2,
+        "dr_plan.py": 2,
+        "audit_renderer.py": 2,
+        "notifications.py": 2,
+        "session.py": 2,
+        "health_stats.py": 2,
+        "log_access.py": 2,
+        "json_output.py": 2,
         # Gateway = 3
-        "gateway.py": 3, "permissions.py": 3, "lockdown.py": 3,
-        "mutations.py": 3, "state_db.py": 3,
+        "gateway.py": 3,
+        "permissions.py": 3,
+        "lockdown.py": 3,
+        "mutations.py": 3,
+        "state_db.py": 3,
         # Gateway consumers — import gateway to route operations
         "bulk_ops.py": 3,
         # Interface = 4 (cli is now a package, not checked by _python_files)
@@ -257,10 +282,7 @@ class TestLayerViolation:
                             f"{imported_module[:-3]} (layer {target_layer}) "
                             f"from layer {src_layer}"
                         )
-        assert not violations, (
-            "Upward layer imports detected:\n"
-            + "\n".join(violations)
-        )
+        assert not violations, "Upward layer imports detected:\n" + "\n".join(violations)
 
 
 class TestConnectionRestriction:
@@ -276,30 +298,28 @@ class TestConnectionRestriction:
                     and isinstance(node.func, ast.Attribute)
                     and node.func.attr == "from_env"
                 ):
-                    violations.append(
-                        f"{path.name}:{node.lineno} calls .from_env()"
-                    )
-        assert not violations, (
-            "Docker client created outside connection.py:\n"
-            + "\n".join(violations)
+                    violations.append(f"{path.name}:{node.lineno} calls .from_env()")
+        assert not violations, "Docker client created outside connection.py:\n" + "\n".join(
+            violations
         )
 
 
 # Convention enforcement lint tests (E1 experiment — prose rules converted to tests)
+
 
 class TestNoSectionDividers:
     """Section dividers (# ----) are banned by coding conventions."""
 
     def test_no_dividers_in_source(self):
         import re
+
         violations = []
         for path in SRC.glob("*.py"):
             for i, line in enumerate(path.read_text().splitlines(), 1):
                 if re.match(r"^# -{5,}", line):
                     violations.append(f"{path.name}:{i}")
         assert not violations, (
-            "Section dividers found (use '# Section name' instead):\n"
-            + "\n".join(violations)
+            "Section dividers found (use '# Section name' instead):\n" + "\n".join(violations)
         )
 
 
@@ -307,12 +327,17 @@ class TestNoBroadExcept:
     """No bare 'except Exception' without noqa justification."""
 
     # Pre-convention code — remove as modules are updated
-    _GRANDFATHERED = frozenset({
-        "notifications.py", "connection.py", "collector.py",
-    })
+    _GRANDFATHERED = frozenset(
+        {
+            "notifications.py",
+            "connection.py",
+            "collector.py",
+        }
+    )
 
     def test_no_broad_except_in_source(self):
         import re
+
         pattern = re.compile(r"^\s*except\s+Exception\s*(?:as\s+\w+\s*)?:")
         violations = []
         for path in SRC.glob("*.py"):
@@ -322,8 +347,7 @@ class TestNoBroadExcept:
                 if pattern.match(line) and "# noqa" not in line:
                     violations.append(f"{path.name}:{i}: {line.strip()}")
         assert not violations, (
-            "Broad 'except Exception' without noqa justification:\n"
-            + "\n".join(violations)
+            "Broad 'except Exception' without noqa justification:\n" + "\n".join(violations)
         )
 
 
@@ -335,10 +359,17 @@ class TestNoStdlibLogging:
     """
 
     # Modules that predate the structlog convention — remove as they're migrated
-    _GRANDFATHERED = frozenset({
-        "bulk_ops.py", "collector.py", "gateway.py", "health_stats.py",
-        "log_access.py", "mutations.py", "notifications.py",
-    })
+    _GRANDFATHERED = frozenset(
+        {
+            "bulk_ops.py",
+            "collector.py",
+            "gateway.py",
+            "health_stats.py",
+            "log_access.py",
+            "mutations.py",
+            "notifications.py",
+        }
+    )
 
     def test_no_new_stdlib_logging(self):
         violations = []
@@ -354,8 +385,7 @@ class TestNoStdlibLogging:
                         if alias.name == "logging":
                             violations.append(f"{path.name}:{node.lineno}")
         assert not violations, (
-            "New module uses stdlib logging (use structlog instead):\n"
-            + "\n".join(violations)
+            "New module uses stdlib logging (use structlog instead):\n" + "\n".join(violations)
         )
 
 
@@ -391,7 +421,9 @@ class TestFrozenDataclasses:
                         func = decorator.func
                         if isinstance(func, ast.Name) and func.id == "dataclass":
                             frozen = any(
-                                kw.arg == "frozen" and isinstance(kw.value, ast.Constant) and kw.value.value is True
+                                kw.arg == "frozen"
+                                and isinstance(kw.value, ast.Constant)
+                                and kw.value.value is True
                                 for kw in decorator.keywords
                             )
                             if not frozen and (path.name, node.name) not in self._MUTABLE_ALLOWED:
@@ -407,6 +439,6 @@ class TestFrozenDataclasses:
                                 f"— @dataclass without frozen=True"
                             )
         assert not violations, (
-            "Dataclass not frozen (add frozen=True or add to _MUTABLE_ALLOWED with justification):\n"
-            + "\n".join(violations)
+            "Dataclass not frozen (add frozen=True or add to "
+            "_MUTABLE_ALLOWED with justification):\n" + "\n".join(violations)
         )

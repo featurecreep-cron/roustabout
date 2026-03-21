@@ -23,9 +23,15 @@ DEFAULT_CONFIG_PATHS = (
 
 # Default deny list: databases, auth stacks, reverse proxies → elevate-only
 DEFAULT_ELEVATE_ONLY_IMAGES: tuple[str, ...] = (
-    "postgres", "mysql", "mariadb", "mongo", "redis",
-    "authentik", "authelia",
-    "traefik", "nginx-proxy-manager",
+    "postgres",
+    "mysql",
+    "mariadb",
+    "mongo",
+    "redis",
+    "authentik",
+    "authelia",
+    "traefik",
+    "nginx-proxy-manager",
 )
 
 

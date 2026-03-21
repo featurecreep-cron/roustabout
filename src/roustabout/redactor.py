@@ -99,6 +99,7 @@ def flag_suspicious_name(name: str) -> bool:
         return False
     return not bool(_VALID_NAME.match(name))
 
+
 # Re-export default patterns for callers that need them (auditor, config).
 DEFAULT_PATTERNS: tuple[str, ...] = DEFAULT_KEY_PATTERNS
 

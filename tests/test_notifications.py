@@ -16,6 +16,7 @@ from roustabout.notifications import (
 
 # NotificationEvent dataclass
 
+
 class TestNotificationEvent:
     def test_fields(self):
         event = NotificationEvent(
@@ -42,6 +43,7 @@ class TestNotificationEvent:
 
 # Channel configuration
 
+
 class TestConfigure:
     def test_empty_config(self):
         """No channels configured — no error."""
@@ -60,6 +62,7 @@ class TestConfigure:
 
 
 # Event delivery
+
 
 class TestSendEvent:
     def test_no_channels_no_error(self):
@@ -105,6 +108,7 @@ class TestSendEvent:
 
 # Convenience senders
 
+
 class TestSendMutationEvent:
     def test_success_event(self):
         configure([{"type": "ntfy", "url": "https://ntfy.sh/test"}])
@@ -135,6 +139,7 @@ class TestSendMutationEvent:
 
 
 # ntfy specifics
+
 
 class TestNtfySend:
     def test_priority_mapping(self):
@@ -205,6 +210,7 @@ class TestNtfyUrlValidation:
         configure([])
         configure([{"type": "ntfy", "url": "http://localhost/topic"}])
         from roustabout import notifications
+
         with _lock:
             assert len(notifications._channels) == 0
 

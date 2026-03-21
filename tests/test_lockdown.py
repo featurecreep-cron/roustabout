@@ -95,7 +95,9 @@ class TestLockdownCheck:
         src = Path(__file__).parent.parent / "src" / "roustabout" / "lockdown.py"
         tree = ast.parse(src.read_text())
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith(
-                "roustabout"
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and node.module.startswith("roustabout")
             ):
                 pytest.fail(f"lockdown.py imports from roustabout: {node.module}")

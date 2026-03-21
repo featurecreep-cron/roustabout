@@ -193,9 +193,7 @@ class TestRunCommand:
                 MountInfo("/var/lib/postgresql/data", "/data/postgres", "rw", "bind"),
             ],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "-v" in result
         assert "/data/postgres" in result
@@ -214,9 +212,7 @@ class TestRunCommand:
                 MountInfo("/var/lib/postgresql/data", "pgdata", "rw", "volume"),
             ],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "pgdata" in result
 
@@ -241,9 +237,7 @@ class TestRunCommand:
                 NetworkMembership("backend", "172.18.1.2", ()),
             ],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "docker network connect" in result
 
@@ -258,9 +252,7 @@ class TestRunCommand:
             image_id="sha256:mon1",
             network_mode="host",
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--network host" in result
 
@@ -299,9 +291,7 @@ class TestRunCommand:
             image_id="sha256:d1",
             privileged=True,
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--privileged" in result
 
@@ -317,9 +307,7 @@ class TestRunCommand:
             cap_add=["NET_ADMIN"],
             cap_drop=["ALL"],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--cap-add NET_ADMIN" in result
         assert "--cap-drop ALL" in result
@@ -335,9 +323,7 @@ class TestRunCommand:
             image_id="sha256:s1",
             read_only=True,
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--read-only" in result
 
@@ -352,9 +338,7 @@ class TestRunCommand:
             image_id="sha256:a1",
             user="1000:1000",
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--user" in result
         assert "1000:1000" in result
@@ -370,9 +354,7 @@ class TestRunCommand:
             image_id="sha256:g1",
             devices=["/dev/dri:/dev/dri"],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--device" in result
         assert "/dev/dri" in result
@@ -388,9 +370,7 @@ class TestRunCommand:
             image_id="sha256:a1",
             tmpfs=["/tmp:size=100m"],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--tmpfs" in result
         assert "/tmp" in result
@@ -406,9 +386,7 @@ class TestRunCommand:
             image_id="sha256:a1",
             dns=["8.8.8.8", "1.1.1.1"],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--dns" in result
         assert "8.8.8.8" in result
@@ -424,9 +402,7 @@ class TestRunCommand:
             image_id="sha256:a1",
             init=True,
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--init" in result
 
@@ -441,9 +417,7 @@ class TestRunCommand:
             image_id="sha256:a1",
             mem_limit=536870912,
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--memory" in result
 
@@ -458,9 +432,7 @@ class TestRunCommand:
             image_id="sha256:a1",
             hostname="myhost",
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--hostname" in result
         assert "myhost" in result
@@ -476,9 +448,7 @@ class TestRunCommand:
             image_id="sha256:d1",
             pid_mode="host",
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--pid host" in result
 
@@ -494,9 +464,7 @@ class TestRunCommand:
             entrypoint=["/usr/bin/entrypoint.sh"],
             command=["--config", "/etc/app.conf"],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--entrypoint" in result
         assert "/usr/bin/entrypoint.sh" in result
@@ -514,9 +482,7 @@ class TestRunCommand:
             image_id="sha256:a1",
             entrypoint=["/bin/sh", "-c", "echo hello"],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--entrypoint /bin/sh" in result
         # -c and echo hello should appear AFTER the image
@@ -534,9 +500,7 @@ class TestRunCommand:
             image_id="sha256:g1",
             runtime="nvidia",
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--runtime nvidia" in result
 
@@ -551,9 +515,7 @@ class TestRunCommand:
             image_id="sha256:b1",
             shm_size=2147483648,
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--shm-size 2g" in result
 
@@ -568,9 +530,7 @@ class TestRunCommand:
             image_id="sha256:a1",
             security_opt=["no-new-privileges"],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--security-opt" in result
         assert "no-new-privileges" in result
@@ -586,9 +546,7 @@ class TestRunCommand:
             image_id="sha256:a1",
             mem_limit=536870912,
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "--memory 512m" in result
 
@@ -658,9 +616,7 @@ class TestDependencyOrder:
         a = make_container(
             name="alpha", id="a1", status="running", image="a:1", image_id="sha256:a"
         )
-        env = make_environment(
-            containers=[b, a], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[b, a], generated_at="now", docker_version="25.0")
         ordered = _resolve_dependency_order(env)
         names = [c.name for c in ordered]
         assert names == ["alpha", "bravo"]
@@ -670,16 +626,22 @@ class TestDependencyOrder:
         from roustabout.dr_plan import _resolve_dependency_order
 
         a = make_container(
-            name="a", id="a1", status="running", image="a:1", image_id="sha256:a",
+            name="a",
+            id="a1",
+            status="running",
+            image="a:1",
+            image_id="sha256:a",
             network_mode="container:b1",
         )
         b = make_container(
-            name="b", id="b1", status="running", image="b:1", image_id="sha256:b",
+            name="b",
+            id="b1",
+            status="running",
+            image="b:1",
+            image_id="sha256:b",
             network_mode="container:a1",
         )
-        env = make_environment(
-            containers=[a, b], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[a, b], generated_at="now", docker_version="25.0")
         ordered = _resolve_dependency_order(env)
         assert len(ordered) == 2
 
@@ -708,9 +670,7 @@ class TestNetworkSetup:
             image_id="sha256:a1",
             network_mode="host",
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         # Should not tell user to create the "host" network
         lines = result.split("\n")
@@ -734,9 +694,7 @@ class TestExternalWarnings:
             image="sha256:abc123def456789",
             image_id="sha256:abc123def456789",
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "cannot be pulled" in result.lower() or "local" in result.lower()
 
@@ -754,9 +712,7 @@ class TestExternalWarnings:
                 ("com.docker.compose.project.working_dir", "/home/user/myapp"),
             ],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "/home/user/myapp" in result
 
@@ -775,9 +731,7 @@ class TestExternalWarnings:
                 MountInfo(anon_hash, "/var/lib/postgresql/data", "rw", "volume"),
             ],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "anonymous" in result.lower()
 
@@ -804,9 +758,7 @@ class TestBackupChecklist:
                 MountInfo("/srv/app/config", "/app/config", "ro", "bind"),
             ],
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "## Backup Checklist" in result
         assert "/srv/app/data" in result
@@ -831,9 +783,7 @@ class TestBackupChecklist:
             image_id="sha256:a2",
             mounts=[MountInfo("/shared/data", "/data", "rw", "bind")],
         )
-        env = make_environment(
-            containers=[c1, c2], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c1, c2], generated_at="now", docker_version="25.0")
         result = generate(env)
         # Count occurrences of the path in the checklist section only
         checklist_start = result.index("## Backup Checklist")
@@ -858,9 +808,7 @@ class TestInitContainerDetection:
             image_id="sha256:m1",
             restart_policy=None,
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "ran once" in result.lower() or "init" in result.lower()
 
@@ -894,9 +842,7 @@ class TestPostStartVerification:
                 start_period_ns=5_000_000_000,
             ),
         )
-        env = make_environment(
-            containers=[c], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "Health" in result or "health" in result
 
@@ -910,9 +856,7 @@ class TestEmptyEnvironment:
     def test_empty_env_produces_valid_output(self):
         from roustabout.dr_plan import generate
 
-        env = make_environment(
-            containers=[], generated_at="now", docker_version="25.0"
-        )
+        env = make_environment(containers=[], generated_at="now", docker_version="25.0")
         result = generate(env)
         assert "# Disaster Recovery Plan" in result
         assert "0 container" in result.lower() or "no containers" in result.lower()

@@ -90,9 +90,7 @@ async def docker_snapshot(show_env: bool = False, show_labels: bool = True) -> s
         show_labels: Include container labels in output.
     """
     try:
-        env, cfg = await anyio.to_thread.run_sync(
-            _collect_redacted, abandon_on_cancel=False
-        )
+        env, cfg = await anyio.to_thread.run_sync(_collect_redacted, abandon_on_cancel=False)
     except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     result = render(env, show_env=show_env, show_labels=show_labels)
@@ -118,9 +116,7 @@ async def docker_audit() -> str:
             findings = audit(env, patterns=cfg.redact_patterns)
             return render_findings(findings)
 
-        result = await anyio.to_thread.run_sync(
-            _run_audit, abandon_on_cancel=False
-        )
+        result = await anyio.to_thread.run_sync(_run_audit, abandon_on_cancel=False)
     except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     return _enforce_size_limit(result, cfg.response_size_cap)
@@ -138,9 +134,7 @@ async def docker_container(name: str) -> str:
     """
     name = sanitize(name)[:128]
     try:
-        env, _cfg = await anyio.to_thread.run_sync(
-            _collect_redacted, abandon_on_cancel=False
-        )
+        env, _cfg = await anyio.to_thread.run_sync(_collect_redacted, abandon_on_cancel=False)
     except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     matches = [c for c in env.containers if c.name == name]
@@ -164,9 +158,7 @@ async def docker_networks() -> str:
     Returns: network list with container memberships.
     """
     try:
-        env, _cfg = await anyio.to_thread.run_sync(
-            _collect_redacted, abandon_on_cancel=False
-        )
+        env, _cfg = await anyio.to_thread.run_sync(_collect_redacted, abandon_on_cancel=False)
     except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
 
@@ -186,9 +178,7 @@ async def docker_generate(include_stopped: bool = False) -> str:
         include_stopped: Include stopped containers (default: running only).
     """
     try:
-        env, cfg = await anyio.to_thread.run_sync(
-            _collect_redacted, abandon_on_cancel=False
-        )
+        env, cfg = await anyio.to_thread.run_sync(_collect_redacted, abandon_on_cancel=False)
     except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     return generate(env, include_stopped=include_stopped)
@@ -204,9 +194,7 @@ async def docker_dr_plan() -> str:
     docker_dr_detail for full per-container instructions.
     """
     try:
-        env, cfg = await anyio.to_thread.run_sync(
-            _collect_redacted, abandon_on_cancel=False
-        )
+        env, cfg = await anyio.to_thread.run_sync(_collect_redacted, abandon_on_cancel=False)
     except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
 
@@ -223,9 +211,7 @@ async def docker_dr_plan() -> str:
         ]
         for i, c in enumerate(ordered, 1):
             nets = ", ".join(n.name for n in c.networks) or c.network_mode or "default"
-            lines.append(
-                f"| {i} | {c.name} | {c.image} | {len(c.mounts)} | {nets} | {c.status} |"
-            )
+            lines.append(f"| {i} | {c.name} | {c.image} | {len(c.mounts)} | {nets} | {c.status} |")
         lines.append("")
         lines.append("Use `docker_dr_detail(container_name)` for full restore steps.")
         return "\n".join(lines)
@@ -245,9 +231,7 @@ async def docker_dr_detail(name: str) -> str:
     """
     name = sanitize(name)[:128]
     try:
-        env, cfg = await anyio.to_thread.run_sync(
-            _collect_redacted, abandon_on_cancel=False
-        )
+        env, cfg = await anyio.to_thread.run_sync(_collect_redacted, abandon_on_cancel=False)
     except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
 
@@ -308,6 +292,7 @@ async def docker_capabilities() -> str:
 
     try:
         from importlib.metadata import PackageNotFoundError, version
+
         ver = version("roustabout")
     except PackageNotFoundError:
         ver = "unknown"
@@ -428,8 +413,11 @@ async def docker_logs(
             client = connect(cfg.docker_host)
             try:
                 return collect_logs(
-                    client, container_name,
-                    tail=tail, since=since, grep=grep,
+                    client,
+                    container_name,
+                    tail=tail,
+                    since=since,
+                    grep=grep,
                 )
             except ContainerNotFoundError:
                 return f"Container '{container_name}' not found"
@@ -461,16 +449,15 @@ async def docker_findings(
     import json as _json
 
     try:
-        env, cfg = await anyio.to_thread.run_sync(
-            _collect_redacted, abandon_on_cancel=False
-        )
+        env, cfg = await anyio.to_thread.run_sync(_collect_redacted, abandon_on_cancel=False)
     except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: {_safe_error(exc)}")
 
     from roustabout.auditor import audit as run_audit
 
     findings = run_audit(
-        env, patterns=cfg.redact_patterns,
+        env,
+        patterns=cfg.redact_patterns,
         severity_overrides=cfg.severity_overrides,
     )
 
@@ -498,7 +485,8 @@ async def docker_findings(
     ]
 
     return _enforce_size_limit(
-        _json.dumps(result, indent=2), cfg.response_size_cap,
+        _json.dumps(result, indent=2),
+        cfg.response_size_cap,
     )
 
 
@@ -540,7 +528,8 @@ async def docker_manage(
         cfg = _load_cfg()
         client = connect(cfg.docker_host)
         docker_session = DockerSession(
-            client=client, host=cfg.docker_host or "localhost",
+            client=client,
+            host=cfg.docker_host or "localhost",
         )
         session = Session(
             id="mcp",

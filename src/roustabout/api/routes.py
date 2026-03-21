@@ -47,8 +47,7 @@ def _snapshot() -> dict:
         redacted = redact(env, patterns)
         return {
             "containers": [
-                {"name": c.name, "image": c.image, "status": c.status}
-                for c in redacted.containers
+                {"name": c.name, "image": c.image, "status": c.status} for c in redacted.containers
             ],
         }
     finally:
@@ -105,7 +104,14 @@ def _container_detail(container_name: str) -> dict | None:
                     "status": c.status,
                     "health": c.health,
                     "restart_count": c.restart_count,
-                    "ports": [{"host": p.host_port, "container": p.container_port, "protocol": p.protocol} for p in c.ports],
+                    "ports": [
+                        {
+                            "host": p.host_port,
+                            "container": p.container_port,
+                            "protocol": p.protocol,
+                        }
+                        for p in c.ports
+                    ],
                     "networks": [n.name for n in c.networks],
                 }
         return None
@@ -186,7 +192,6 @@ def _mutate(container_name: str, action: str, key_info: KeyInfo) -> tuple[int, d
     """Execute mutation via gateway. Returns (status_code, response_dict)."""
     from uuid import uuid4
 
-    from roustabout.connection import connect
     from roustabout.gateway import GatewayResult, MutationCommand, execute
     from roustabout.session import create_session, destroy_session
 
@@ -280,7 +285,10 @@ async def logs_route(name: str, request: Request, tail: int = 100) -> JSONRespon
     except Exception as exc:
         error_name = type(exc).__name__
         if error_name == "ContainerNotFoundError":
-            return JSONResponse(status_code=404, content={"error": f"container '{name}' not found"})
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"container '{name}' not found"},
+            )
         if error_name == "UnsupportedLogDriver":
             return JSONResponse(status_code=400, content={"error": str(exc)})
         raise
@@ -300,14 +308,21 @@ async def container_mutation(name: str, action: str, request: Request) -> JSONRe
     if action not in _VALID_MUTATIONS:
         return JSONResponse(
             status_code=400,
-            content={"error": f"unknown action '{action}'", "valid_actions": sorted(_VALID_MUTATIONS)},
+            content={
+                "error": f"unknown action '{action}'",
+                "valid_actions": sorted(_VALID_MUTATIONS),
+            },
         )
 
     key_info: KeyInfo = request.state.key_info
     if not _has_tier(key_info.tier, "operate"):
         return JSONResponse(
             status_code=403,
-            content={"error": "insufficient permissions", "required_tier": "operate", "your_tier": key_info.tier},
+            content={
+                "error": "insufficient permissions",
+                "required_tier": "operate",
+                "your_tier": key_info.tier,
+            },
         )
 
     import anyio

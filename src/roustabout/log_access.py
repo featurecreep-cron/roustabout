@@ -27,6 +27,7 @@ _RELATIVE_RE = re.compile(r"^(\d+)([smhd])$")
 
 # Exceptions
 
+
 class ContainerNotFoundError(Exception):
     """Container does not exist."""
 
@@ -36,6 +37,7 @@ class UnsupportedLogDriver(Exception):
 
 
 # Public API
+
 
 def collect_logs(
     client: Any,
@@ -68,9 +70,7 @@ def collect_logs(
     try:
         container = client.containers.get(container_name)
     except _docker_errors.NotFound as e:
-        raise ContainerNotFoundError(
-            f"Container {container_name!r} not found"
-        ) from e
+        raise ContainerNotFoundError(f"Container {container_name!r} not found") from e
 
     # Check log driver
     log_config = container.attrs.get("HostConfig", {}).get("LogConfig", {})
@@ -110,6 +110,7 @@ def collect_logs(
 
 
 # Since parsing
+
 
 def parse_since(value: str) -> int | str:
     """Parse a since parameter into a Docker-compatible value.

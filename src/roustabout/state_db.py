@@ -31,12 +31,14 @@ RECORD_SEPARATOR = "\x1e"  # ASCII Record Separator
 LATEST_VERSION = 1
 
 _MIGRATIONS: list[tuple[int, list[str]]] = [
-    (1, [
-        """CREATE TABLE IF NOT EXISTS schema_version (
+    (
+        1,
+        [
+            """CREATE TABLE IF NOT EXISTS schema_version (
             version INTEGER PRIMARY KEY,
             applied_at TEXT NOT NULL
         )""",
-        """CREATE TABLE findings (
+            """CREATE TABLE findings (
             key TEXT NOT NULL,
             host TEXT NOT NULL DEFAULT 'localhost',
             state TEXT NOT NULL CHECK (state IN ('accepted', 'false-positive', 'resolved')),
@@ -44,7 +46,7 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
             timestamp TEXT NOT NULL,
             PRIMARY KEY (key, host)
         )""",
-        """CREATE TABLE audit_log (
+            """CREATE TABLE audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT NOT NULL,
             session_id TEXT NOT NULL,
@@ -58,15 +60,16 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
             detail TEXT,
             chain_hash TEXT NOT NULL
         )""",
-        "CREATE INDEX idx_audit_log_target ON audit_log (target, host, id DESC)",
-        """CREATE TABLE sessions (
+            "CREATE INDEX idx_audit_log_target ON audit_log (target, host, id DESC)",
+            """CREATE TABLE sessions (
             id TEXT PRIMARY KEY,
             created_at TEXT NOT NULL,
             tier TEXT NOT NULL DEFAULT 'observe',
             host TEXT NOT NULL DEFAULT 'localhost',
             last_activity TEXT NOT NULL
         )""",
-    ]),
+        ],
+    ),
 ]
 
 # Default paths for TOML state file migration
@@ -212,11 +215,10 @@ def _scrub_detail(detail: dict[str, Any]) -> dict[str, Any]:
             scrubbed[k] = _scrub_detail(v)
         elif isinstance(v, list):
             scrubbed[k] = [
-                _scrub_detail(item) if isinstance(item, dict)
+                _scrub_detail(item)
+                if isinstance(item, dict)
                 else (
-                    "[REDACTED]"
-                    if isinstance(item, str) and is_secret_key(k, item, ())
-                    else item
+                    "[REDACTED]" if isinstance(item, str) and is_secret_key(k, item, ()) else item
                 )
                 for item in v
             ]
@@ -296,9 +298,7 @@ def _bootstrap_schema(db: StateDB, toml_search_paths: tuple[Path, ...]) -> None:
 # TOML migration
 
 
-def _try_toml_migration(
-    db: StateDB, toml_search_paths: tuple[Path, ...]
-) -> None:
+def _try_toml_migration(db: StateDB, toml_search_paths: tuple[Path, ...]) -> None:
     """Migrate TOML finding state to SQLite on fresh database."""
     from roustabout.state import load_state
 
@@ -382,8 +382,7 @@ def open_db(
             )
         if not os.access(resolved, os.R_OK | os.W_OK):
             raise StateDBError(
-                f"Database file {resolved} access denied. "
-                "Check file ownership and permissions."
+                f"Database file {resolved} access denied. Check file ownership and permissions."
             )
 
     writer = _make_connection(resolved)
@@ -430,16 +429,22 @@ def _log_audit_internal(
 
     ts = datetime.now(UTC).isoformat()
     row_data = _build_row_data(
-        ts, session_id, source, action, target, host,
-        pre_state_hash, post_state_hash, result, detail_json,
+        ts,
+        session_id,
+        source,
+        action,
+        target,
+        host,
+        pre_state_hash,
+        post_state_hash,
+        result,
+        detail_json,
     )
 
     conn = db._writer
     conn.execute("BEGIN IMMEDIATE")
     try:
-        row = conn.execute(
-            "SELECT chain_hash FROM audit_log ORDER BY id DESC LIMIT 1"
-        ).fetchone()
+        row = conn.execute("SELECT chain_hash FROM audit_log ORDER BY id DESC LIMIT 1").fetchone()
         prev_hash = row[0] if row else GENESIS
         chain_hash = _compute_chain_hash(prev_hash, row_data)
 
@@ -448,8 +453,19 @@ def _log_audit_internal(
                (timestamp, session_id, source, action, target, host,
                 pre_state_hash, post_state_hash, result, detail, chain_hash)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (ts, session_id, source, action, target, host,
-             pre_state_hash, post_state_hash, result, detail_json, chain_hash),
+            (
+                ts,
+                session_id,
+                source,
+                action,
+                target,
+                host,
+                pre_state_hash,
+                post_state_hash,
+                result,
+                detail_json,
+                chain_hash,
+            ),
         )
         conn.execute("COMMIT")
         return cursor.lastrowid  # type: ignore[return-value]
@@ -508,15 +524,17 @@ def verify_chain(db: StateDB, host: str | None = None) -> ChainVerification:
 
         if not all_rows:
             return ChainVerification(
-                valid=True, rows_checked=0, first_broken_row=None,
-                error=None, partial=host is not None,
+                valid=True,
+                rows_checked=0,
+                first_broken_row=None,
+                error=None,
+                partial=host is not None,
             )
 
         prev_hash = GENESIS
         checked = 0
         for row in all_rows:
-            (row_id, ts, sid, src, act, tgt, h,
-             pre, post, res, det, stored_hash) = row
+            (row_id, ts, sid, src, act, tgt, h, pre, post, res, det, stored_hash) = row
             row_data = _build_row_data(ts, sid, src, act, tgt, h, pre, post, res, det)
             expected = _compute_chain_hash(prev_hash, row_data)
 
@@ -545,8 +563,11 @@ def verify_chain(db: StateDB, host: str | None = None) -> ChainVerification:
             prev_hash = stored_hash
 
         return ChainVerification(
-            valid=True, rows_checked=checked, first_broken_row=None,
-            error=None, partial=host is not None,
+            valid=True,
+            rows_checked=checked,
+            first_broken_row=None,
+            error=None,
+            partial=host is not None,
         )
     finally:
         reader.close()
@@ -555,9 +576,7 @@ def verify_chain(db: StateDB, host: str | None = None) -> ChainVerification:
 # Session tracking
 
 
-def create_session(
-    db: StateDB, *, session_id: str, tier: str, host: str
-) -> None:
+def create_session(db: StateDB, *, session_id: str, tier: str, host: str) -> None:
     """Insert a new session row."""
     now = datetime.now(UTC).isoformat()
     with db._writer_lock:
@@ -622,8 +641,11 @@ def get_session(db: StateDB, *, session_id: str) -> SessionRow | None:
         if row is None:
             return None
         return SessionRow(
-            id=row[0], created_at=row[1], tier=row[2],
-            host=row[3], last_activity=row[4],
+            id=row[0],
+            created_at=row[1],
+            tier=row[2],
+            host=row[3],
+            last_activity=row[4],
         )
     finally:
         reader.close()
@@ -687,8 +709,11 @@ def load_findings(db: StateDB, *, host: str) -> dict[str, FindingRow]:
         ).fetchall()
         return {
             row[0]: FindingRow(
-                key=row[0], host=row[1], state=row[2],
-                reason=row[3], timestamp=row[4],
+                key=row[0],
+                host=row[1],
+                state=row[2],
+                reason=row[3],
+                timestamp=row[4],
             )
             for row in rows
         }
@@ -716,9 +741,7 @@ def clear_resolved_finding(db: StateDB, *, key: str, host: str) -> None:
 # Circuit breaker queries
 
 
-def check_circuit(
-    db: StateDB, *, target: str, host: str, threshold: int = 3
-) -> CircuitState:
+def check_circuit(db: StateDB, *, target: str, host: str, threshold: int = 3) -> CircuitState:
     """Check if circuit is open for a target."""
     reader = db._reader_factory()
     try:
@@ -790,9 +813,7 @@ def reset_circuit(
 # Previous findings comparison
 
 
-def load_previous_audit(
-    db: StateDB, *, host: str
-) -> list[dict[str, str]] | None:
+def load_previous_audit(db: StateDB, *, host: str) -> list[dict[str, str]] | None:
     """Load finding summary from the most recent audit-complete entry."""
     reader = db._reader_factory()
     try:

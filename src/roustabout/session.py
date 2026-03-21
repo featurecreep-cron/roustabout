@@ -22,6 +22,7 @@ from roustabout import connection
 
 # Permission tiers
 
+
 @functools.total_ordering
 class PermissionTier(Enum):
     OBSERVE = "observe"
@@ -43,20 +44,38 @@ class PermissionTier(Enum):
 
 # Capability sets
 
-_OBSERVE_CAPABILITIES: frozenset[str] = frozenset({
-    "can_snapshot", "can_audit", "can_diff", "can_generate",
-    "can_read_logs", "can_read_health", "can_dr_plan",
-})
+_OBSERVE_CAPABILITIES: frozenset[str] = frozenset(
+    {
+        "can_snapshot",
+        "can_audit",
+        "can_diff",
+        "can_generate",
+        "can_read_logs",
+        "can_read_health",
+        "can_dr_plan",
+    }
+)
 
-_OPERATE_CAPABILITIES: frozenset[str] = _OBSERVE_CAPABILITIES | frozenset({
-    "can_start", "can_stop", "can_restart", "can_recreate",
-    "can_notify_configure",
-})
+_OPERATE_CAPABILITIES: frozenset[str] = _OBSERVE_CAPABILITIES | frozenset(
+    {
+        "can_start",
+        "can_stop",
+        "can_restart",
+        "can_recreate",
+        "can_notify_configure",
+    }
+)
 
-_ELEVATE_CAPABILITIES: frozenset[str] = _OPERATE_CAPABILITIES | frozenset({
-    "can_update_image", "can_modify_compose", "can_prune",
-    "can_exec", "can_modify_secrets", "can_modify_tier_labels",
-})
+_ELEVATE_CAPABILITIES: frozenset[str] = _OPERATE_CAPABILITIES | frozenset(
+    {
+        "can_update_image",
+        "can_modify_compose",
+        "can_prune",
+        "can_exec",
+        "can_modify_secrets",
+        "can_modify_tier_labels",
+    }
+)
 
 
 def capabilities_for_tier(tier: PermissionTier) -> frozenset[str]:
@@ -115,10 +134,7 @@ class RateLimitExceeded(Exception):
     def __init__(self, target: str, retry_after: float) -> None:
         self.target = target
         self.retry_after = retry_after
-        super().__init__(
-            f"Rate limit exceeded for '{target}'. "
-            f"Retry after {retry_after:.0f}s."
-        )
+        super().__init__(f"Rate limit exceeded for '{target}'. Retry after {retry_after:.0f}s.")
 
 
 @dataclass(frozen=True)
@@ -223,9 +239,7 @@ def get_current_session() -> Session:
     try:
         return current_session.get()
     except LookupError:
-        raise NoSessionError(
-            "No session established. Use session_context() or create_session()."
-        )
+        raise NoSessionError("No session established. Use session_context() or create_session().")
 
 
 # Session lifecycle

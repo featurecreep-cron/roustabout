@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
+
 # Prevent HTTP redirects from bypassing SSRF validation — a redirect
 # from a validated host to localhost/metadata would defeat URL checks.
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -29,12 +30,14 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     ) -> None:
         return None  # type: ignore[return-value]
 
+
 _no_redirect_opener = urllib.request.build_opener(_NoRedirectHandler)
 
 logger = logging.getLogger(__name__)
 
 
 # Event type
+
 
 @dataclass(frozen=True)
 class NotificationEvent:
@@ -76,6 +79,7 @@ def configure(channels: list[dict[str, Any]]) -> None:
 
 # Delivery
 
+
 def send_event(event: NotificationEvent) -> None:
     """Route an event to all configured channels. Never raises."""
     with _lock:
@@ -109,11 +113,16 @@ def send_event(event: NotificationEvent) -> None:
 _SAFE_SCHEMES = frozenset({"https", "http"})
 
 # RFC 1918, loopback, link-local — reject for SSRF prevention
-_BLOCKED_HOSTS = frozenset({
-    "localhost", "127.0.0.1", "::1", "0.0.0.0",
-    "169.254.169.254",  # cloud metadata
-    "metadata.google.internal",
-})
+_BLOCKED_HOSTS = frozenset(
+    {
+        "localhost",
+        "127.0.0.1",
+        "::1",
+        "0.0.0.0",
+        "169.254.169.254",  # cloud metadata
+        "metadata.google.internal",
+    }
+)
 
 
 def _validate_ntfy_url(url: str) -> bool:
@@ -151,6 +160,7 @@ def _send_ntfy(url: str, event: NotificationEvent) -> None:
 
 # Convenience senders
 
+
 def send_mutation_event(
     *,
     action: str,
@@ -176,11 +186,13 @@ def send_mutation_event(
         title = f"Failed to {action} {target}"
         message = f"Mutation {action} on {target} failed"
 
-    send_event(NotificationEvent(
-        event_type=event_type,
-        severity=severity,
-        title=title,
-        message=message,
-        target=target,
-        session_id=session_id,
-    ))
+    send_event(
+        NotificationEvent(
+            event_type=event_type,
+            severity=severity,
+            title=title,
+            message=message,
+            target=target,
+            session_id=session_id,
+        )
+    )

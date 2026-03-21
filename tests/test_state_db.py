@@ -17,6 +17,7 @@ from roustabout import state_db
 
 # Helpers
 
+
 def _manual_chain_hash(previous: str, row_data: str) -> str:
     """Independent hash computation for verification."""
     payload = (previous + "\x1e" + row_data).encode("utf-8")
@@ -69,9 +70,7 @@ class TestOpenDB:
         db = state_db.open_db(tmp_path / "test.db")
         try:
             reader = db._reader_factory()
-            version = reader.execute(
-                "SELECT MAX(version) FROM schema_version"
-            ).fetchone()[0]
+            version = reader.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
             reader.close()
             assert version == state_db.LATEST_VERSION
         finally:
@@ -101,9 +100,7 @@ class TestOpenDB:
         db = state_db.open_db(db_path)
         try:
             reader = db._reader_factory()
-            version = reader.execute(
-                "SELECT MAX(version) FROM schema_version"
-            ).fetchone()[0]
+            version = reader.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
             reader.close()
             assert version == state_db.LATEST_VERSION
         finally:
@@ -430,9 +427,7 @@ class TestAuditLog:
             detail=None,
         )
         reader = db._reader_factory()
-        row = reader.execute(
-            "SELECT chain_hash FROM audit_log WHERE id = 1"
-        ).fetchone()
+        row = reader.execute("SELECT chain_hash FROM audit_log WHERE id = 1").fetchone()
         reader.close()
         assert row[0] is not None
         assert len(row[0]) == 64  # SHA-256 hex

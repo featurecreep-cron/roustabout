@@ -46,7 +46,7 @@ class AuthConfig:
         secret = os.environ.get("ROUSTABOUT_API_KEY", "")
         if not secret:
             return cls(keys={})
-        tier = os.environ.get("ROUSTABOUT_API_TIER", "operate")
+        tier = os.environ.get("ROUSTABOUT_API_TIER", "observe")
         label = os.environ.get("ROUSTABOUT_API_LABEL", "env-key")
         return cls(keys={secret: {"tier": tier, "label": label}})
 

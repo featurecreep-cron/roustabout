@@ -835,6 +835,77 @@ def disconnect_cmd() -> None:
     click.echo("Disconnected. Commands will use local Docker.")
 
 
+@main.command("net-check")
+@click.argument("source", required=False, default=None)
+@click.argument("target", required=False, default=None)
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+@click.option("--project", "filter_project", default=None, help="Filter by compose project.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON.")
+def net_check_cmd(
+    source: str | None,
+    target: str | None,
+    config_path: str | None,
+    docker_host: str | None,
+    filter_project: str | None,
+    as_json: bool,
+) -> None:
+    """Check network connectivity between containers.
+
+    \b
+    With two arguments: check if SOURCE can reach TARGET.
+    With no arguments: check all container pairs.
+
+    \b
+    Examples:
+      roustabout net-check app db       # check specific pair
+      roustabout net-check              # check all pairs
+      roustabout net-check --json       # all pairs as JSON
+    """
+    from roustabout.net_check import check_all_connectivity, check_connectivity
+
+    if (source is None) != (target is None):
+        raise click.ClickException("Provide both SOURCE and TARGET, or neither for all pairs.")
+
+    cfg = _load_cfg(config_path, docker_host=docker_host)
+    client = _connect(cfg.docker_host)
+    env = collect(client)
+
+    if filter_project:
+        env = filter_by_project(env, filter_project)
+
+    if source and target:
+        results = [check_connectivity(env, source, target)]
+    else:
+        results = check_all_connectivity(env)
+
+    if as_json:
+        data = [
+            {
+                "source": r.source,
+                "target": r.target,
+                "reachable": r.reachable,
+                "shared_networks": list(r.shared_networks),
+                "reason": r.reason,
+            }
+            for r in results
+        ]
+        click.echo(_json.dumps(data, indent=2))
+    else:
+        if not results:
+            click.echo("No container pairs to check.")
+            return
+        for r in results:
+            icon = "✓" if r.reachable else "✗"
+            click.echo(f"  {icon} {r.source} → {r.target}: {r.reason}")
+
+
 @main.command("version")
 def version_cmd() -> None:
     """Show roustabout version."""

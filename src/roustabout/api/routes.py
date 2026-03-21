@@ -327,6 +327,50 @@ async def dr_plan_route(request: Request, strip_versions: bool = False) -> dict[
     return await anyio.to_thread.run_sync(lambda: _dr_plan(strip_versions=strip_versions))
 
 
+@router.get("/net-check")
+async def net_check_route(
+    request: Request,
+    source: str | None = None,
+    target: str | None = None,
+) -> JSONResponse:
+    """Check network connectivity between containers."""
+    import anyio
+
+    if (source is None) != (target is None):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Provide both source and target, or neither for all pairs."},
+        )
+
+    def _run() -> list[dict[str, Any]]:
+        from roustabout.collector import collect
+        from roustabout.connection import connect
+        from roustabout.net_check import check_all_connectivity, check_connectivity
+
+        client = connect()
+        try:
+            env = collect(client)
+            if source and target:
+                results = [check_connectivity(env, source, target)]
+            else:
+                results = check_all_connectivity(env)
+            return [
+                {
+                    "source": r.source,
+                    "target": r.target,
+                    "reachable": r.reachable,
+                    "shared_networks": list(r.shared_networks),
+                    "reason": r.reason,
+                }
+                for r in results
+            ]
+        finally:
+            client.close()
+
+    data = await anyio.to_thread.run_sync(_run)
+    return JSONResponse(content={"connectivity": data})
+
+
 @router.post("/containers/{name}/{action}")
 async def container_mutation(name: str, action: str, request: Request) -> JSONResponse:
     """Execute a container mutation through the gateway."""

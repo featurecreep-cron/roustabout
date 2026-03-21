@@ -19,10 +19,12 @@ def create_app(auth_config: AuthConfig | None = None) -> FastAPI:
     if auth_config is None:
         auth_config = AuthConfig(keys={})
 
+    from roustabout import __version__
+
     app = FastAPI(
         title="Roustabout",
         description="Docker environment management API",
-        version="0.9.0",
+        version=__version__,
     )
 
     # Paths that don't require authentication

@@ -28,7 +28,7 @@ from typing import Any
 import docker.errors
 
 from roustabout import lockdown, permissions
-from roustabout.session import RateLimitExceeded, Session, get_current_session
+from roustabout.session import PermissionTier, RateLimitExceeded, Session, get_current_session
 from roustabout.state_db import StateDB
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 _MUTATION_ACTIONS = frozenset(
     action
     for action, cap in permissions.ACTION_CAPABILITY.items()
-    if permissions.CAPABILITY_TIER[cap] >= permissions.PermissionTier.OPERATE
+    if permissions.CAPABILITY_TIER[cap] >= PermissionTier.OPERATE
 )
 
 # Command and result types
@@ -145,7 +145,7 @@ def _inspect_target(session: Session, target: str) -> Any:
     from roustabout.collector import container_to_info
 
     try:
-        container = session.docker.client.containers.get(target)
+        container = session.docker.client.containers.get(target)  # type: ignore[attr-defined]
         return container_to_info(container)
     except docker.errors.NotFound:
         return None
@@ -158,7 +158,7 @@ def _compute_target_hash(session: Session, target: str) -> str | None:
     Raises on Docker API errors other than "not found".
     """
     try:
-        container = session.docker.client.containers.get(target)
+        container = session.docker.client.containers.get(target)  # type: ignore[attr-defined]
     except docker.errors.NotFound:
         return None
     container.reload()

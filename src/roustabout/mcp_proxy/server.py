@@ -16,7 +16,7 @@ from mcp.server.fastmcp import FastMCP
 _RESPONSE_ENVELOPE = "[roustabout]"
 
 
-def _format_result(data: dict) -> str:
+def _format_result(data: dict[str, object]) -> str:
     return f"{_RESPONSE_ENVELOPE}\n{json.dumps(data, indent=2)}"
 
 

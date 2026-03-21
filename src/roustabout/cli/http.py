@@ -5,22 +5,15 @@ Used for mutations (always) and all operations when ROUSTABOUT_URL is set.
 
 from __future__ import annotations
 
-import sys
+from typing import Any
+
+import httpx
 
 
 class HTTPBackend:
     """Executes roustabout operations via the REST API."""
 
     def __init__(self, base_url: str, api_key: str | None = None) -> None:
-        try:
-            import httpx
-        except ImportError:
-            print(
-                "httpx not installed. Install with: pip install roustabout[server]",
-                file=sys.stderr,
-            )
-            raise SystemExit(1)
-
         headers: dict[str, str] = {}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -30,17 +23,17 @@ class HTTPBackend:
             timeout=30.0,
         )
 
-    def _get(self, path: str, **params: str | int) -> dict:
+    def _get(self, path: str, **params: str | int) -> dict[str, Any]:
         resp = self._client.get(path, params=params or None)
         self._check_response(resp)
-        return resp.json()
+        return resp.json()  # type: ignore[no-any-return]
 
-    def _post(self, path: str) -> dict:
+    def _post(self, path: str) -> dict[str, Any]:
         resp = self._client.post(path)
         self._check_response(resp)
-        return resp.json()
+        return resp.json()  # type: ignore[no-any-return]
 
-    def _check_response(self, resp) -> None:  # noqa: ANN001
+    def _check_response(self, resp: httpx.Response) -> None:
         if resp.is_success:
             return
         status = resp.status_code
@@ -61,13 +54,13 @@ class HTTPBackend:
         msg = messages.get(status, f"Server error ({status}): {detail}")
         raise RuntimeError(msg)
 
-    def snapshot(self, *, redact: bool = True) -> dict:
+    def snapshot(self, *, redact: bool = True) -> dict[str, Any]:
         return self._get("/v1/snapshot")
 
-    def audit(self) -> dict:
+    def audit(self) -> dict[str, Any]:
         return self._get("/v1/audit")
 
-    def health(self, name: str | None = None) -> dict:
+    def health(self, name: str | None = None) -> dict[str, Any]:
         if name:
             entry = self._get(f"/v1/health/{name}")
             return {"entries": [entry]}
@@ -80,7 +73,7 @@ class HTTPBackend:
         tail: int = 100,
         since: str | None = None,
         grep: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         params: dict[str, str | int] = {"tail": tail}
         if since:
             params["since"] = since
@@ -88,11 +81,11 @@ class HTTPBackend:
             params["grep"] = grep
         return self._get(f"/v1/logs/{name}", **params)
 
-    def dr_plan(self) -> dict:
+    def dr_plan(self) -> dict[str, Any]:
         return self._get("/v1/dr-plan")
 
-    def mutate(self, name: str, action: str, dry_run: bool = False) -> dict:
+    def mutate(self, name: str, action: str, dry_run: bool = False) -> dict[str, Any]:
         return self._post(f"/v1/containers/{name}/{action}")
 
-    def capabilities(self) -> dict:
+    def capabilities(self) -> dict[str, Any]:
         return self._get("/v1/capabilities")

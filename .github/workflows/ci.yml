@@ -25,7 +25,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,server,mcp]"
 
       - name: Lint
         run: ruff check .
@@ -50,7 +50,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[dev,mcp]"
+        run: pip install -e ".[dev,server,mcp]"
 
       - name: Test with coverage
         run: pytest --cov --cov-report=xml --tb=short -q

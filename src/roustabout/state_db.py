@@ -232,7 +232,7 @@ def _scrub_detail(detail: dict[str, Any]) -> dict[str, Any]:
 
 def _make_connection(path: Path) -> sqlite3.Connection:
     """Create a connection with standard pragmas."""
-    conn = sqlite3.connect(str(path), check_same_thread=False, autocommit=True)
+    conn = sqlite3.connect(str(path), check_same_thread=False, autocommit=True)  # type: ignore[call-overload]
     actual_mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
     if actual_mode != "wal":
         conn.close()
@@ -242,7 +242,7 @@ def _make_connection(path: Path) -> sqlite3.Connection:
         )
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    return conn  # type: ignore[no-any-return]
 
 
 # Schema bootstrap
@@ -395,7 +395,7 @@ def open_db(
     if toml_search_paths is None:
         toml_paths = _DEFAULT_TOML_PATHS
     else:
-        toml_paths = toml_search_paths
+        toml_paths = toml_search_paths  # type: ignore[assignment]
 
     _bootstrap_schema(db, toml_paths)
 
@@ -826,7 +826,7 @@ def load_previous_audit(db: StateDB, *, host: str) -> list[dict[str, str]] | Non
         if row is None or row[0] is None:
             return None
         detail = json.loads(row[0])
-        return detail.get("findings")
+        return detail.get("findings")  # type: ignore[no-any-return]
     finally:
         reader.close()
 

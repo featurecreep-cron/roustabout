@@ -35,19 +35,19 @@ class MutationResult:
 
 
 def _stop(docker: DockerSession, target: str) -> MutationResult:
-    container = docker.client.containers.get(target)
+    container = docker.client.containers.get(target)  # type: ignore[attr-defined]
     container.stop()
     return MutationResult(success=True, action="stop", target=target)
 
 
 def _start(docker: DockerSession, target: str) -> MutationResult:
-    container = docker.client.containers.get(target)
+    container = docker.client.containers.get(target)  # type: ignore[attr-defined]
     container.start()
     return MutationResult(success=True, action="start", target=target)
 
 
 def _restart(docker: DockerSession, target: str) -> MutationResult:
-    container = docker.client.containers.get(target)
+    container = docker.client.containers.get(target)  # type: ignore[attr-defined]
     container.restart()
     return MutationResult(success=True, action="restart", target=target)
 

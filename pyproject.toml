@@ -79,7 +79,7 @@ module = ["docker.*", "ruamel.*", "mcp.*", "tomli", "fastapi.*", "uvicorn.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["roustabout.mcp_server"]
+module = ["roustabout.mcp_server", "roustabout.mcp_proxy.server"]
 disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]

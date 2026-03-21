@@ -5,11 +5,13 @@ Used for read operations when no ROUSTABOUT_URL is configured.
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class DirectBackend:
     """Executes roustabout operations by importing core directly."""
 
-    def snapshot(self, *, redact: bool = True) -> dict:
+    def snapshot(self, *, redact: bool = True) -> dict[str, Any]:
         from roustabout.collector import collect
         from roustabout.config import load_config
         from roustabout.connection import connect
@@ -21,7 +23,7 @@ class DirectBackend:
         try:
             env = collect(client)
             if redact:
-                patterns = resolve_patterns(config)
+                patterns = resolve_patterns(config.redact_patterns)
                 env = redact_env(env, patterns)
             return {
                 "containers": [
@@ -31,7 +33,7 @@ class DirectBackend:
         finally:
             client.close()
 
-    def audit(self) -> dict:
+    def audit(self) -> dict[str, Any]:
         from roustabout.auditor import audit as run_audit
         from roustabout.collector import collect
         from roustabout.config import load_config
@@ -42,15 +44,15 @@ class DirectBackend:
         client = connect(config.docker_host)
         try:
             env = collect(client)
-            patterns = resolve_patterns(config)
+            patterns = resolve_patterns(config.redact_patterns)
             findings = run_audit(env, patterns)
             return {
                 "findings": [
                     {
-                        "check": f.check,
+                        "check": f.category,
                         "severity": f.severity.value,
                         "container": f.container,
-                        "message": f.message,
+                        "message": f.explanation,
                     }
                     for f in findings
                 ],
@@ -58,7 +60,7 @@ class DirectBackend:
         finally:
             client.close()
 
-    def health(self, name: str | None = None) -> dict:
+    def health(self, name: str | None = None) -> dict[str, Any]:
         from roustabout.config import load_config
         from roustabout.connection import connect
         from roustabout.health_stats import collect_health
@@ -90,7 +92,7 @@ class DirectBackend:
         tail: int = 100,
         since: str | None = None,
         grep: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         from roustabout.config import load_config
         from roustabout.connection import connect
         from roustabout.log_access import collect_logs
@@ -103,7 +105,7 @@ class DirectBackend:
         finally:
             client.close()
 
-    def dr_plan(self) -> dict:
+    def dr_plan(self) -> dict[str, Any]:
         from roustabout.collector import collect
         from roustabout.config import load_config
         from roustabout.connection import connect
@@ -116,15 +118,15 @@ class DirectBackend:
         try:
             env = collect(client)
             env = sanitize_environment(env)
-            patterns = resolve_patterns(config)
+            patterns = resolve_patterns(config.redact_patterns)
             env = redact_env(env, patterns)
             plan = generate(env)
             return {"plan": plan}
         finally:
             client.close()
 
-    def mutate(self, name: str, action: str, dry_run: bool = False) -> dict:
+    def mutate(self, name: str, action: str, dry_run: bool = False) -> dict[str, Any]:
         raise RuntimeError("DirectBackend cannot execute mutations — server required")
 
-    def capabilities(self) -> dict:
+    def capabilities(self) -> dict[str, Any]:
         raise RuntimeError("DirectBackend has no auth context — server required")

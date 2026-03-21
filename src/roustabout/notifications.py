@@ -28,7 +28,7 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         headers: Any,
         newurl: str,
     ) -> None:
-        return None  # type: ignore[return-value]
+        return None
 
 
 _no_redirect_opener = urllib.request.build_opener(_NoRedirectHandler)

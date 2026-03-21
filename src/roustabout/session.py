@@ -98,8 +98,9 @@ class DockerSession:
     is_alive: bool = True
 
     def close(self) -> None:
-        if hasattr(self.client, "close"):
-            self.client.close()  # type: ignore[union-attr]
+        close_fn = getattr(self.client, "close", None)
+        if close_fn is not None:
+            close_fn()
 
 
 # Rate limiter

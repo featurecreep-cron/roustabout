@@ -137,6 +137,23 @@ class TestSendMutationEvent:
             assert event.event_type == "mutation.failed"
             assert event.severity == "warning"
 
+    def test_rollback_event(self):
+        configure([{"type": "ntfy", "url": "https://ntfy.sh/test"}])
+        with patch("roustabout.notifications.send_event") as mock:
+            send_mutation_event(
+                action="restart",
+                target="nginx",
+                success=False,
+                rolled_back=True,
+                session_id="test",
+            )
+            mock.assert_called_once()
+            event = mock.call_args[0][0]
+            assert event.event_type == "mutation.rolled_back"
+            assert event.severity == "warning"
+            assert "rolled back" in event.title.lower()
+            assert "rolled back" in event.message.lower()
+
 
 # ntfy specifics
 

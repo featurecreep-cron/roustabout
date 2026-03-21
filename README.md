@@ -1,11 +1,12 @@
 # roustabout
 
-[![CI](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml/badge.svg)](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml)
-[![Codecov](https://codecov.io/gh/featurecreep-cron/roustabout/graph/badge.svg)](https://codecov.io/gh/featurecreep-cron/roustabout)
+[![CI](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/featurecreep-cron/roustabout/branch/develop/graph/badge.svg)](https://codecov.io/gh/featurecreep-cron/roustabout)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/featurecreep-cron/roustabout/badge)](https://scorecard.dev/viewer/?uri=github.com/featurecreep-cron/roustabout)
-[![License: MIT](https://img.shields.io/github/license/featurecreep-cron/roustabout)](https://github.com/featurecreep-cron/roustabout/blob/main/LICENSE)
-[![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Ffeaturecreep-cron%2Froustabout%2Fmain%2Fpyproject.toml)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/github/license/featurecreep-cron/roustabout)](https://github.com/featurecreep-cron/roustabout/blob/develop/LICENSE)
+[![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Ffeaturecreep-cron%2Froustabout%2Fdevelop%2Fpyproject.toml)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/roustabout)](https://pypi.org/project/roustabout/)
+[![GHCR](https://img.shields.io/badge/ghcr.io-roustabout-blue?logo=github)](https://github.com/featurecreep-cron/roustabout/pkgs/container/roustabout)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 Structured documentation, security auditing, and compose generation for Docker environments.
@@ -28,6 +29,18 @@ pip install roustabout
 pip install "roustabout[mcp]"
 ```
 
+### Docker
+
+```bash
+docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e ROUSTABOUT_API_KEY=changeme \
+  -p 8077:8077 \
+  ghcr.io/featurecreep-cron/roustabout:latest
+```
+
+Then use the CLI remotely: `roustabout --url http://server:8077 --api-key changeme snapshot`
+
 ## Quick start
 
 ```bash
@@ -35,6 +48,20 @@ roustabout snapshot                    # document your Docker environment
 roustabout audit                       # run security checks
 roustabout generate                    # reconstruct a compose file
 roustabout diff old.json new.json      # compare snapshots
+```
+
+### Remote mode
+
+Connect to a running roustabout server instead of the local Docker socket:
+
+```bash
+roustabout --url http://server:8077 --api-key mykey snapshot
+roustabout --url http://server:8077 --api-key mykey audit
+
+# Or use environment variables
+export ROUSTABOUT_URL=http://server:8077
+export ROUSTABOUT_API_KEY=mykey
+roustabout snapshot
 ```
 
 <details>
@@ -171,7 +198,7 @@ Findings can be triaged with `roustabout accept`, `false-positive`, or `resolve`
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.13+
 - Access to a Docker socket (local or remote)
 
 ## Contributing

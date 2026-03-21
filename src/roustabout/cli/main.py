@@ -90,8 +90,35 @@ def _state_path_option() -> Callable[[F], F]:
 
 @click.group()
 @click.version_option(package_name="roustabout")
-def main() -> None:
-    """Roustabout — structured markdown documentation of Docker environments."""
+@click.option(
+    "--url",
+    envvar="ROUSTABOUT_URL",
+    default=None,
+    help="Roustabout server URL for remote mode (env: ROUSTABOUT_URL).",
+)
+@click.option(
+    "--api-key",
+    envvar="ROUSTABOUT_API_KEY",
+    default=None,
+    help="API key for server authentication (env: ROUSTABOUT_API_KEY).",
+)
+def main(url: str | None, api_key: str | None) -> None:
+    """Roustabout — structured markdown documentation of Docker environments.
+
+    Local mode (default): connects directly to the Docker socket.
+
+    Remote mode: pass --url to connect to a roustabout server.
+
+    \b
+    Examples:
+      roustabout snapshot                          # local Docker
+      roustabout --url http://server:8077 snapshot # remote server
+      ROUSTABOUT_URL=http://server:8077 roustabout snapshot
+    """
+    if url:
+        os.environ["ROUSTABOUT_URL"] = url
+    if api_key:
+        os.environ["ROUSTABOUT_API_KEY"] = api_key
 
 
 @main.command()

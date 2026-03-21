@@ -13,23 +13,14 @@ RUN pip install --no-cache-dir --prefix=/install ".[server,mcp]"
 # --- Runtime stage ---
 FROM python:3.13-slim
 
-ARG DOCKER_GID=999
-
-# Create non-root user with a GID matching the host's docker group.
-RUN groupadd -g ${DOCKER_GID} docker && \
-    useradd -r -u 1000 -g docker roustabout && \
-    mkdir -p /etc/roustabout /data && \
-    chown roustabout:docker /data
+RUN mkdir -p /data
 
 COPY --from=builder /install /usr/local
 
-# Default config and state paths
-ENV ROUSTABOUT_CONFIG=/etc/roustabout/config.toml
 ENV ROUSTABOUT_STATE_DB=/data/roustabout.db
 ENV ROUSTABOUT_HOST=0.0.0.0
 ENV ROUSTABOUT_PORT=8077
 
-USER roustabout
 WORKDIR /data
 
 EXPOSE 8077

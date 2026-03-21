@@ -95,3 +95,37 @@ class TestAuthConfig:
         }
         config = AuthConfig.from_dict(raw)
         assert len(config.keys) == 2
+
+    def test_from_env(self, monkeypatch):
+        monkeypatch.setenv("ROUSTABOUT_API_KEY", "sk-env-test")
+        monkeypatch.setenv("ROUSTABOUT_API_TIER", "elevate")
+        monkeypatch.setenv("ROUSTABOUT_API_LABEL", "docker")
+        config = AuthConfig.from_env()
+        assert "sk-env-test" in config.keys
+        assert config.keys["sk-env-test"]["tier"] == "elevate"
+        assert config.keys["sk-env-test"]["label"] == "docker"
+
+    def test_from_env_defaults(self, monkeypatch):
+        monkeypatch.setenv("ROUSTABOUT_API_KEY", "sk-default")
+        monkeypatch.delenv("ROUSTABOUT_API_TIER", raising=False)
+        monkeypatch.delenv("ROUSTABOUT_API_LABEL", raising=False)
+        config = AuthConfig.from_env()
+        assert config.keys["sk-default"]["tier"] == "observe"
+        assert config.keys["sk-default"]["label"] == "env-key"
+
+    def test_from_env_no_key_returns_empty(self, monkeypatch):
+        monkeypatch.delenv("ROUSTABOUT_API_KEY", raising=False)
+        config = AuthConfig.from_env()
+        assert len(config.keys) == 0
+
+    def test_merge_env_overrides_toml(self):
+        toml = AuthConfig(keys={"sk-a": {"tier": "observe", "label": "toml"}})
+        env = AuthConfig(keys={"sk-a": {"tier": "operate", "label": "env"}})
+        merged = toml.merge(env)
+        assert merged.keys["sk-a"]["tier"] == "operate"
+
+    def test_merge_combines_keys(self):
+        toml = AuthConfig(keys={"sk-a": {"tier": "observe", "label": "a"}})
+        env = AuthConfig(keys={"sk-b": {"tier": "operate", "label": "b"}})
+        merged = toml.merge(env)
+        assert len(merged.keys) == 2

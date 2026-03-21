@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 _VALID_TIERS = frozenset({"observe", "operate", "elevate"})
 
@@ -29,7 +30,7 @@ class AuthConfig:
     keys: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, raw: dict) -> AuthConfig:
+    def from_dict(cls, raw: dict[str, Any]) -> AuthConfig:
         """Construct from a raw config dict (e.g., from TOML)."""
         return cls(keys=raw.get("keys", {}))
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -32,7 +34,7 @@ def _has_tier(key_tier: str, required: str) -> bool:
 # Read helpers — ephemeral Docker client per request, no gateway
 
 
-def _snapshot() -> dict:
+def _snapshot() -> dict[str, Any]:
     """Execute snapshot via core logic."""
     from roustabout.collector import collect
     from roustabout.config import load_config
@@ -43,7 +45,7 @@ def _snapshot() -> dict:
     client = connect()
     try:
         env = collect(client)
-        patterns = resolve_patterns(config)
+        patterns = resolve_patterns(config.redact_patterns)
         redacted = redact(env, patterns)
         return {
             "containers": [
@@ -54,7 +56,7 @@ def _snapshot() -> dict:
         client.close()
 
 
-def _audit() -> dict:
+def _audit() -> dict[str, Any]:
     """Execute audit via core logic."""
     from roustabout.auditor import audit
     from roustabout.collector import collect
@@ -66,15 +68,15 @@ def _audit() -> dict:
     client = connect()
     try:
         env = collect(client)
-        patterns = resolve_patterns(config)
+        patterns = resolve_patterns(config.redact_patterns)
         findings = audit(env, patterns)
         return {
             "findings": [
                 {
-                    "check": f.check,
+                    "check": f.category,
                     "severity": f.severity.value,
                     "container": f.container,
-                    "message": f.message,
+                    "message": f.explanation,
                 }
                 for f in findings
             ],
@@ -83,7 +85,7 @@ def _audit() -> dict:
         client.close()
 
 
-def _container_detail(container_name: str) -> dict | None:
+def _container_detail(container_name: str) -> dict[str, Any] | None:
     """Get detail for a single container."""
     from roustabout.collector import collect
     from roustabout.config import load_config
@@ -94,7 +96,7 @@ def _container_detail(container_name: str) -> dict | None:
     client = connect()
     try:
         env = collect(client)
-        patterns = resolve_patterns(config)
+        patterns = resolve_patterns(config.redact_patterns)
         redacted = redact(env, patterns)
         for c in redacted.containers:
             if c.name == container_name:
@@ -119,7 +121,7 @@ def _container_detail(container_name: str) -> dict | None:
         client.close()
 
 
-def _health(container_name: str) -> dict:
+def _health(container_name: str) -> dict[str, Any]:
     """Collect health stats for a single container."""
     from roustabout.connection import connect
     from roustabout.health_stats import collect_health
@@ -141,7 +143,7 @@ def _health(container_name: str) -> dict:
         client.close()
 
 
-def _logs(container_name: str, tail: int) -> dict:
+def _logs(container_name: str, tail: int) -> dict[str, Any]:
     """Collect logs for a single container."""
     from roustabout.connection import connect
     from roustabout.log_access import collect_logs
@@ -154,7 +156,7 @@ def _logs(container_name: str, tail: int) -> dict:
         client.close()
 
 
-def _dr_plan() -> dict:
+def _dr_plan() -> dict[str, Any]:
     """Generate disaster recovery plan."""
     from roustabout.collector import collect
     from roustabout.config import load_config
@@ -166,7 +168,7 @@ def _dr_plan() -> dict:
     client = connect()
     try:
         env = collect(client)
-        patterns = resolve_patterns(config)
+        patterns = resolve_patterns(config.redact_patterns)
         redacted = redact(env, patterns)
         plan = generate(redacted)
         return {"plan": plan}
@@ -188,7 +190,7 @@ _GATEWAY_ERROR_MAP: dict[str, int] = {
 }
 
 
-def _mutate(container_name: str, action: str, key_info: KeyInfo) -> tuple[int, dict]:
+def _mutate(container_name: str, action: str, key_info: KeyInfo) -> tuple[int, dict[str, Any]]:
     """Execute mutation via gateway. Returns (status_code, response_dict)."""
     from uuid import uuid4
 
@@ -237,7 +239,7 @@ def _mutate(container_name: str, action: str, key_info: KeyInfo) -> tuple[int, d
 
 
 @router.get("/snapshot")
-async def snapshot(request: Request) -> dict:
+async def snapshot(request: Request) -> dict[str, Any]:
     """Collect and return redacted Docker environment state."""
     import anyio
 
@@ -245,7 +247,7 @@ async def snapshot(request: Request) -> dict:
 
 
 @router.get("/audit")
-async def audit_route(request: Request) -> dict:
+async def audit_route(request: Request) -> dict[str, Any]:
     """Run security audit and return findings."""
     import anyio
 
@@ -295,7 +297,7 @@ async def logs_route(name: str, request: Request, tail: int = 100) -> JSONRespon
 
 
 @router.get("/dr-plan")
-async def dr_plan_route(request: Request) -> dict:
+async def dr_plan_route(request: Request) -> dict[str, Any]:
     """Generate disaster recovery plan."""
     import anyio
 
@@ -332,7 +334,7 @@ async def container_mutation(name: str, action: str, request: Request) -> JSONRe
 
 
 @router.get("/capabilities")
-async def capabilities(request: Request) -> dict:
+async def capabilities(request: Request) -> dict[str, Any]:
     """Return capabilities available to the authenticated key."""
     key_info: KeyInfo = request.state.key_info
     tier = key_info.tier

@@ -180,7 +180,7 @@ def _parse_cpu(raw: dict[str, Any]) -> float:
         percpu = cpu_stats.get("cpu_usage", {}).get("percpu_usage")
         num_cpus = len(percpu) if percpu else 1
 
-    return round((cpu_delta / system_delta) * num_cpus * 100.0, 2)
+    return round((cpu_delta / system_delta) * num_cpus * 100.0, 2)  # type: ignore[no-any-return]
 
 
 def _parse_memory(raw: dict[str, Any]) -> tuple[int, int, float]:
@@ -237,7 +237,7 @@ def _human_size(n: int | None) -> str:
     if n < 1024:
         return f"{n}B"
     for unit in ("KB", "MB", "GB", "TB"):
-        n /= 1024
+        n /= 1024  # type: ignore[assignment]
         if n < 1024:
             return f"{n:.1f}{unit}"
     return f"{n:.1f}PB"

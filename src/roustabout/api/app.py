@@ -29,7 +29,7 @@ def create_app(auth_config: AuthConfig | None = None) -> FastAPI:
     _PUBLIC_PATHS = frozenset({"/health", "/docs", "/openapi.json", "/redoc"})
 
     @app.middleware("http")
-    async def auth_middleware(request: Request, call_next):
+    async def auth_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
         if request.url.path in _PUBLIC_PATHS:
             return await call_next(request)
 
@@ -53,7 +53,7 @@ def create_app(auth_config: AuthConfig | None = None) -> FastAPI:
         return await call_next(request)
 
     @app.get("/health")
-    async def health():
+    async def health() -> dict[str, str]:
         return {"status": "ok"}
 
     app.include_router(router)

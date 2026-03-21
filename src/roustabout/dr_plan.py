@@ -235,7 +235,7 @@ def _build_run_command(container: ContainerInfo, env: DockerEnvironment) -> str:
         parts.append("  --network host")
     elif container.network_mode == "none":
         parts.append("  --network none")
-    elif is_container_net:
+    elif is_container_net and container.network_mode:
         dep_id = container.network_mode.split(":", 1)[1]
         dep_name = _resolve_id_to_name(env, dep_id) or dep_id
         parts.append(f"  --network container:{_shell_quote(dep_name)}")

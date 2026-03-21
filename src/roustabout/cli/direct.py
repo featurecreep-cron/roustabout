@@ -33,7 +33,8 @@ class DirectBackend:
         finally:
             client.close()
 
-    def audit(self) -> dict[str, Any]:
+    def audit(self, *, fmt: str = "json") -> dict[str, Any] | str:
+        from roustabout.audit_renderer import render_findings
         from roustabout.auditor import audit as run_audit
         from roustabout.collector import collect
         from roustabout.config import load_config
@@ -46,6 +47,8 @@ class DirectBackend:
             env = collect(client)
             patterns = resolve_patterns(config.redact_patterns)
             findings = run_audit(env, patterns)
+            if fmt == "markdown":
+                return render_findings(findings)
             return {
                 "findings": [
                     {

@@ -25,10 +25,10 @@ def main() -> None:
 
     config = load_config()
 
-    # Load auth config from roustabout.toml [auth] section
-    auth_raw = config.raw.get("auth", {})
-
-    auth_config = AuthConfig.from_dict(auth_raw)
+    # Auth: env vars take priority, TOML provides additional keys
+    env_auth = AuthConfig.from_env()
+    toml_auth = AuthConfig.from_dict(config.raw.get("auth", {}))
+    auth_config = toml_auth.merge(env_auth)
 
     # Server-wide rate limiter — shared across all API requests
     rate_limiter = RateLimiter(

@@ -139,6 +139,109 @@ class TestRestart:
         assert result.success is False
 
 
+# recreate
+
+
+def _mock_container_for_recreate(**overrides):
+    """Create a mock container with full attrs for recreate."""
+    container = MagicMock()
+    container.name = overrides.get("name", "nginx")
+    container.status = "running"
+    container.attrs = {
+        "Name": "/nginx",
+        "Config": {
+            "Image": "nginx:latest",
+            "Env": ["FOO=bar"],
+            "Labels": {"app": "web"},
+        },
+        "HostConfig": {
+            "Binds": ["/data:/data:rw"],
+            "PortBindings": {
+                "80/tcp": [{"HostIp": "", "HostPort": "8080"}],
+            },
+            "RestartPolicy": {"Name": "unless-stopped"},
+            "NetworkMode": "my-network",
+        },
+        "NetworkSettings": {
+            "Networks": {
+                "my-network": {"Aliases": ["web"]},
+                "monitoring": {"Aliases": []},
+            },
+        },
+    }
+    return container
+
+
+class TestRecreate:
+    def test_recreate_stops_removes_creates_starts(self):
+        docker = _make_docker_session()
+        old_container = _mock_container_for_recreate()
+        new_container = MagicMock()
+        docker.client.containers.get.return_value = old_container
+        docker.client.containers.create.return_value = new_container
+
+        result = execute(docker, "recreate", "nginx")
+
+        assert result.success is True
+        assert result.action == "recreate"
+        old_container.stop.assert_called_once()
+        old_container.remove.assert_called_once()
+        docker.client.containers.create.assert_called_once()
+        new_container.start.assert_called_once()
+
+    def test_recreate_preserves_config(self):
+        docker = _make_docker_session()
+        old_container = _mock_container_for_recreate()
+        new_container = MagicMock()
+        docker.client.containers.get.return_value = old_container
+        docker.client.containers.create.return_value = new_container
+
+        execute(docker, "recreate", "nginx")
+
+        kwargs = docker.client.containers.create.call_args[1]
+        assert kwargs["image"] == "nginx:latest"
+        assert kwargs["name"] == "nginx"
+        assert kwargs["environment"] == ["FOO=bar"]
+        assert kwargs["labels"] == {"app": "web"}
+        assert kwargs["volumes"] == ["/data:/data:rw"]
+        assert kwargs["restart_policy"] == {"Name": "unless-stopped"}
+
+    def test_recreate_reconnects_networks(self):
+        docker = _make_docker_session()
+        old_container = _mock_container_for_recreate()
+        new_container = MagicMock()
+        network_mock = MagicMock()
+        docker.client.containers.get.return_value = old_container
+        docker.client.containers.create.return_value = new_container
+        docker.client.networks.get.return_value = network_mock
+
+        execute(docker, "recreate", "nginx")
+
+        # monitoring network should be reconnected (my-network is via network_mode)
+        docker.client.networks.get.assert_called_with("monitoring")
+        network_mock.connect.assert_called_once()
+
+    def test_recreate_not_found(self):
+        docker = _make_docker_session()
+        docker.client.containers.get.side_effect = _docker_errors.NotFound("not found")
+
+        result = execute(docker, "recreate", "ghost")
+
+        assert result.success is False
+        assert result.error_type == "not_found"
+
+    def test_recreate_api_error_on_remove(self):
+        docker = _make_docker_session()
+        container = _mock_container_for_recreate()
+        docker.client.containers.get.return_value = container
+        container.remove.side_effect = _docker_errors.APIError("in use")
+
+        result = execute(docker, "recreate", "nginx")
+
+        assert result.success is False
+        assert result.error_type == "mutation_error"
+
+
 # execute dispatch
 
 
@@ -158,6 +261,17 @@ class TestExecuteDispatch:
             result = execute(docker, action, "nginx")
             assert result.success is True
             assert result.action == action
+
+    def test_dispatch_includes_recreate(self):
+        docker = _make_docker_session()
+        container = _mock_container_for_recreate()
+        new_container = MagicMock()
+        docker.client.containers.get.return_value = container
+        docker.client.containers.create.return_value = new_container
+
+        result = execute(docker, "recreate", "nginx")
+        assert result.success is True
+        assert result.action == "recreate"
 
 
 # Error classification

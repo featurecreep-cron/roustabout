@@ -52,11 +52,82 @@ def _restart(docker: DockerSession, target: str) -> MutationResult:
     return MutationResult(success=True, action="restart", target=target)
 
 
+def _recreate(docker: DockerSession, target: str) -> MutationResult:
+    """Recreate a container: stop, remove, create new with same config.
+
+    Uses the container's image (pulling latest tag) and preserves
+    name, volumes, networks, ports, env, and labels.
+    """
+    container = docker.client.containers.get(target)  # type: ignore[attr-defined]
+    config = container.attrs  # type: ignore[attr-defined]
+    host_config = config.get("HostConfig", {})
+    network_config = config.get("NetworkSettings", {}).get("Networks", {})
+
+    image = config["Config"]["Image"]
+    name = config["Name"].lstrip("/")
+
+    # Build create kwargs from existing config
+    create_kwargs: dict = {
+        "image": image,
+        "name": name,
+        "detach": True,
+        "environment": config["Config"].get("Env") or [],
+        "labels": config["Config"].get("Labels") or {},
+        "volumes": host_config.get("Binds") or [],
+        "ports": _rebuild_port_bindings(host_config.get("PortBindings") or {}),
+        "restart_policy": host_config.get("RestartPolicy") or {"Name": "no"},
+    }
+
+    # Preserve network mode if set
+    net_mode = host_config.get("NetworkMode")
+    if net_mode and net_mode != "default":
+        create_kwargs["network_mode"] = net_mode
+
+    # Stop and remove
+    container.stop()  # type: ignore[attr-defined]
+    container.remove()  # type: ignore[attr-defined]
+
+    # Create and start
+    new_container = docker.client.containers.create(**create_kwargs)  # type: ignore[attr-defined]
+
+    # Reconnect to non-default networks (skip the primary network from network_mode)
+    special_modes = ("default", "bridge", "host", "none")
+    primary_net = net_mode if net_mode and net_mode not in special_modes else "bridge"
+    for net_name, net_conf in network_config.items():
+        if net_name == primary_net:
+            continue  # already connected via network_mode or default
+        try:
+            network = docker.client.networks.get(net_name)  # type: ignore[attr-defined]
+            network.connect(
+                new_container,
+                aliases=net_conf.get("Aliases") or [],
+            )
+        except _docker_errors.APIError:
+            logger.warning("Could not reconnect to network %s", net_name)
+
+    new_container.start()  # type: ignore[attr-defined]
+    return MutationResult(success=True, action="recreate", target=target)
+
+
+def _rebuild_port_bindings(bindings: dict) -> dict:
+    """Convert Docker API PortBindings format to docker-py ports format."""
+    result = {}
+    for container_port, host_bindings in bindings.items():
+        if not host_bindings:
+            result[container_port] = None
+            continue
+        result[container_port] = [
+            (b.get("HostIp", ""), b.get("HostPort", "")) for b in host_bindings
+        ]
+    return result
+
+
 # Dispatch
 _DISPATCH = {
     "start": _start,
     "stop": _stop,
     "restart": _restart,
+    "recreate": _recreate,
 }
 
 

@@ -576,6 +576,27 @@ def restart_cmd(
     _run_mutation("restart", container_name, dry_run, config_path, docker_host)
 
 
+@main.command("recreate")
+@click.argument("container_name")
+@click.option("--dry-run", is_flag=True, default=False, help="Preview without executing.")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+def recreate_cmd(
+    container_name: str,
+    dry_run: bool,
+    config_path: str | None,
+    docker_host: str | None,
+) -> None:
+    """Recreate a container (stop, remove, create with same config, start)."""
+    _run_mutation("recreate", container_name, dry_run, config_path, docker_host)
+
+
 def _run_mutation(
     action: str,
     container_name: str,

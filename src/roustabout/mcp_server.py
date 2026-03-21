@@ -491,6 +491,52 @@ async def docker_findings(
 
 
 @mcp.tool()
+async def docker_net_check(
+    source: str | None = None,
+    target: str | None = None,
+) -> str:
+    """[OBSERVE] Check network connectivity between containers.
+
+    Use when: you need to know if container A can reach container B.
+    With both args: checks one pair. With no args: checks all pairs.
+    Returns: reachability result with reason (shared networks, host mode, etc).
+
+    Args:
+        source: Source container name (optional — omit both for all pairs).
+        target: Target container name (optional — omit both for all pairs).
+    """
+    if source:
+        source = sanitize(source)[:128]
+    if target:
+        target = sanitize(target)[:128]
+
+    if (source is None) != (target is None):
+        return _envelope("Error: Provide both source and target, or neither for all pairs.")
+
+    try:
+        env, cfg = await anyio.to_thread.run_sync(_collect_redacted, abandon_on_cancel=False)
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
+        return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
+
+    from roustabout.net_check import check_all_connectivity, check_connectivity
+
+    if source and target:
+        results = [check_connectivity(env, source, target)]
+    else:
+        results = check_all_connectivity(env)
+
+    lines = []
+    for r in results:
+        icon = "✓" if r.reachable else "✗"
+        lines.append(f"  {icon} {r.source} → {r.target}: {r.reason}")
+
+    if not lines:
+        return _envelope("No container pairs to check.")
+
+    return _enforce_size_limit("\n".join(lines), cfg.response_size_cap)
+
+
+@mcp.tool()
 async def docker_manage(
     action: str,
     container_name: str,

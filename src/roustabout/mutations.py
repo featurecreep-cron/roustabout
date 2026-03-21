@@ -8,11 +8,17 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any, cast
 
 import docker.errors as _docker_errors
 
 from roustabout.redactor import sanitize
 from roustabout.session import DockerSession
+
+
+def _docker(docker: DockerSession) -> Any:
+    """Cast DockerSession.client for docker-py API access."""
+    return cast(Any, docker.client)
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +41,19 @@ class MutationResult:
 
 
 def _stop(docker: DockerSession, target: str) -> MutationResult:
-    container = docker.client.containers.get(target)  # type: ignore[attr-defined]
+    container = _docker(docker).containers.get(target)
     container.stop()
     return MutationResult(success=True, action="stop", target=target)
 
 
 def _start(docker: DockerSession, target: str) -> MutationResult:
-    container = docker.client.containers.get(target)  # type: ignore[attr-defined]
+    container = _docker(docker).containers.get(target)
     container.start()
     return MutationResult(success=True, action="start", target=target)
 
 
 def _restart(docker: DockerSession, target: str) -> MutationResult:
-    container = docker.client.containers.get(target)  # type: ignore[attr-defined]
+    container = _docker(docker).containers.get(target)
     container.restart()
     return MutationResult(success=True, action="restart", target=target)
 
@@ -58,16 +64,16 @@ def _recreate(docker: DockerSession, target: str) -> MutationResult:
     Uses the container's image (pulling latest tag) and preserves
     name, volumes, networks, ports, env, and labels.
     """
-    container = docker.client.containers.get(target)  # type: ignore[attr-defined]
-    config = container.attrs  # type: ignore[attr-defined]
-    host_config = config.get("HostConfig", {})
-    network_config = config.get("NetworkSettings", {}).get("Networks", {})
+    container = _docker(docker).containers.get(target)
+    config: dict[str, Any] = container.attrs
+    host_config: dict[str, Any] = config.get("HostConfig", {})
+    network_config: dict[str, Any] = config.get("NetworkSettings", {}).get("Networks", {})
 
-    image = config["Config"]["Image"]
-    name = config["Name"].lstrip("/")
+    image: str = config["Config"]["Image"]
+    name: str = config["Name"].lstrip("/")
 
     # Build create kwargs from existing config
-    create_kwargs: dict = {
+    create_kwargs: dict[str, Any] = {
         "image": image,
         "name": name,
         "detach": True,
@@ -84,11 +90,11 @@ def _recreate(docker: DockerSession, target: str) -> MutationResult:
         create_kwargs["network_mode"] = net_mode
 
     # Stop and remove
-    container.stop()  # type: ignore[attr-defined]
-    container.remove()  # type: ignore[attr-defined]
+    container.stop()
+    container.remove()
 
     # Create and start
-    new_container = docker.client.containers.create(**create_kwargs)  # type: ignore[attr-defined]
+    new_container = _docker(docker).containers.create(**create_kwargs)
 
     # Reconnect to non-default networks (skip the primary network from network_mode)
     special_modes = ("default", "bridge", "host", "none")
@@ -97,7 +103,7 @@ def _recreate(docker: DockerSession, target: str) -> MutationResult:
         if net_name == primary_net:
             continue  # already connected via network_mode or default
         try:
-            network = docker.client.networks.get(net_name)  # type: ignore[attr-defined]
+            network = _docker(docker).networks.get(net_name)
             network.connect(
                 new_container,
                 aliases=net_conf.get("Aliases") or [],
@@ -105,13 +111,15 @@ def _recreate(docker: DockerSession, target: str) -> MutationResult:
         except _docker_errors.APIError:
             logger.warning("Could not reconnect to network %s", net_name)
 
-    new_container.start()  # type: ignore[attr-defined]
+    new_container.start()
     return MutationResult(success=True, action="recreate", target=target)
 
 
-def _rebuild_port_bindings(bindings: dict) -> dict:
+def _rebuild_port_bindings(
+    bindings: dict[str, Any],
+) -> dict[str, list[tuple[str, str]] | None]:
     """Convert Docker API PortBindings format to docker-py ports format."""
-    result = {}
+    result: dict[str, list[tuple[str, str]] | None] = {}
     for container_port, host_bindings in bindings.items():
         if not host_bindings:
             result[container_port] = None

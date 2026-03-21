@@ -77,6 +77,9 @@ class Config:
     # Response size
     response_size_cap: int = 262144  # 256KB
 
+    # DR plan
+    strip_versions: bool = False
+
     # State database path
     state_db: str | None = None
 
@@ -226,6 +229,11 @@ def _parse_config(path: Path) -> Config:
 
     _parse_positive_int(data, "log_tail_default", kwargs, path)
     _parse_positive_int(data, "response_size_cap", kwargs, path)
+
+    if "strip_versions" in data:
+        if not isinstance(data["strip_versions"], bool):
+            raise ValueError(f"strip_versions must be a boolean in {path}")
+        kwargs["strip_versions"] = data["strip_versions"]
 
     if "state_db" in data:
         if not isinstance(data["state_db"], str):

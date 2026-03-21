@@ -860,3 +860,89 @@ class TestEmptyEnvironment:
         result = generate(env)
         assert "# Disaster Recovery Plan" in result
         assert "0 container" in result.lower() or "no containers" in result.lower()
+
+
+# Strip versions (#9)
+
+
+class TestStripImageVersion:
+    """_strip_image_version removes tags and digests from image references."""
+
+    def test_simple_tag(self):
+        from roustabout.dr_plan import _strip_image_version
+
+        assert _strip_image_version("nginx:1.25-alpine") == "nginx"
+
+    def test_registry_with_tag(self):
+        from roustabout.dr_plan import _strip_image_version
+
+        assert _strip_image_version("ghcr.io/org/app:v2.1.0") == "ghcr.io/org/app"
+
+    def test_registry_with_port_and_tag(self):
+        from roustabout.dr_plan import _strip_image_version
+
+        assert _strip_image_version("localhost:5000/myapp:latest") == "localhost:5000/myapp"
+
+    def test_digest_reference(self):
+        from roustabout.dr_plan import _strip_image_version
+
+        result = _strip_image_version("nginx@sha256:abc123def456")
+        assert result == "nginx"
+
+    def test_no_tag(self):
+        from roustabout.dr_plan import _strip_image_version
+
+        assert _strip_image_version("nginx") == "nginx"
+
+    def test_registry_no_tag(self):
+        from roustabout.dr_plan import _strip_image_version
+
+        assert _strip_image_version("ghcr.io/org/app") == "ghcr.io/org/app"
+
+    def test_latest_tag(self):
+        from roustabout.dr_plan import _strip_image_version
+
+        assert _strip_image_version("redis:latest") == "redis"
+
+
+class TestStripVersionsFlag:
+    """generate(strip_versions=True) removes version tags from output."""
+
+    def test_image_tags_removed_from_header(self, simple_env):
+        from roustabout.dr_plan import generate
+
+        result = generate(simple_env, strip_versions=True)
+        assert "**Image:** nginx" in result
+        assert "nginx:1.25-alpine" not in result
+
+    def test_image_tags_removed_from_run_command(self, simple_env):
+        from roustabout.dr_plan import generate
+
+        result = generate(simple_env, strip_versions=True)
+        # The docker run command should reference the image without tag
+        lines = result.split("\n")
+        run_lines = [ln for ln in lines if "docker run" in ln or ln.strip().startswith("nginx")]
+        # Should find "nginx" without ":1.25-alpine" in the run command
+        for line in run_lines:
+            assert "1.25-alpine" not in line
+
+    def test_default_preserves_tags(self, simple_env):
+        from roustabout.dr_plan import generate
+
+        result = generate(simple_env)
+        assert "nginx:1.25-alpine" in result
+
+    def test_strip_versions_with_registry_port(self):
+        from roustabout.dr_plan import generate
+
+        c = make_container(
+            name="app",
+            id="a1",
+            status="running",
+            image="localhost:5000/myapp:v3.2.1",
+            image_id="sha256:a1",
+        )
+        env = make_environment(containers=[c], generated_at="now", docker_version="25.0")
+        result = generate(env, strip_versions=True)
+        assert "localhost:5000/myapp" in result
+        assert "v3.2.1" not in result

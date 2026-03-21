@@ -54,6 +54,7 @@ class HTTPBackend:
             401: "Authentication failed. Check ROUSTABOUT_API_KEY.",
             403: f"Permission denied: {detail}",
             404: f"Not found: {detail}",
+            409: "Conflict: concurrent mutation in progress. Try again.",
             429: "Rate limit exceeded. Try again later.",
             503: f"Server unavailable: {detail}",
         }

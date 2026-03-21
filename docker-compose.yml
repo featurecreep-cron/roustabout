@@ -18,7 +18,7 @@ services:
     ports:
       - "127.0.0.1:8077:8077"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
       - roustabout-data:/data
       - ./config:/etc/roustabout:ro
     environment:

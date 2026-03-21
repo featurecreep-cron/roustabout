@@ -158,6 +158,34 @@ class TestMCPProxyTools:
         result = await tools["docker_capabilities"].fn()
         mock_client.get.assert_called_with("/v1/capabilities")
 
+    @pytest.mark.anyio
+    async def test_docker_container_calls_get(self, mcp, mock_client):
+        mock_client.get.return_value = self._success_response({"name": "nginx", "status": "running"})
+        tools = {t.name: t for t in mcp._tool_manager.list_tools()}
+        result = await tools["docker_container"].fn(name="nginx")
+        mock_client.get.assert_called_with("/v1/containers/nginx")
+
+    @pytest.mark.anyio
+    async def test_docker_dr_plan_calls_get(self, mcp, mock_client):
+        mock_client.get.return_value = self._success_response({"plan": "# DR Plan"})
+        tools = {t.name: t for t in mcp._tool_manager.list_tools()}
+        result = await tools["docker_dr_plan"].fn()
+        mock_client.get.assert_called_with("/v1/dr-plan")
+
+    @pytest.mark.anyio
+    async def test_docker_start_calls_post(self, mcp, mock_client):
+        mock_client.post.return_value = self._success_response({"result": "success"})
+        tools = {t.name: t for t in mcp._tool_manager.list_tools()}
+        result = await tools["docker_start"].fn(name="nginx")
+        mock_client.post.assert_called_with("/v1/containers/nginx/start")
+
+    @pytest.mark.anyio
+    async def test_docker_recreate_calls_post(self, mcp, mock_client):
+        mock_client.post.return_value = self._success_response({"result": "success"})
+        tools = {t.name: t for t in mcp._tool_manager.list_tools()}
+        result = await tools["docker_recreate"].fn(name="nginx")
+        mock_client.post.assert_called_with("/v1/containers/nginx/recreate")
+
 
 class TestMainEntryPoint:
     """Verify main() validates API key."""

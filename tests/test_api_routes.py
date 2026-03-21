@@ -109,6 +109,31 @@ class TestAuditRoute:
         assert data["findings"][0]["check"] == "privileged"
 
 
+class TestContainerDetailRoute:
+    """GET /v1/containers/{name} — read-only, Observe tier."""
+
+    def test_returns_detail_for_known_container(self, client):
+        with patch("roustabout.api.routes._container_detail") as mock:
+            mock.return_value = {
+                "name": "nginx",
+                "image": "nginx:latest",
+                "status": "running",
+                "health": "healthy",
+                "restart_count": 0,
+                "ports": [],
+                "networks": ["bridge"],
+            }
+            response = client.get("/v1/containers/nginx", headers=_auth())
+        assert response.status_code == 200
+        assert response.json()["name"] == "nginx"
+
+    def test_returns_404_for_unknown_container(self, client):
+        with patch("roustabout.api.routes._container_detail") as mock:
+            mock.return_value = None
+            response = client.get("/v1/containers/ghost", headers=_auth())
+        assert response.status_code == 404
+
+
 class TestHealthRoute:
     """GET /v1/health/{name} — read-only, Observe tier."""
 

@@ -73,6 +73,11 @@ def create_mcp_server(api_url: str, api_key: str) -> FastMCP:
         return await _get("/v1/audit")
 
     @mcp.tool()
+    async def docker_container(name: str) -> str:
+        """Get detail for a specific container (image, status, ports, networks)."""
+        return await _get(f"/v1/containers/{name}")
+
+    @mcp.tool()
     async def docker_health(name: str) -> str:
         """Get health status for a specific container."""
         return await _get(f"/v1/health/{name}")

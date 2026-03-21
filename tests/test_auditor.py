@@ -334,6 +334,130 @@ class TestFlatNetworking:
         assert _find(findings, "flat-network") is None
 
 
+class TestPortConflicts:
+    def test_same_host_port_detected(self):
+        port = [
+            PortBinding(
+                container_port=80,
+                protocol="tcp",
+                host_ip="0.0.0.0",
+                host_port="8080",
+            )
+        ]
+        c1 = make_container(
+            name="web1", id="id1", status="running", image="img:1", image_id="sha256:x", ports=port
+        )
+        c2 = make_container(
+            name="web2", id="id2", status="running", image="img:1", image_id="sha256:x", ports=port
+        )
+        env = make_environment(
+            containers=[c1, c2], generated_at="2026-03-09T00:00:00Z", docker_version="25.0.3"
+        )
+        findings = audit(env)
+        f = _find(findings, "port-conflict")
+        assert f is not None
+        assert f.severity == Severity.WARNING
+        assert "web1" in f.explanation
+        assert "web2" in f.explanation
+        assert "8080" in f.explanation
+
+    def test_different_host_ports_clean(self):
+        c1 = make_container(
+            name="web1",
+            id="id1",
+            status="running",
+            image="img:1",
+            image_id="sha256:x",
+            ports=[PortBinding(container_port=80, protocol="tcp", host_ip="", host_port="8080")],
+        )
+        c2 = make_container(
+            name="web2",
+            id="id2",
+            status="running",
+            image="img:1",
+            image_id="sha256:x",
+            ports=[PortBinding(container_port=80, protocol="tcp", host_ip="", host_port="8081")],
+        )
+        env = make_environment(
+            containers=[c1, c2], generated_at="2026-03-09T00:00:00Z", docker_version="25.0.3"
+        )
+        findings = audit(env)
+        assert _find(findings, "port-conflict") is None
+
+    def test_different_bind_addresses_clean(self):
+        c1 = make_container(
+            name="web1",
+            id="id1",
+            status="running",
+            image="img:1",
+            image_id="sha256:x",
+            ports=[
+                PortBinding(
+                    container_port=80,
+                    protocol="tcp",
+                    host_ip="127.0.0.1",
+                    host_port="8080",
+                )
+            ],
+        )
+        c2 = make_container(
+            name="web2",
+            id="id2",
+            status="running",
+            image="img:1",
+            image_id="sha256:x",
+            ports=[
+                PortBinding(
+                    container_port=80,
+                    protocol="tcp",
+                    host_ip="192.168.1.5",
+                    host_port="8080",
+                )
+            ],
+        )
+        env = make_environment(
+            containers=[c1, c2], generated_at="2026-03-09T00:00:00Z", docker_version="25.0.3"
+        )
+        findings = audit(env)
+        assert _find(findings, "port-conflict") is None
+
+    def test_stopped_containers_ignored(self):
+        port = [
+            PortBinding(
+                container_port=80,
+                protocol="tcp",
+                host_ip="0.0.0.0",
+                host_port="8080",
+            )
+        ]
+        c1 = make_container(
+            name="web1", id="id1", status="running", image="img:1", image_id="sha256:x", ports=port
+        )
+        c2 = make_container(
+            name="web2", id="id2", status="exited", image="img:1", image_id="sha256:x", ports=port
+        )
+        env = make_environment(
+            containers=[c1, c2], generated_at="2026-03-09T00:00:00Z", docker_version="25.0.3"
+        )
+        findings = audit(env)
+        assert _find(findings, "port-conflict") is None
+
+    def test_no_host_port_ignored(self):
+        """Containers with only container ports (no host binding) don't conflict."""
+        port = [PortBinding(container_port=80, protocol="tcp", host_ip="", host_port="")]
+        c1 = make_container(
+            name="web1", id="id1", status="running", image="img:1", image_id="sha256:x", ports=port
+        )
+        c2 = make_container(
+            name="web2", id="id2", status="running", image="img:1", image_id="sha256:x", ports=port
+        )
+        env = make_environment(
+            containers=[c1, c2], generated_at="2026-03-09T00:00:00Z", docker_version="25.0.3"
+        )
+        findings = audit(env)
+        assert _find(findings, "port-conflict") is None
+
+
 class TestNoRestartPolicy:
     def test_no_policy_detected(self):
         env = _env(restart_policy=None)

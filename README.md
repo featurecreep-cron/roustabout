@@ -29,6 +29,18 @@ pip install roustabout
 pip install "roustabout[mcp]"
 ```
 
+### Docker
+
+```bash
+docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e ROUSTABOUT_API_KEY=changeme \
+  -p 8077:8077 \
+  ghcr.io/featurecreep-cron/roustabout:latest
+```
+
+Then use the CLI remotely: `roustabout --url http://server:8077 --api-key changeme snapshot`
+
 ## Quick start
 
 ```bash
@@ -36,6 +48,20 @@ roustabout snapshot                    # document your Docker environment
 roustabout audit                       # run security checks
 roustabout generate                    # reconstruct a compose file
 roustabout diff old.json new.json      # compare snapshots
+```
+
+### Remote mode
+
+Connect to a running roustabout server instead of the local Docker socket:
+
+```bash
+roustabout --url http://server:8077 --api-key mykey snapshot
+roustabout --url http://server:8077 --api-key mykey audit
+
+# Or use environment variables
+export ROUSTABOUT_URL=http://server:8077
+export ROUSTABOUT_API_KEY=mykey
+roustabout snapshot
 ```
 
 <details>
@@ -172,7 +198,7 @@ Findings can be triaged with `roustabout accept`, `false-positive`, or `resolve`
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.13+
 - Access to a Docker socket (local or remote)
 
 ## Contributing

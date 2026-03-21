@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roustabout"
-version = "0.8.0"
+version = "0.8.1"
 description = "Docker environment documentation, security auditing, and safe MCP server"
 license = "MIT"
 requires-python = ">=3.13"
@@ -26,6 +26,7 @@ dependencies = [
     "click>=8.0",
     "ruamel.yaml>=0.18",
     "secretscreen>=0.1.0",
+    "httpx>=0.24",
 ]
 
 [project.urls]
@@ -40,7 +41,6 @@ mcp = [
 server = [
     "fastapi>=0.100",
     "uvicorn>=0.20",
-    "httpx>=0.24",
 ]
 dev = [
     "pytest>=8.0",

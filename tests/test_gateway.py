@@ -363,6 +363,31 @@ class TestCircuitBreakerGate:
 
 # Gate sequence — rate limit cleanup
 
+class TestRateLimitExhausted:
+    def test_exhausted_rate_limit_returns_denied(self):
+        """When rate limit is exhausted, gateway returns denied result."""
+        session = _make_session()
+        # Exhaust all tokens
+        session.rate_limiter._max_tokens = 1
+        session.rate_limiter._global_max_tokens = 100
+        bucket = session.rate_limiter._get_bucket("nginx")
+        bucket.tokens = 0
+
+        mock_info = MagicMock()
+        mock_info.image = "nginx:latest"
+        mock_info.name = "nginx"
+
+        cmd = _make_command(target="nginx")
+        with patch("roustabout.gateway.lockdown.check"):
+            with patch("roustabout.gateway._inspect_target", return_value=mock_info):
+                with patch("roustabout.gateway._compute_target_hash", return_value="hash"):
+                    result = execute(cmd, session=session, db=None)
+
+        assert not result.success
+        assert result.gate_failed == "RateLimitExceeded"
+        assert result.result == "denied"
+
+
 class TestRateLimitCleanup:
     def test_reservation_released_on_gate_failure(self):
         """If a gate fails after rate limit reservation, token is released."""

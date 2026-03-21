@@ -84,6 +84,35 @@ def _audit() -> dict:
         client.close()
 
 
+def _container_detail(container_name: str) -> dict | None:
+    """Get detail for a single container."""
+    from roustabout.collector import collect
+    from roustabout.config import load_config
+    from roustabout.connection import connect
+    from roustabout.redactor import redact, resolve_patterns
+
+    config = load_config()
+    client = connect()
+    try:
+        env = collect(client)
+        patterns = resolve_patterns(config)
+        redacted = redact(env, patterns)
+        for c in redacted.containers:
+            if c.name == container_name:
+                return {
+                    "name": c.name,
+                    "image": c.image,
+                    "status": c.status,
+                    "health": c.health,
+                    "restart_count": c.restart_count,
+                    "ports": [{"host": p.host_port, "container": p.container_port, "protocol": p.protocol} for p in c.ports],
+                    "networks": [n.name for n in c.networks],
+                }
+        return None
+    finally:
+        client.close()
+
+
 def _health(container_name: str) -> dict:
     """Collect health stats for a single container."""
     from roustabout.connection import connect
@@ -188,6 +217,13 @@ def _mutate(container_name: str, action: str, key_info: KeyInfo) -> tuple[int, d
             return status, response
 
         return 200, response
+    except ConnectionError:
+        return 503, {
+            "result": "failed",
+            "container": container_name,
+            "action": action,
+            "error": "Docker daemon unavailable",
+        }
     finally:
         destroy_session(session)
 
@@ -209,6 +245,17 @@ async def audit_route(request: Request) -> dict:
     import anyio
 
     return await anyio.to_thread.run_sync(_audit)
+
+
+@router.get("/containers/{name}")
+async def container_detail_route(name: str, request: Request) -> JSONResponse:
+    """Get detail for a single container."""
+    import anyio
+
+    result = await anyio.to_thread.run_sync(lambda: _container_detail(name))
+    if result is None:
+        return JSONResponse(status_code=404, content={"error": f"container '{name}' not found"})
+    return JSONResponse(content=result)
 
 
 @router.get("/health/{name}")

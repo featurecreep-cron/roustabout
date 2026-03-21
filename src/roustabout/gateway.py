@@ -28,7 +28,7 @@ from typing import Any
 import docker.errors
 
 from roustabout import lockdown, permissions
-from roustabout.session import Session, get_current_session
+from roustabout.session import RateLimitExceeded, Session, get_current_session
 from roustabout.state_db import StateDB
 
 logger = logging.getLogger(__name__)
@@ -343,6 +343,7 @@ def execute(
     except (
         lockdown.LockdownError,
         permissions.PermissionDenied,
+        RateLimitExceeded,
         CircuitOpen,
         BlastRadiusExceeded,
         TargetNotFound,

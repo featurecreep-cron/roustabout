@@ -1,3 +1,8 @@
 """Roustabout — structured markdown documentation of Docker environments."""
 
-__version__ = "0.9.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("roustabout")
+except PackageNotFoundError:
+    __version__ = "0.0.0+dev"

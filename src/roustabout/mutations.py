@@ -20,6 +20,7 @@ def _docker(docker: DockerSession) -> Any:
     """Cast DockerSession.client for docker-py API access."""
     return cast(Any, docker.client)
 
+
 logger = logging.getLogger(__name__)
 
 

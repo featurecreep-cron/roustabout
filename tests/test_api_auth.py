@@ -110,7 +110,7 @@ class TestAuthConfig:
         monkeypatch.delenv("ROUSTABOUT_API_TIER", raising=False)
         monkeypatch.delenv("ROUSTABOUT_API_LABEL", raising=False)
         config = AuthConfig.from_env()
-        assert config.keys["sk-default"]["tier"] == "operate"
+        assert config.keys["sk-default"]["tier"] == "observe"
         assert config.keys["sk-default"]["label"] == "env-key"
 
     def test_from_env_no_key_returns_empty(self, monkeypatch):

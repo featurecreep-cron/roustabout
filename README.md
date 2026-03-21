@@ -1,11 +1,12 @@
 # roustabout
 
-[![CI](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml/badge.svg)](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml)
-[![Codecov](https://codecov.io/gh/featurecreep-cron/roustabout/graph/badge.svg)](https://codecov.io/gh/featurecreep-cron/roustabout)
+[![CI](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/featurecreep-cron/roustabout/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/featurecreep-cron/roustabout/branch/develop/graph/badge.svg)](https://codecov.io/gh/featurecreep-cron/roustabout)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/featurecreep-cron/roustabout/badge)](https://scorecard.dev/viewer/?uri=github.com/featurecreep-cron/roustabout)
-[![License: MIT](https://img.shields.io/github/license/featurecreep-cron/roustabout)](https://github.com/featurecreep-cron/roustabout/blob/main/LICENSE)
-[![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Ffeaturecreep-cron%2Froustabout%2Fmain%2Fpyproject.toml)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/github/license/featurecreep-cron/roustabout)](https://github.com/featurecreep-cron/roustabout/blob/develop/LICENSE)
+[![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Ffeaturecreep-cron%2Froustabout%2Fdevelop%2Fpyproject.toml)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/roustabout)](https://pypi.org/project/roustabout/)
+[![GHCR](https://img.shields.io/badge/ghcr.io-roustabout-blue?logo=github)](https://github.com/featurecreep-cron/roustabout/pkgs/container/roustabout)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 Structured documentation, security auditing, and compose generation for Docker environments.

@@ -22,7 +22,7 @@ def create_app(auth_config: AuthConfig | None = None) -> FastAPI:
     app = FastAPI(
         title="Roustabout",
         description="Docker environment management API",
-        version="0.8.0",
+        version="0.8.1",
     )
 
     # Paths that don't require authentication

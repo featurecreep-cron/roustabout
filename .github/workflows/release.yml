@@ -38,13 +38,6 @@ jobs:
       - name: Force branch to workflow SHA
         run: git reset --hard ${{ github.sha }}
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install build tools
-        run: pip install build
-
       - name: Python Semantic Release
         id: release
         uses: python-semantic-release/python-semantic-release@v10.5.3
@@ -53,13 +46,4 @@ jobs:
           git_committer_name: "github-actions"
           git_committer_email: "actions@users.noreply.github.com"
           force: ${{ github.event.inputs.force || '' }}
-
-      # Uploads dist/* to the GitHub Release created above.
-      # The existing publish.yml triggers on release:published → PyPI.
-      # The existing docker.yml triggers on tag push → GHCR.
-      - name: Upload release assets
-        uses: python-semantic-release/publish-action@v10.5.3
-        if: steps.release.outputs.released == 'true'
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.release.outputs.tag }}
+          build: "false"

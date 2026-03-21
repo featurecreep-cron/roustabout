@@ -89,7 +89,6 @@ testpaths = ["tests"]
 version_toml = ["pyproject.toml:project.version"]
 commit_parser = "conventional"
 tag_format = "v{version}"
-build_command = "python -m build"
 major_on_zero = false
 allow_zero_version = true
 

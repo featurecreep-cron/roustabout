@@ -138,6 +138,7 @@ def audit(
         findings.extend(_check_image_age(container))
 
     findings.extend(_check_flat_networking(env))
+    findings.extend(_check_port_conflicts(env))
 
     if env.daemon:
         findings.extend(_check_daemon_config(env.daemon))
@@ -596,6 +597,39 @@ def _check_image_age(c: ContainerInfo) -> list[Finding]:
             fix="Pull the latest version of this image or rebuild from an updated base.",
         )
     ]
+
+
+def _check_port_conflicts(env: DockerEnvironment) -> list[Finding]:
+    """Check: Multiple containers binding the same host port."""
+    # Build map of host_ip:host_port → list of container names
+    port_map: dict[str, list[str]] = {}
+    for c in env.containers:
+        if c.status != "running":
+            continue
+        for p in c.ports:
+            if not p.host_port:
+                continue
+            key = f"{p.host_ip or '0.0.0.0'}:{p.host_port}/{p.protocol}"
+            port_map.setdefault(key, []).append(c.name)
+
+    findings: list[Finding] = []
+    for binding, containers in sorted(port_map.items()):
+        if len(containers) < 2:
+            continue
+        names = ", ".join(sorted(containers))
+        findings.append(
+            Finding(
+                severity=Severity.WARNING,
+                category="port-conflict",
+                container=containers[0],
+                explanation=f"Host port {binding} is bound by multiple containers: {names}. "
+                f"This will cause connection errors or prevent containers from starting.",
+                fix="Assign different host ports to each container "
+                "or use different bind addresses.",
+                detail=binding,
+            )
+        )
+    return findings
 
 
 def _check_daemon_config(d: DaemonInfo) -> list[Finding]:

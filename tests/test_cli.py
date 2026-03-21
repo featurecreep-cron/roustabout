@@ -216,3 +216,175 @@ class TestGenerateCommand:
         assert result.exit_code == 0
         assert "--redact" in result.output
         assert "--include-stopped" in result.output
+
+
+class TestRemoteMode:
+    """When ROUSTABOUT_URL is set, commands route through HTTPBackend."""
+
+    def test_snapshot_uses_backend_when_url_set(self, runner):
+        mock_backend = MagicMock()
+        mock_backend.snapshot.return_value = {"containers": [{"name": "nginx"}]}
+
+        with patch.dict("os.environ", {"ROUSTABOUT_URL": "http://localhost:8077"}):
+            with patch("roustabout.cli.main.get_backend", return_value=mock_backend) as mock_get:
+                result = runner.invoke(main, ["snapshot"])
+
+        assert result.exit_code == 0
+        mock_get.assert_called_once_with(command_is_mutation=False)
+        mock_backend.snapshot.assert_called_once()
+        assert "nginx" in result.output
+
+    def test_audit_uses_backend_when_url_set(self, runner):
+        mock_backend = MagicMock()
+        mock_backend.audit.return_value = {"findings": []}
+
+        with patch.dict("os.environ", {"ROUSTABOUT_URL": "http://localhost:8077"}):
+            with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
+                result = runner.invoke(main, ["audit"])
+
+        assert result.exit_code == 0
+        mock_backend.audit.assert_called_once()
+
+    def test_logs_uses_backend_when_url_set(self, runner):
+        mock_backend = MagicMock()
+        mock_backend.logs.return_value = {"container": "nginx", "lines": "log line 1"}
+
+        with patch.dict("os.environ", {"ROUSTABOUT_URL": "http://localhost:8077"}):
+            with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
+                result = runner.invoke(main, ["logs", "nginx", "--tail", "50"])
+
+        assert result.exit_code == 0
+        mock_backend.logs.assert_called_once_with(name="nginx", tail=50, since=None, grep=None)
+        assert "log line 1" in result.output
+
+    def test_health_uses_backend_when_url_set(self, runner):
+        mock_backend = MagicMock()
+        mock_backend.health.return_value = {"entries": [{"name": "nginx", "health": "healthy"}]}
+
+        with patch.dict("os.environ", {"ROUSTABOUT_URL": "http://localhost:8077"}):
+            with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
+                result = runner.invoke(main, ["health"])
+
+        assert result.exit_code == 0
+        mock_backend.health.assert_called_once_with(name=None)
+
+    def test_dr_plan_uses_backend_when_url_set(self, runner):
+        mock_backend = MagicMock()
+        mock_backend.dr_plan.return_value = {"plan": "# Recovery Plan\nStep 1..."}
+
+        with patch.dict("os.environ", {"ROUSTABOUT_URL": "http://localhost:8077"}):
+            with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
+                result = runner.invoke(main, ["dr-plan"])
+
+        assert result.exit_code == 0
+        assert "# Recovery Plan" in result.output
+
+    def test_snapshot_without_url_uses_direct(self, runner, mock_docker_env):
+        """Without ROUSTABOUT_URL, snapshot uses direct core calls."""
+        with patch.dict("os.environ", {}, clear=False):
+            import os
+
+            os.environ.pop("ROUSTABOUT_URL", None)
+            result = runner.invoke(main, ["snapshot"])
+
+        assert result.exit_code == 0
+        # Direct mode produces markdown
+        assert "# Docker Environment" in result.output
+
+    def test_remote_backend_error_shows_message(self, runner):
+        mock_backend = MagicMock()
+        mock_backend.snapshot.side_effect = RuntimeError("Server unavailable: connection refused")
+
+        with patch.dict("os.environ", {"ROUSTABOUT_URL": "http://localhost:8077"}):
+            with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
+                result = runner.invoke(main, ["snapshot"])
+
+        assert result.exit_code != 0
+        assert "Server unavailable" in result.output
+
+
+class TestMutationBackend:
+    """Mutation commands route through backend when available."""
+
+    def test_mutation_uses_backend(self, runner):
+        mock_backend = MagicMock()
+        mock_backend.mutate.return_value = {
+            "result": "success",
+            "container": "nginx",
+            "action": "restart",
+        }
+
+        with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
+            result = runner.invoke(main, ["restart", "nginx"])
+
+        assert result.exit_code == 0
+        mock_backend.mutate.assert_called_once_with("nginx", "restart", dry_run=False)
+        assert "Restarted nginx" in result.output
+
+    def test_mutation_dry_run_via_backend(self, runner):
+        mock_backend = MagicMock()
+        mock_backend.mutate.return_value = {"result": "dry-run"}
+
+        with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
+            result = runner.invoke(main, ["stop", "nginx", "--dry-run"])
+
+        assert result.exit_code == 0
+        assert "[dry-run]" in result.output
+
+    def test_mutation_backend_error_shows_message(self, runner):
+        mock_backend = MagicMock()
+        mock_backend.mutate.side_effect = RuntimeError("Permission denied: insufficient tier")
+
+        with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
+            result = runner.invoke(main, ["restart", "nginx"])
+
+        assert result.exit_code != 0
+        assert "Permission denied" in result.output
+
+    def test_mutation_falls_back_to_direct_when_no_server(self, runner):
+        """When get_backend raises (no server), falls back to direct gateway."""
+        from roustabout.gateway import GatewayResult
+
+        mock_result = GatewayResult(
+            success=True,
+            action="restart",
+            target="nginx",
+            pre_state_hash="h",
+            post_state_hash="h",
+            result="success",
+        )
+
+        with patch(
+            "roustabout.cli.main.get_backend",
+            side_effect=RuntimeError("No roustabout server found"),
+        ):
+            with patch("roustabout.cli.main.connect", return_value=MagicMock()):
+                with patch("roustabout.gateway.execute", return_value=mock_result):
+                    result = runner.invoke(main, ["restart", "nginx"])
+
+        assert result.exit_code == 0
+        assert "Restarted nginx" in result.output
+
+    def test_mutation_gateway_failure_shows_error(self, runner):
+        mock_backend = MagicMock()
+        mock_backend.mutate.return_value = {
+            "result": "denied",
+            "error": "container not found",
+        }
+
+        with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
+            result = runner.invoke(main, ["restart", "ghost"])
+
+        assert result.exit_code != 0
+        assert "container not found" in result.output
+
+    def test_mutation_non_server_error_does_not_fallback(self, runner):
+        """RuntimeError other than 'no server' should surface, not fall back."""
+        with patch(
+            "roustabout.cli.main.get_backend",
+            side_effect=RuntimeError("httpx not installed"),
+        ):
+            result = runner.invoke(main, ["restart", "nginx"])
+
+        assert result.exit_code != 0
+        assert "httpx not installed" in result.output

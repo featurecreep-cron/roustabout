@@ -1,6 +1,5 @@
 """Tests for supply_chain module."""
 
-
 import pytest
 
 from roustabout.supply_chain import (
@@ -34,26 +33,20 @@ class TestParseImage:
         assert registry == "docker.io"
 
     def test_image_with_digest(self):
-        name, tag, digest, registry = _parse_image(
-            "postgres:18-alpine@sha256:abc123"
-        )
+        name, tag, digest, registry = _parse_image("postgres:18-alpine@sha256:abc123")
         assert name == "postgres"
         assert tag == "18-alpine"
         assert digest == "sha256:abc123"
         assert registry == "docker.io"
 
     def test_ghcr_image(self):
-        name, tag, digest, registry = _parse_image(
-            "ghcr.io/featurecreep-cron/morsl:latest"
-        )
+        name, tag, digest, registry = _parse_image("ghcr.io/featurecreep-cron/morsl:latest")
         assert name == "ghcr.io/featurecreep-cron/morsl"
         assert tag == "latest"
         assert registry == "ghcr.io"
 
     def test_ghcr_image_with_digest(self):
-        name, tag, digest, registry = _parse_image(
-            "ghcr.io/foo/bar:v1@sha256:def456"
-        )
+        name, tag, digest, registry = _parse_image("ghcr.io/foo/bar:v1@sha256:def456")
         assert name == "ghcr.io/foo/bar"
         assert tag == "v1"
         assert digest == "sha256:def456"
@@ -159,22 +152,14 @@ class TestAuditCompose:
 
     def test_floating_tag_warning(self, tmp_path):
         compose = tmp_path / "docker-compose.yml"
-        compose.write_text(
-            "services:\n"
-            "  web:\n"
-            "    image: nginx\n"
-        )
+        compose.write_text("services:\n  web:\n    image: nginx\n")
         result = audit_compose(compose)
         assert result.images[0].is_floating
         assert any("floating" in issue for issue in result.issues)
 
     def test_already_pinned(self, tmp_path):
         compose = tmp_path / "docker-compose.yml"
-        compose.write_text(
-            "services:\n"
-            "  web:\n"
-            "    image: nginx:1.25-alpine@sha256:abc123\n"
-        )
+        compose.write_text("services:\n  web:\n    image: nginx:1.25-alpine@sha256:abc123\n")
         result = audit_compose(compose)
         assert result.images[0].is_pinned
         assert result.images[0].digest == "sha256:abc123"
@@ -210,14 +195,43 @@ class TestAuditCompose:
         assert "search" in result.stateful_services
         assert "web" not in result.stateful_services
 
-    def test_data_volume_makes_stateful(self, tmp_path):
+    def test_detects_uri_credentials(self, tmp_path):
         compose = tmp_path / "docker-compose.yml"
         compose.write_text(
             "services:\n"
             "  app:\n"
             "    image: myapp:1.0\n"
-            "    volumes:\n"
-            "      - app_data:/data\n"
+            "    environment:\n"
+            "      DATABASE_URL: postgresql://admin:hunter2@db/myapp\n"
+            "      REDIS_URL: redis://localhost:6379\n"
+            "      APP_NAME: myapp\n"
+        )
+        result = audit_compose(compose)
+        inline = [s for s in result.secrets if not s.is_reference]
+        assert len(inline) == 1
+        assert inline[0].field == "environment.DATABASE_URL"
+        assert inline[0].pattern_matched == "URI_CREDENTIAL"
+        assert not result.migration_ready
+
+    def test_uri_credentials_not_false_positive(self, tmp_path):
+        """URLs without embedded passwords should not be flagged."""
+        compose = tmp_path / "docker-compose.yml"
+        compose.write_text(
+            "services:\n"
+            "  app:\n"
+            "    image: myapp:1.0\n"
+            "    environment:\n"
+            "      HOMEPAGE: https://example.com/path\n"
+            "      REDIS_URL: redis://localhost:6379\n"
+        )
+        result = audit_compose(compose)
+        assert len(result.secrets) == 0
+        assert result.migration_ready
+
+    def test_data_volume_makes_stateful(self, tmp_path):
+        compose = tmp_path / "docker-compose.yml"
+        compose.write_text(
+            "services:\n  app:\n    image: myapp:1.0\n    volumes:\n      - app_data:/data\n"
         )
         result = audit_compose(compose)
         assert "app" in result.stateful_services
@@ -334,6 +348,27 @@ class TestExtractSecrets:
         env_file = tmp_path / ".env"
         assert oct(env_file.stat().st_mode)[-3:] == "600"
 
+    def test_extracts_uri_credentials(self, tmp_path):
+        compose = tmp_path / "docker-compose.yml"
+        compose.write_text(
+            "services:\n"
+            "  app:\n"
+            "    image: myapp:1.0\n"
+            "    environment:\n"
+            "      DATABASE_URL: postgresql://admin:hunter2@db/myapp\n"
+            "      REDIS_URL: redis://localhost:6379\n"
+        )
+        result = extract_secrets(compose, dry_run=False)
+        assert result.secrets_extracted == 1
+        assert "app" in result.services_modified
+
+        env_content = (tmp_path / ".env").read_text()
+        assert "APP_DATABASE_URL=postgresql://admin:hunter2@db/myapp" in env_content
+
+        new_compose = compose.read_text()
+        assert "hunter2" not in new_compose
+        assert "${APP_DATABASE_URL}" in new_compose
+
     def test_sanitized_compose_has_no_secrets(self, tmp_path):
         compose = tmp_path / "docker-compose.yml"
         compose.write_text(
@@ -393,11 +428,7 @@ class TestPinComposeDigests:
 
     def test_skips_already_pinned(self, tmp_path):
         compose = tmp_path / "docker-compose.yml"
-        compose.write_text(
-            "services:\n"
-            "  web:\n"
-            "    image: nginx:1.25-alpine@sha256:existing\n"
-        )
+        compose.write_text("services:\n  web:\n    image: nginx:1.25-alpine@sha256:existing\n")
         digests = (
             DigestInfo(
                 service="web",
@@ -417,11 +448,7 @@ class TestPinComposeDigests:
 
     def test_skips_latest_tag(self, tmp_path):
         compose = tmp_path / "docker-compose.yml"
-        compose.write_text(
-            "services:\n"
-            "  web:\n"
-            "    image: nginx:latest\n"
-        )
+        compose.write_text("services:\n  web:\n    image: nginx:latest\n")
         digests = (
             DigestInfo(
                 service="web",
@@ -439,13 +466,34 @@ class TestPinComposeDigests:
         assert result.images_skipped == 1
         assert ":latest" in result.skipped_reasons[0]
 
+    def test_pinned_image_stays_single_line(self, tmp_path):
+        compose = tmp_path / "docker-compose.yml"
+        compose.write_text("services:\n  web:\n    image: nginx:1.25-alpine\n")
+        long_digest = "sha256:" + "a" * 64
+        digests = (
+            DigestInfo(
+                service="web",
+                current_image="nginx:1.25-alpine",
+                current_digest=None,
+                latest_digest=long_digest,
+                latest_tag="1.25-alpine",
+                image_age_hours=72,
+                needs_update=True,
+                pin_reference=f"nginx:1.25-alpine@{long_digest}",
+            ),
+        )
+        result = pin_compose_digests(compose, digests, dry_run=True)
+        # Image line should be single-line, not split across lines
+        for line in result.compose_content.splitlines():
+            if "image:" in line:
+                assert f"nginx:1.25-alpine@{long_digest}" in line
+                break
+        else:
+            pytest.fail("No image: line found in output")
+
     def test_dry_run_no_file_changes(self, tmp_path):
         compose = tmp_path / "docker-compose.yml"
-        compose.write_text(
-            "services:\n"
-            "  web:\n"
-            "    image: nginx:1.25\n"
-        )
+        compose.write_text("services:\n  web:\n    image: nginx:1.25\n")
         original = compose.read_text()
         digests = (
             DigestInfo(

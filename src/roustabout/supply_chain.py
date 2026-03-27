@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 _yaml = YAML()
 _yaml.preserve_quotes = True
+_yaml.width = 4096  # prevent wrapping of long image references after digest pinning
 
 
 # Secret detection patterns
@@ -47,6 +48,9 @@ _NOT_SECRET_VALUES = re.compile(
     r"|^(localhost|0\.0\.0\.0|127\.0\.0\.1)$",
     re.IGNORECASE,
 )
+
+# URI credential pattern: ://user:password@host (catches DATABASE_URL etc.)
+_URI_CREDENTIAL_PATTERN = re.compile(r"://[^:/@]+:[^@]+@")
 
 # Database image prefixes — always treat as stateful
 _DATABASE_IMAGES = frozenset(
@@ -295,8 +299,7 @@ def audit_compose(project_path: Path) -> ComposeAudit:
 
             if is_floating:
                 issues.append(
-                    f"{svc_name}: uses floating tag '{image_str}'"
-                    " — pin to specific version"
+                    f"{svc_name}: uses floating tag '{image_str}' — pin to specific version"
                 )
 
             # Check if database image
@@ -348,25 +351,40 @@ def audit_compose(project_path: Path) -> ComposeAudit:
     )
 
 
-def _check_secret(
-    service: str, key: str, value: Any, secrets: list[SecretCandidate]
-) -> None:
-    """Check if an environment variable looks like a secret."""
+def _check_secret(service: str, key: str, value: Any, secrets: list[SecretCandidate]) -> None:
+    """Check if an environment variable looks like a secret.
+
+    Detects secrets by field name pattern (PASSWORD, TOKEN, etc.)
+    and by value pattern (credentials embedded in URIs like
+    postgresql://user:pass@host/db).
+    """
+    str_value = str(value) if value is not None else ""
+
+    # Check field name patterns
     match = _SECRET_FIELD_PATTERNS.search(key)
-    if not match:
+    if match:
+        is_ref = bool(_NOT_SECRET_VALUES.match(str_value)) if str_value else True
+        secrets.append(
+            SecretCandidate(
+                service=service,
+                field=f"environment.{key}",
+                pattern_matched=match.group(1).upper(),
+                is_reference=is_ref,
+            )
+        )
         return
 
-    str_value = str(value) if value is not None else ""
-    is_ref = bool(_NOT_SECRET_VALUES.match(str_value)) if str_value else True
-
-    secrets.append(
-        SecretCandidate(
-            service=service,
-            field=f"environment.{key}",
-            pattern_matched=match.group(1).upper(),
-            is_reference=is_ref,
+    # Check value for embedded URI credentials
+    if str_value and _URI_CREDENTIAL_PATTERN.search(str_value):
+        is_ref = bool(_NOT_SECRET_VALUES.match(str_value))
+        secrets.append(
+            SecretCandidate(
+                service=service,
+                field=f"environment.{key}",
+                pattern_matched="URI_CREDENTIAL",
+                is_reference=is_ref,
+            )
         )
-    )
 
 
 def _parse_volume(service: str, vol: Any) -> VolumeInfo | None:
@@ -482,6 +500,20 @@ def extract_secrets(
     )
 
 
+def _is_extractable_secret(key: str, value: Any) -> bool:
+    """Check if a key/value pair should be extracted as a secret."""
+    str_value = str(value) if value is not None else ""
+    if not str_value:
+        return False
+    if _NOT_SECRET_VALUES.match(str_value):
+        return False
+    if _SECRET_FIELD_PATTERNS.search(key):
+        return True
+    if _URI_CREDENTIAL_PATTERN.search(str_value):
+        return True
+    return False
+
+
 def _extract_from_dict(
     service: str,
     env: dict,
@@ -491,12 +523,10 @@ def _extract_from_dict(
     """Extract secrets from dict-style environment, replacing values in place."""
     for key in list(env.keys()):
         value = env[key]
-        if not _SECRET_FIELD_PATTERNS.search(key):
-            continue
-        str_value = str(value) if value is not None else ""
-        if _NOT_SECRET_VALUES.match(str_value) if str_value else True:
+        if not _is_extractable_secret(key, value):
             continue
 
+        str_value = str(value) if value is not None else ""
         var_name = f"{service.upper()}_{key}"
         extracted[var_name] = str_value
         env[key] = f"${{{var_name}}}"
@@ -518,10 +548,7 @@ def _extract_from_list(
             continue
 
         key, value = item_str.split("=", 1)
-        if not _SECRET_FIELD_PATTERNS.search(key):
-            new_list.append(item)
-            continue
-        if _NOT_SECRET_VALUES.match(value) if value else True:
+        if not _is_extractable_secret(key, value):
             new_list.append(item)
             continue
 
@@ -621,7 +648,9 @@ def _query_docker_hub(name: str, tag: str, timeout: int) -> tuple[str | None, in
         api_name = name
 
     # Get auth token
-    token_url = f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{api_name}:pull"
+    token_url = (
+        f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{api_name}:pull"
+    )
     try:
         req = urllib.request.Request(token_url)
         with urllib.request.urlopen(req, timeout=timeout) as resp:

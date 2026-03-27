@@ -23,6 +23,7 @@ from typing import Any
 
 from ruamel.yaml import YAML
 
+from roustabout.models import DockerEnvironment
 from roustabout.redactor import sanitize
 
 logger = logging.getLogger(__name__)
@@ -973,7 +974,7 @@ class MigrationResult:
 
 
 def generate_and_extract(
-    env: "DockerEnvironment",
+    env: DockerEnvironment,
     output_dir: Path,
     *,
     stack_mapping: dict[str, str] | None = None,
@@ -1069,7 +1070,7 @@ def generate_and_extract(
                             svc_spec["environment"] = env_block
                         if isinstance(env_block, dict):
                             for var_name in secrets:
-                                # Original key is the var_name itself (env_file vars keep original names)
+                                # env_file vars keep original names
                                 if var_name not in env_block:
                                     env_block[var_name] = f"${{{var_name}}}"
                     del svc_spec["env_file"]

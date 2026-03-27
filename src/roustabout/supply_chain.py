@@ -5,6 +5,7 @@ Extracts inline secrets to .env files without exposing values through the API.
 Resolves image digests and generates Renovate configuration.
 
 LLD: docs/roustabout/designs/034-supply-chain-migration.md
+LLD: docs/roustabout/designs/036-secret-safe-pipeline.md
 """
 
 from __future__ import annotations
@@ -941,3 +942,282 @@ def _version_constraint(img: ImageReference) -> str | None:
         return f"/^v?{major}\\.\\d+(\\.\\d+)*$/"
 
     return None
+
+
+# --- Secret-safe generate-to-extract pipeline (LLD-036) ---
+
+
+@dataclass(frozen=True)
+class StackExtractionResult:
+    """Result of generating and extracting one stack."""
+
+    stack_name: str
+    compose_path: str
+    env_file_path: str
+    secrets_extracted: int
+    env_files_consumed: int
+    services: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MigrationResult:
+    """Result of the full generate-and-extract pipeline."""
+
+    stacks: tuple[StackExtractionResult, ...]
+    total_secrets_extracted: int
+    shared_networks: tuple[str, ...]
+    shared_volumes: tuple[str, ...]
+    warnings: tuple[str, ...]
+    dry_run: bool
+
+
+def generate_and_extract(
+    env: "DockerEnvironment",
+    output_dir: Path,
+    *,
+    stack_mapping: dict[str, str] | None = None,
+    group_by: str = "project",
+    include_stopped: bool = False,
+    dry_run: bool = False,
+) -> MigrationResult:
+    """Atomic generate + split + secret extraction pipeline.
+
+    Runs entirely on the host — no secret values cross the API boundary.
+    Returns MigrationResult with metadata only, never secret values.
+    """
+    from roustabout.generator import generate_stacks
+
+    output_dir = _validate_output_dir(output_dir)
+
+    split_result = generate_stacks(
+        env,
+        include_stopped=include_stopped,
+        group_by=group_by,
+        stack_mapping=stack_mapping,
+    )
+
+    all_warnings: list[str] = []
+    stack_results: list[StackExtractionResult] = []
+    total_secrets = 0
+
+    # Forward cross-stack dependency warnings
+    for dep in split_result.cross_stack_deps:
+        all_warnings.append(dep.description)
+
+    for stack in split_result.stacks:
+        stack_dir = output_dir / stack.name
+        compose_path = stack_dir / "docker-compose.yml"
+        env_file_path = stack_dir / ".env"
+
+        # Parse the generated YAML for secret extraction
+        yaml_parser = YAML()
+        yaml_parser.preserve_quotes = True
+        yaml_parser.width = 4096
+        content = yaml_parser.load(stack.compose_yaml)
+
+        if not isinstance(content, dict) or "services" not in content:
+            stack_results.append(
+                StackExtractionResult(
+                    stack_name=stack.name,
+                    compose_path=str(compose_path),
+                    env_file_path=str(env_file_path),
+                    secrets_extracted=0,
+                    env_files_consumed=0,
+                    services=stack.services,
+                    warnings=("No services found in generated output",),
+                )
+            )
+            continue
+
+        services = content["services"]
+        extracted: dict[str, str] = {}
+        env_files_consumed = 0
+        stack_warnings: list[str] = list(stack.warnings)
+
+        for svc_name, svc_spec in services.items():
+            if not isinstance(svc_spec, dict):
+                continue
+
+            # Process env_file: directives
+            env_file_refs = svc_spec.get("env_file")
+            if env_file_refs:
+                if isinstance(env_file_refs, str):
+                    env_file_refs = [env_file_refs]
+                if isinstance(env_file_refs, list):
+                    secrets, non_secrets, warnings = _process_env_file_directive(
+                        svc_name, env_file_refs, stack_dir
+                    )
+                    stack_warnings.extend(warnings)
+                    for k, v in secrets.items():
+                        extracted[k] = v
+                    # Merge non-secrets into environment block
+                    if non_secrets:
+                        env_block = svc_spec.get("environment")
+                        if env_block is None:
+                            env_block = {}
+                            svc_spec["environment"] = env_block
+                        if isinstance(env_block, dict):
+                            for k, v in non_secrets.items():
+                                if k not in env_block:
+                                    env_block[k] = v
+                    # Add ${VAR} references for extracted secrets
+                    if secrets:
+                        env_block = svc_spec.get("environment")
+                        if env_block is None:
+                            env_block = {}
+                            svc_spec["environment"] = env_block
+                        if isinstance(env_block, dict):
+                            for var_name in secrets:
+                                # Original key is the var_name itself (env_file vars keep original names)
+                                if var_name not in env_block:
+                                    env_block[var_name] = f"${{{var_name}}}"
+                    del svc_spec["env_file"]
+                    env_files_consumed += len(env_file_refs)
+
+            # Extract inline secrets from environment block
+            env_block = svc_spec.get("environment")
+            if env_block is None:
+                continue
+            if isinstance(env_block, dict):
+                for key in list(env_block.keys()):
+                    value = env_block[key]
+                    if not _is_extractable_secret(key, value):
+                        continue
+                    str_value = str(value) if value is not None else ""
+                    var_name = f"{svc_name.upper()}_{key}"
+                    extracted[var_name] = str_value
+                    env_block[key] = f"${{{var_name}}}"
+            elif isinstance(env_block, list):
+                new_list = []
+                for item in env_block:
+                    item_str = str(item)
+                    if "=" not in item_str:
+                        new_list.append(item)
+                        continue
+                    key, value = item_str.split("=", 1)
+                    if not _is_extractable_secret(key, value):
+                        new_list.append(item)
+                        continue
+                    var_name = f"{svc_name.upper()}_{key}"
+                    extracted[var_name] = value
+                    new_list.append(f"{key}=${{{var_name}}}")
+                svc_spec["environment"] = new_list
+
+        if not dry_run:
+            stack_dir.mkdir(parents=True, exist_ok=True)
+
+            # Write .env
+            if extracted:
+                # Read existing .env to merge
+                existing: dict[str, str] = {}
+                if env_file_path.exists():
+                    for line in env_file_path.read_text().splitlines():
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            existing[k.strip()] = v.strip()
+                all_env = {**existing, **extracted}
+                env_lines = [f"{k}={v}" for k, v in sorted(all_env.items())]
+                env_file_path.write_text("\n".join(env_lines) + "\n")
+                env_file_path.chmod(0o600)
+
+            # Write compose
+            stream = StringIO()
+            yaml_parser.dump(content, stream)
+            compose_path.write_text(stream.getvalue())
+
+            # Write .gitignore
+            _update_gitignore(stack_dir, ".env")
+
+        total_secrets += len(extracted)
+        stack_results.append(
+            StackExtractionResult(
+                stack_name=stack.name,
+                compose_path=str(compose_path),
+                env_file_path=str(env_file_path),
+                secrets_extracted=len(extracted),
+                env_files_consumed=env_files_consumed,
+                services=stack.services,
+                warnings=tuple(stack_warnings),
+            )
+        )
+
+    return MigrationResult(
+        stacks=tuple(stack_results),
+        total_secrets_extracted=total_secrets,
+        shared_networks=tuple(split_result.shared_networks),
+        shared_volumes=tuple(split_result.shared_volumes),
+        warnings=tuple(all_warnings),
+        dry_run=dry_run,
+    )
+
+
+def _process_env_file_directive(
+    service_name: str,
+    env_file_paths: list[str],
+    compose_dir: Path,
+) -> tuple[dict[str, str], dict[str, str], list[str]]:
+    """Read env_file: references and classify contents.
+
+    Returns (secrets, non_secrets, warnings) where secrets and non_secrets
+    are {key: value} dicts.
+    """
+    secrets: dict[str, str] = {}
+    non_secrets: dict[str, str] = {}
+    warnings: list[str] = []
+
+    for env_path_str in env_file_paths:
+        env_path = Path(env_path_str)
+        if not env_path.is_absolute():
+            env_path = compose_dir / env_path
+
+        if not env_path.exists():
+            warnings.append(
+                f"{service_name}: env_file '{env_path_str}' not found, skipping"
+            )
+            continue
+
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            # Handle export prefix
+            if line.startswith("export "):
+                line = line[7:]
+
+            # Strip inline comments (but not inside quotes)
+            if "=" not in line:
+                continue
+
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+
+            # Strip surrounding quotes
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                value = value[1:-1]
+
+            # Warn on variable interpolation
+            if "${" in value and not _NOT_SECRET_VALUES.match(value):
+                warnings.append(
+                    f"{service_name}: variable interpolation in '{key}' "
+                    f"from '{env_path_str}' — passed through as-is"
+                )
+
+            if _is_extractable_secret(key, value):
+                secrets[key] = value
+            else:
+                non_secrets[key] = value
+
+    return secrets, non_secrets, warnings
+
+
+def _validate_output_dir(output_dir: Path) -> Path:
+    """Validate output_dir against path traversal attacks."""
+    resolved = output_dir.resolve()
+    if ".." in output_dir.parts:
+        msg = f"output_dir must not contain '..': {output_dir}"
+        raise ValueError(msg)
+    return resolved

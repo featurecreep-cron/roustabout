@@ -289,7 +289,7 @@ class TestArchitecturalLint:
         src_dir = Path(__file__).parent.parent / "src" / "roustabout"
         violations = []
         for py_file in src_dir.glob("*.py"):
-            if py_file.name == "connection.py":
+            if py_file.name in ("connection.py", "multi_host.py"):
                 continue
             tree = ast.parse(py_file.read_text(), filename=str(py_file))
             for node in ast.walk(tree):

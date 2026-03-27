@@ -7,8 +7,6 @@ from roustabout.supply_chain import (
     ComposeAudit,
     DigestInfo,
     ImageReference,
-    MigrationResult,
-    StackExtractionResult,
     _parse_image,
     _validate_output_dir,
     audit_compose,

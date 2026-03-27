@@ -13,10 +13,9 @@ import hashlib
 import logging
 import subprocess
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 from typing import Any
-
-from io import StringIO
 
 from ruamel.yaml import YAML
 

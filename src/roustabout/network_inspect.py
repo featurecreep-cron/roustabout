@@ -14,10 +14,9 @@ from typing import Any
 
 import docker.errors
 
-from roustabout.models import NetworkMembership, PortBinding
+from roustabout.models import NetworkMembership
 from roustabout.redactor import sanitize
 from roustabout.session import DockerSession
-
 
 # --- Passive inspection data types (OBSERVE tier) ---
 

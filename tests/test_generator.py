@@ -601,9 +601,7 @@ class TestGenerateStacksGroupByMapping:
 class TestCrossStackDeps:
     def test_network_mode_cross_stack(self):
         vpn = _container(name="vpn", compose_service="vpn")
-        app = _container(
-            name="torrent", compose_service="torrent", network_mode="container:vpn"
-        )
+        app = _container(name="torrent", compose_service="torrent", network_mode="container:vpn")
         env = _env(vpn, app)
         mapping = {"vpn": "networking", "torrent": "media"}
         result = generate_stacks(env, group_by="mapping", stack_mapping=mapping)
@@ -617,9 +615,7 @@ class TestCrossStackDeps:
 
     def test_same_stack_no_cross_dep(self):
         vpn = _container(name="vpn", compose_service="vpn")
-        app = _container(
-            name="torrent", compose_service="torrent", network_mode="container:vpn"
-        )
+        app = _container(name="torrent", compose_service="torrent", network_mode="container:vpn")
         env = _env(vpn, app)
         mapping = {"vpn": "media", "torrent": "media"}
         result = generate_stacks(env, group_by="mapping", stack_mapping=mapping)

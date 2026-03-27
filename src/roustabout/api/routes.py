@@ -504,9 +504,7 @@ async def generate_route(
     import anyio
     from fastapi.responses import PlainTextResponse
 
-    result = await anyio.to_thread.run_sync(
-        lambda: _generate_single(project, include_stopped)
-    )
+    result = await anyio.to_thread.run_sync(lambda: _generate_single(project, include_stopped))
     return PlainTextResponse(result, media_type="text/yaml")
 
 
@@ -642,8 +640,7 @@ def _parse_env_handler(env_path: str, service_names: list[str] | None) -> dict[s
         "source_path": parsed.source_path,
         "shared_vars": [v.key for v in parsed.shared_vars],
         "per_service": {
-            svc: [v.key for v in vars_list]
-            for svc, vars_list in parsed.per_service_vars.items()
+            svc: [v.key for v in vars_list] for svc, vars_list in parsed.per_service_vars.items()
         },
         "unmapped_vars": [v.key for v in parsed.unmapped_vars],
         "total_vars": (
@@ -703,9 +700,7 @@ async def parse_env_route(
     svc_list = service_names.split(",") if service_names else None
 
     try:
-        result = await anyio.to_thread.run_sync(
-            lambda: _parse_env_handler(path, svc_list)
-        )
+        result = await anyio.to_thread.run_sync(lambda: _parse_env_handler(path, svc_list))
         return JSONResponse(content=result)
     except FileNotFoundError as exc:
         return JSONResponse(status_code=404, content={"error": str(exc)})

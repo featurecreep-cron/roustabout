@@ -110,7 +110,13 @@ class TestUptimeKumaAdapter:
     def test_enrich_exact_match(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = [
-            {"name": "morsl-app", "active": True, "uptime24": 99.9, "avgPing": 5.0, "url": "http://morsl"}
+            {
+                "name": "morsl-app",
+                "active": True,
+                "uptime24": 99.9,
+                "avgPing": 5.0,
+                "url": "http://morsl",
+            }
         ]
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp
@@ -123,7 +129,13 @@ class TestUptimeKumaAdapter:
     def test_enrich_no_match(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = [
-            {"name": "Other", "active": True, "uptime24": 99.9, "avgPing": 5.0, "url": "http://other"}
+            {
+                "name": "Other",
+                "active": True,
+                "uptime24": 99.9,
+                "avgPing": 5.0,
+                "url": "http://other",
+            }
         ]
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp

@@ -3,9 +3,6 @@
 import pytest
 
 from roustabout.dockstarter_env import (
-    DOCKSTARTER_GLOBALS,
-    DockStarterEnv,
-    EnvMigrationResult,
     _match_service_prefix,
     map_env_to_stacks,
     parse_dockstarter_env,

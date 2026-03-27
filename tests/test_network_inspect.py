@@ -49,9 +49,7 @@ class TestCollectPortInfo:
     def test_published_port(self):
         attrs = {
             "Config": {"ExposedPorts": {"80/tcp": {}}},
-            "NetworkSettings": {
-                "Ports": {"80/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8080"}]}
-            },
+            "NetworkSettings": {"Ports": {"80/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8080"}]}},
         }
         ports = _collect_port_info(attrs)
         assert len(ports) == 1
@@ -241,7 +239,9 @@ class TestParseDNSOutput:
         assert "172.18.0.2" in addrs
 
     def test_nslookup_format(self):
-        output = "Server:\t\t127.0.0.11\nAddress:\t127.0.0.11\n\nName:\ttandoor\nAddress: 172.18.0.2\n"
+        output = (
+            "Server:\t\t127.0.0.11\nAddress:\t127.0.0.11\n\nName:\ttandoor\nAddress: 172.18.0.2\n"
+        )
         addrs = _parse_dns_output(output, "tandoor")
         assert "172.18.0.2" in addrs
 

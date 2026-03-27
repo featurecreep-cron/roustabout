@@ -686,9 +686,7 @@ def generate_stacks(
     # Collect unmapped services (mapping mode only)
     unmapped: tuple[str, ...] = ()
     if group_by == "mapping" and "_unmapped" in groups:
-        unmapped = tuple(
-            sorted(name_to_service[c.name] for c in groups["_unmapped"])
-        )
+        unmapped = tuple(sorted(name_to_service[c.name] for c in groups["_unmapped"]))
 
     return StackSplitResult(
         stacks=tuple(stacks),
@@ -787,8 +785,4 @@ def _stack_uses_network(containers: list[ContainerInfo], network: str) -> bool:
 
 def _stack_uses_volume(containers: list[ContainerInfo], volume: str) -> bool:
     """Check if any container in a stack uses a named volume."""
-    return any(
-        m.type == "volume" and m.source == volume
-        for c in containers
-        for m in c.mounts
-    )
+    return any(m.type == "volume" and m.source == volume for c in containers for m in c.mounts)

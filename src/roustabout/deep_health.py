@@ -15,7 +15,6 @@ import socket
 from dataclasses import dataclass
 from typing import Any
 
-from roustabout.health_stats import collect_health
 from roustabout.session import DockerSession
 
 logger = logging.getLogger(__name__)

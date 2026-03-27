@@ -1174,9 +1174,7 @@ def _process_env_file_directive(
             env_path = compose_dir / env_path
 
         if not env_path.exists():
-            warnings.append(
-                f"{service_name}: env_file '{env_path_str}' not found, skipping"
-            )
+            warnings.append(f"{service_name}: env_file '{env_path_str}' not found, skipping")
             continue
 
         for line in env_path.read_text().splitlines():

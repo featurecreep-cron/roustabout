@@ -29,6 +29,7 @@ DOCKSTARTER_GLOBALS = frozenset(
     }
 )
 
+
 @dataclass(frozen=True)
 class EnvVar:
     """A parsed environment variable from a DockStarter .env file."""
@@ -130,9 +131,7 @@ def parse_dockstarter_env(
                 EnvVar(key=key, value=value, service=None, is_shared=False, is_secret=is_secret)
             )
 
-    frozen_per_service = {
-        svc: tuple(vars_list) for svc, vars_list in sorted(per_service.items())
-    }
+    frozen_per_service = {svc: tuple(vars_list) for svc, vars_list in sorted(per_service.items())}
 
     return DockStarterEnv(
         shared_vars=tuple(shared),
@@ -165,8 +164,7 @@ def map_env_to_stacks(
         stack = stack_mapping.get(service)
         if not stack:
             warnings.append(
-                f"service '{service}' not in stack_mapping — "
-                f"{len(vars_list)} variable(s) unmapped"
+                f"service '{service}' not in stack_mapping — {len(vars_list)} variable(s) unmapped"
             )
             unmapped_var_names.extend(v.key for v in vars_list)
             continue

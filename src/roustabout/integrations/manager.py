@@ -65,9 +65,9 @@ class IntegrationManager:
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> IntegrationManager:
         """Create adapters from roustabout.toml [integrations] section."""
+        from roustabout.integrations.grafana import GrafanaAdapter
         from roustabout.integrations.traefik import TraefikAdapter
         from roustabout.integrations.uptime_kuma import UptimeKumaAdapter
-        from roustabout.integrations.grafana import GrafanaAdapter
 
         adapters: dict[str, ServiceAdapter] = {}
         integrations = config.get("integrations", {})

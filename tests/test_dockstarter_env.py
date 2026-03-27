@@ -29,9 +29,7 @@ class TestParseDockStarterEnv:
     def test_longest_prefix_wins(self, tmp_path):
         env_file = tmp_path / ".env"
         env_file.write_text("PLEXPY_PORT=8181\nPLEX_CLAIM=claim-abc\n")
-        result = parse_dockstarter_env(
-            env_file, service_names=("plex", "plexpy")
-        )
+        result = parse_dockstarter_env(env_file, service_names=("plex", "plexpy"))
         # PLEXPY_PORT should match plexpy (longer prefix), not plex
         assert "plexpy" in result.per_service_vars
         assert result.per_service_vars["plexpy"][0].key == "PLEXPY_PORT"
@@ -57,7 +55,7 @@ class TestParseDockStarterEnv:
 
     def test_handles_quotes(self, tmp_path):
         env_file = tmp_path / ".env"
-        env_file.write_text('PUID="1000"\nTZ=\'US/Eastern\'\n')
+        env_file.write_text("PUID=\"1000\"\nTZ='US/Eastern'\n")
         result = parse_dockstarter_env(env_file)
         assert result.shared_vars[0].value == "1000"
         assert result.shared_vars[1].value == "US/Eastern"
@@ -76,9 +74,7 @@ class TestParseDockStarterEnv:
 
     def test_secret_detection(self, tmp_path):
         env_file = tmp_path / ".env"
-        env_file.write_text(
-            "GRAFANA_ADMIN_PASSWORD=supersecret\nGRAFANA_PORT=3000\n"
-        )
+        env_file.write_text("GRAFANA_ADMIN_PASSWORD=supersecret\nGRAFANA_PORT=3000\n")
         result = parse_dockstarter_env(env_file, service_names=("grafana",))
         vars_list = result.per_service_vars["grafana"]
         secret_vars = [v for v in vars_list if v.is_secret]
@@ -120,13 +116,9 @@ class TestMapEnvToStacks:
     def test_basic_mapping(self, tmp_path):
         env_file = tmp_path / "source.env"
         env_file.write_text(
-            "PUID=1000\nPGID=1000\nTZ=UTC\n"
-            "SONARR_PORT=8989\nRADARR_PORT=7878\n"
-            "GRAFANA_PORT=3000\n"
+            "PUID=1000\nPGID=1000\nTZ=UTC\nSONARR_PORT=8989\nRADARR_PORT=7878\nGRAFANA_PORT=3000\n"
         )
-        parsed = parse_dockstarter_env(
-            env_file, service_names=("sonarr", "radarr", "grafana")
-        )
+        parsed = parse_dockstarter_env(env_file, service_names=("sonarr", "radarr", "grafana"))
         mapping = {"sonarr": "media", "radarr": "media", "grafana": "monitoring"}
         output = tmp_path / "stacks"
 

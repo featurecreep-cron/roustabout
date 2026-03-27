@@ -909,11 +909,15 @@ class TestGenerateAndExtract:
     def test_multiple_stacks(self, tmp_path):
         env = _make_env(
             _make_container(
-                name="web", compose_project="frontend", compose_service="web",
+                name="web",
+                compose_project="frontend",
+                compose_service="web",
                 env=[("SECRET_KEY", "webkey")],
             ),
             _make_container(
-                name="db", compose_project="backend", compose_service="db",
+                name="db",
+                compose_project="backend",
+                compose_service="db",
                 env=[("POSTGRES_PASSWORD", "dbpass")],
             ),
         )
@@ -927,19 +931,19 @@ class TestGenerateAndExtract:
     def test_with_mapping(self, tmp_path):
         env = _make_env(
             _make_container(
-                name="sonarr", compose_service="sonarr",
+                name="sonarr",
+                compose_service="sonarr",
                 env=[("API_KEY", "sonarrkey")],
             ),
             _make_container(
-                name="radarr", compose_service="radarr",
+                name="radarr",
+                compose_service="radarr",
                 env=[("API_KEY", "radarrkey")],
             ),
         )
         mapping = {"sonarr": "media", "radarr": "media"}
         output = tmp_path / "stacks"
-        result = generate_and_extract(
-            env, output, group_by="mapping", stack_mapping=mapping
-        )
+        result = generate_and_extract(env, output, group_by="mapping", stack_mapping=mapping)
         assert len(result.stacks) == 1
         assert result.stacks[0].stack_name == "media"
         assert result.total_secrets_extracted == 2
@@ -949,7 +953,9 @@ class TestGenerateAndExtract:
         (tmp_path / ".git").mkdir()
         env = _make_env(
             _make_container(
-                name="db", compose_project="data", compose_service="db",
+                name="db",
+                compose_project="data",
+                compose_service="db",
                 env=[("POSTGRES_PASSWORD", "secret")],
             ),
         )
@@ -962,7 +968,9 @@ class TestGenerateAndExtract:
     def test_idempotent(self, tmp_path):
         env = _make_env(
             _make_container(
-                name="db", compose_project="data", compose_service="db",
+                name="db",
+                compose_project="data",
+                compose_service="db",
                 env=[("POSTGRES_PASSWORD", "secret")],
             ),
         )

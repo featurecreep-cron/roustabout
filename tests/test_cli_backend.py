@@ -172,9 +172,7 @@ class TestHTTPBackend:
         backend._client = mock_client
 
         result = backend.snapshot(fmt="markdown")
-        mock_client.get.assert_called_once_with(
-            "/v1/snapshot", params={"format": "markdown"}
-        )
+        mock_client.get.assert_called_once_with("/v1/snapshot", params={"format": "markdown"})
         assert result == "# Snapshot\n..."
 
     def test_audit_passes_format_param(self):
@@ -189,9 +187,7 @@ class TestHTTPBackend:
         backend._client = mock_client
 
         result = backend.audit()
-        mock_client.get.assert_called_once_with(
-            "/v1/audit", params={"format": "json"}
-        )
+        mock_client.get.assert_called_once_with("/v1/audit", params={"format": "json"})
         assert result == {"findings": []}
 
     def test_audit_markdown_uses_get_text(self):
@@ -206,9 +202,7 @@ class TestHTTPBackend:
         backend._client = mock_client
 
         result = backend.audit(fmt="markdown")
-        mock_client.get.assert_called_once_with(
-            "/v1/audit", params={"format": "markdown"}
-        )
+        mock_client.get.assert_called_once_with("/v1/audit", params={"format": "markdown"})
         assert result == "# Audit\n..."
 
     def test_logs_with_tail_parameter(self):

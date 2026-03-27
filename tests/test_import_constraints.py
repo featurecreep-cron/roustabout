@@ -374,6 +374,7 @@ class TestNoStdlibLogging:
             "mutations.py",
             "notifications.py",
             "secret_rotation.py",
+            "supply_chain.py",
         }
     )
 

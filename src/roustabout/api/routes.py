@@ -414,3 +414,298 @@ async def capabilities(request: Request) -> dict[str, Any]:
         "label": key_info.label,
         "capabilities": sorted(available),
     }
+
+
+# --- Generate + Stack Splitting (LLD-035) ---
+
+
+def _generate_single(project: str | None, include_stopped: bool) -> str:
+    """Generate compose YAML for a single project (redacted)."""
+    from roustabout.collector import collect
+    from roustabout.config import load_config
+    from roustabout.connection import connect
+    from roustabout.generator import generate
+    from roustabout.models import filter_by_project
+    from roustabout.redactor import redact, resolve_patterns
+
+    config = load_config()
+    client = connect()
+    try:
+        env = collect(client)
+        patterns = resolve_patterns(config.redact_patterns)
+        redacted = redact(env, patterns)
+        if project:
+            redacted = filter_by_project(redacted, project)
+        return generate(redacted, include_stopped=include_stopped)
+    finally:
+        client.close()
+
+
+def _generate_stacks_handler(body: dict[str, Any]) -> dict[str, Any]:
+    """Generate per-stack compose YAML (redacted)."""
+    from roustabout.collector import collect
+    from roustabout.config import load_config
+    from roustabout.connection import connect
+    from roustabout.generator import generate_stacks
+    from roustabout.redactor import redact, resolve_patterns
+
+    config = load_config()
+    client = connect()
+    try:
+        env = collect(client)
+        patterns = resolve_patterns(config.redact_patterns)
+        redacted = redact(env, patterns)
+
+        result = generate_stacks(
+            redacted,
+            include_stopped=body.get("include_stopped", False),
+            group_by=body.get("group_by", "project"),
+            stack_mapping=body.get("stack_mapping"),
+        )
+
+        return {
+            "stacks": [
+                {
+                    "name": s.name,
+                    "compose_yaml": s.compose_yaml,
+                    "services": list(s.services),
+                    "shared_networks": list(s.shared_networks),
+                    "shared_volumes": list(s.shared_volumes),
+                    "warnings": list(s.warnings),
+                }
+                for s in result.stacks
+            ],
+            "cross_stack_deps": [
+                {
+                    "source_service": d.source_service,
+                    "source_stack": d.source_stack,
+                    "target_service": d.target_service,
+                    "target_stack": d.target_stack,
+                    "type": d.dependency_type,
+                    "description": d.description,
+                }
+                for d in result.cross_stack_deps
+            ],
+            "unmapped_services": list(result.unmapped_services),
+            "shared_networks": list(result.shared_networks),
+            "shared_volumes": list(result.shared_volumes),
+        }
+    finally:
+        client.close()
+
+
+@router.get("/generate")
+async def generate_route(
+    request: Request,
+    project: str | None = None,
+    include_stopped: bool = False,
+) -> Any:
+    """Generate compose YAML from current container state (redacted)."""
+    import anyio
+    from fastapi.responses import PlainTextResponse
+
+    result = await anyio.to_thread.run_sync(
+        lambda: _generate_single(project, include_stopped)
+    )
+    return PlainTextResponse(result, media_type="text/yaml")
+
+
+@router.post("/generate/stacks")
+async def generate_stacks_route(request: Request) -> JSONResponse:
+    """Split containers into per-stack compose files (redacted)."""
+    import anyio
+
+    body = await request.json()
+    try:
+        result = await anyio.to_thread.run_sync(lambda: _generate_stacks_handler(body))
+        return JSONResponse(content=result)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+# --- Secret-Safe Migration Pipeline (LLD-036) ---
+
+
+def _migrate_handler(body: dict[str, Any]) -> dict[str, Any]:
+    """Run generate-and-extract pipeline."""
+    from pathlib import Path
+
+    from roustabout.collector import collect
+    from roustabout.connection import connect
+    from roustabout.supply_chain import generate_and_extract
+
+    client = connect()
+    try:
+        env = collect(client)
+        result = generate_and_extract(
+            env,
+            Path(body["output_dir"]),
+            stack_mapping=body.get("stack_mapping"),
+            group_by=body.get("group_by", "project"),
+            include_stopped=body.get("include_stopped", False),
+            dry_run=body.get("dry_run", True),
+        )
+        return {
+            "stacks": [
+                {
+                    "stack_name": s.stack_name,
+                    "compose_path": s.compose_path,
+                    "env_file_path": s.env_file_path,
+                    "secrets_extracted": s.secrets_extracted,
+                    "env_files_consumed": s.env_files_consumed,
+                    "services": list(s.services),
+                    "warnings": list(s.warnings),
+                }
+                for s in result.stacks
+            ],
+            "total_secrets_extracted": result.total_secrets_extracted,
+            "shared_networks": list(result.shared_networks),
+            "shared_volumes": list(result.shared_volumes),
+            "warnings": list(result.warnings),
+            "dry_run": result.dry_run,
+        }
+    finally:
+        client.close()
+
+
+@router.post("/supply-chain/migrate")
+async def migrate_route(request: Request) -> JSONResponse:
+    """Generate per-stack compose files with secrets extracted to .env."""
+    import anyio
+
+    key_info: KeyInfo = request.state.key_info
+    if not _has_tier(key_info.tier, "elevate"):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "insufficient permissions",
+                "required_tier": "elevate",
+                "your_tier": key_info.tier,
+            },
+        )
+
+    body = await request.json()
+    if "output_dir" not in body:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "output_dir is required"},
+        )
+
+    try:
+        result = await anyio.to_thread.run_sync(lambda: _migrate_handler(body))
+        return JSONResponse(content=result)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+# --- DockStarter .env Import (LLD-037) ---
+
+
+def _import_env_handler(body: dict[str, Any]) -> dict[str, Any]:
+    """Parse and map DockStarter .env to per-stack files."""
+    from pathlib import Path
+
+    from roustabout.dockstarter_env import map_env_to_stacks, parse_dockstarter_env
+
+    service_names = body.get("service_names")
+    parsed = parse_dockstarter_env(
+        Path(body["env_path"]),
+        service_names=tuple(service_names) if service_names else None,
+    )
+    result = map_env_to_stacks(
+        parsed,
+        body["stack_mapping"],
+        Path(body["output_dir"]),
+        dry_run=body.get("dry_run", True),
+    )
+    return {
+        "stacks_written": result.stacks_written,
+        "vars_mapped": result.vars_mapped,
+        "vars_duplicated": result.vars_duplicated,
+        "unmapped_vars": list(result.unmapped_vars),
+        "warnings": list(result.warnings),
+        "dry_run": result.dry_run,
+    }
+
+
+def _parse_env_handler(env_path: str, service_names: list[str] | None) -> dict[str, Any]:
+    """Parse DockStarter .env and return classification (no values)."""
+    from pathlib import Path
+
+    from roustabout.dockstarter_env import parse_dockstarter_env
+
+    parsed = parse_dockstarter_env(
+        Path(env_path),
+        service_names=tuple(service_names) if service_names else None,
+    )
+    return {
+        "source_path": parsed.source_path,
+        "shared_vars": [v.key for v in parsed.shared_vars],
+        "per_service": {
+            svc: [v.key for v in vars_list]
+            for svc, vars_list in parsed.per_service_vars.items()
+        },
+        "unmapped_vars": [v.key for v in parsed.unmapped_vars],
+        "total_vars": (
+            len(parsed.shared_vars)
+            + sum(len(v) for v in parsed.per_service_vars.values())
+            + len(parsed.unmapped_vars)
+        ),
+    }
+
+
+@router.post("/supply-chain/import-env")
+async def import_env_route(request: Request) -> JSONResponse:
+    """Import DockStarter .env variables into per-stack .env files."""
+    import anyio
+
+    key_info: KeyInfo = request.state.key_info
+    if not _has_tier(key_info.tier, "elevate"):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "insufficient permissions",
+                "required_tier": "elevate",
+                "your_tier": key_info.tier,
+            },
+        )
+
+    body = await request.json()
+    for field in ("env_path", "stack_mapping", "output_dir"):
+        if field not in body:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"{field} is required"},
+            )
+
+    try:
+        result = await anyio.to_thread.run_sync(lambda: _import_env_handler(body))
+        return JSONResponse(content=result)
+    except (ValueError, FileNotFoundError) as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+@router.get("/supply-chain/parse-env")
+async def parse_env_route(
+    request: Request,
+    path: str = "",
+    service_names: str | None = None,
+) -> JSONResponse:
+    """Parse a DockStarter .env file and return classification (no values)."""
+    import anyio
+
+    if not path:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "path query parameter is required"},
+        )
+
+    svc_list = service_names.split(",") if service_names else None
+
+    try:
+        result = await anyio.to_thread.run_sync(
+            lambda: _parse_env_handler(path, svc_list)
+        )
+        return JSONResponse(content=result)
+    except FileNotFoundError as exc:
+        return JSONResponse(status_code=404, content={"error": str(exc)})

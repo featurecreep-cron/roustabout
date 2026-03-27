@@ -2,14 +2,19 @@
 
 import pytest
 
+from roustabout.models import make_container, make_environment
 from roustabout.supply_chain import (
     ComposeAudit,
     DigestInfo,
     ImageReference,
+    MigrationResult,
+    StackExtractionResult,
     _parse_image,
+    _validate_output_dir,
     audit_compose,
     classify_tag,
     extract_secrets,
+    generate_and_extract,
     generate_renovate_config,
     pin_compose_digests,
 )
@@ -819,3 +824,161 @@ class TestRoundTrip:
         audit2 = audit_compose(compose)
         assert audit2.migration_ready
         assert all(img.is_pinned for img in audit2.images)
+
+
+# --- Generate-and-extract pipeline (LLD-036) ---
+
+
+def _make_container(**kwargs):
+    """Build a container with sensible defaults for pipeline tests."""
+    defaults = dict(
+        name="test-app",
+        id="abc123",
+        status="running",
+        image="nginx:1.25",
+        image_id="sha256:abc",
+    )
+    defaults.update(kwargs)
+    return make_container(**defaults)
+
+
+def _make_env(*containers):
+    """Build a DockerEnvironment for pipeline tests."""
+    return make_environment(
+        containers=list(containers),
+        generated_at="2026-03-27T00:00:00Z",
+        docker_version="25.0.3",
+    )
+
+
+class TestGenerateAndExtract:
+    def test_dry_run_no_files(self, tmp_path):
+        env = _make_env(
+            _make_container(
+                name="web",
+                compose_project="app",
+                compose_service="web",
+                env=[("SECRET_TOKEN", "topsecret"), ("APP_NAME", "myapp")],
+            ),
+        )
+        output = tmp_path / "stacks"
+        result = generate_and_extract(env, output, dry_run=True)
+        assert result.dry_run is True
+        assert result.total_secrets_extracted == 1
+        assert not (output / "app").exists()
+
+    def test_writes_compose_and_env(self, tmp_path):
+        env = _make_env(
+            _make_container(
+                name="db",
+                compose_project="data",
+                compose_service="db",
+                env=[("POSTGRES_PASSWORD", "hunter2"), ("PGDATA", "/var/lib/pg")],
+            ),
+        )
+        output = tmp_path / "stacks"
+        result = generate_and_extract(env, output)
+        assert result.dry_run is False
+        assert result.total_secrets_extracted == 1
+
+        stack_dir = output / "data"
+        assert (stack_dir / "docker-compose.yml").exists()
+        assert (stack_dir / ".env").exists()
+
+        # .env has secret
+        env_content = (stack_dir / ".env").read_text()
+        assert "hunter2" in env_content
+
+        # compose has reference, not value
+        compose_content = (stack_dir / "docker-compose.yml").read_text()
+        assert "hunter2" not in compose_content
+        assert "${DB_POSTGRES_PASSWORD}" in compose_content
+
+    def test_env_file_permissions(self, tmp_path):
+        env = _make_env(
+            _make_container(
+                name="db",
+                compose_project="data",
+                compose_service="db",
+                env=[("POSTGRES_PASSWORD", "secret")],
+            ),
+        )
+        output = tmp_path / "stacks"
+        generate_and_extract(env, output)
+        env_file = output / "data" / ".env"
+        assert oct(env_file.stat().st_mode)[-3:] == "600"
+
+    def test_multiple_stacks(self, tmp_path):
+        env = _make_env(
+            _make_container(
+                name="web", compose_project="frontend", compose_service="web",
+                env=[("SECRET_KEY", "webkey")],
+            ),
+            _make_container(
+                name="db", compose_project="backend", compose_service="db",
+                env=[("POSTGRES_PASSWORD", "dbpass")],
+            ),
+        )
+        output = tmp_path / "stacks"
+        result = generate_and_extract(env, output)
+        assert len(result.stacks) == 2
+        assert result.total_secrets_extracted == 2
+        assert (output / "frontend" / "docker-compose.yml").exists()
+        assert (output / "backend" / "docker-compose.yml").exists()
+
+    def test_with_mapping(self, tmp_path):
+        env = _make_env(
+            _make_container(
+                name="sonarr", compose_service="sonarr",
+                env=[("API_KEY", "sonarrkey")],
+            ),
+            _make_container(
+                name="radarr", compose_service="radarr",
+                env=[("API_KEY", "radarrkey")],
+            ),
+        )
+        mapping = {"sonarr": "media", "radarr": "media"}
+        output = tmp_path / "stacks"
+        result = generate_and_extract(
+            env, output, group_by="mapping", stack_mapping=mapping
+        )
+        assert len(result.stacks) == 1
+        assert result.stacks[0].stack_name == "media"
+        assert result.total_secrets_extracted == 2
+
+    def test_gitignore_written(self, tmp_path):
+        # Create a git repo so _update_gitignore works
+        (tmp_path / ".git").mkdir()
+        env = _make_env(
+            _make_container(
+                name="db", compose_project="data", compose_service="db",
+                env=[("POSTGRES_PASSWORD", "secret")],
+            ),
+        )
+        output = tmp_path / "stacks"
+        generate_and_extract(env, output)
+        gitignore = output / "data" / ".gitignore"
+        assert gitignore.exists()
+        assert ".env" in gitignore.read_text()
+
+    def test_idempotent(self, tmp_path):
+        env = _make_env(
+            _make_container(
+                name="db", compose_project="data", compose_service="db",
+                env=[("POSTGRES_PASSWORD", "secret")],
+            ),
+        )
+        output = tmp_path / "stacks"
+        r1 = generate_and_extract(env, output)
+        r2 = generate_and_extract(env, output)
+        assert r1.total_secrets_extracted == r2.total_secrets_extracted
+
+
+class TestValidateOutputDir:
+    def test_rejects_dotdot(self, tmp_path):
+        with pytest.raises(ValueError, match="must not contain"):
+            _validate_output_dir(tmp_path / ".." / "escape")
+
+    def test_resolves_normal_path(self, tmp_path):
+        result = _validate_output_dir(tmp_path / "stacks")
+        assert ".." not in str(result)

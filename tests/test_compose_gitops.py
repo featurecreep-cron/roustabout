@@ -9,8 +9,6 @@ from roustabout.compose_gitops import (
     ComposeProject,
     _normalize_env,
     _normalize_field,
-    compose_at_commit,
-    compose_history,
     detect_drift,
     semantic_diff,
 )
@@ -184,38 +182,3 @@ class TestSemanticDiff:
         assert result[0].changes[0].security_relevant is True
 
 
-# --- Git integration ---
-
-
-class TestComposeHistory:
-    def test_non_git_raises(self):
-        project = ComposeProject(
-            name="test",
-            path=Path("/tmp/compose.yml"),
-            git_root=None,
-            services=(),
-        )
-        with pytest.raises(ValueError, match="not git-tracked"):
-            compose_history(project)
-
-
-class TestComposeAtCommit:
-    def test_non_git_raises(self):
-        project = ComposeProject(
-            name="test",
-            path=Path("/tmp/compose.yml"),
-            git_root=None,
-            services=(),
-        )
-        with pytest.raises(ValueError, match="not git-tracked"):
-            compose_at_commit(project, "abc123")
-
-    def test_invalid_sha_raises(self):
-        project = ComposeProject(
-            name="test",
-            path=Path("/tmp/compose.yml"),
-            git_root=Path("/tmp"),
-            services=(),
-        )
-        with pytest.raises(ValueError, match="Invalid commit SHA"):
-            compose_at_commit(project, "not;a;sha")

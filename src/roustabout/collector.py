@@ -28,14 +28,30 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def collect(client: docker.DockerClient) -> DockerEnvironment:
-    """Snapshot the entire Docker environment into model objects.
+def collect(
+    client: docker.DockerClient,
+    *,
+    containers: list[str] | None = None,
+) -> DockerEnvironment:
+    """Snapshot the Docker environment into model objects.
+
+    Args:
+        client: Docker API client.
+        containers: Optional list of container names to include.
+            If None, all containers are collected.
 
     Does NOT catch DockerException from client.containers.list() — if the
     daemon is unreachable, that's a hard failure the caller must handle.
     Per-container failures are caught and reported as warnings.
     """
     raw_containers = client.containers.list(all=True)
+
+    if containers is not None:
+        wanted = set(containers)
+        raw_containers = [
+            c for c in raw_containers
+            if getattr(c, "name", "").lstrip("/") in wanted
+        ]
 
     containers: list[ContainerInfo] = []
     warnings: list[str] = []

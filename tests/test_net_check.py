@@ -1,7 +1,7 @@
 """Tests for network connectivity analysis."""
 
 from roustabout.models import DockerEnvironment, NetworkMembership, make_container
-from roustabout.net_check import (
+from roustabout.network_inspect import (
     ConnectivityResult,
     check_all_connectivity,
     check_connectivity,

@@ -6,6 +6,7 @@ Handlers are async, dispatching sync Docker API calls to threads.
 
 from __future__ import annotations
 
+import functools
 import re
 
 import anyio
@@ -43,12 +44,14 @@ def _load_cfg() -> Config:
         return Config()
 
 
-def _collect_redacted() -> tuple[DockerEnvironment, Config]:
+def _collect_redacted(
+    containers: list[str] | None = None,
+) -> tuple[DockerEnvironment, Config]:
     """Collect, sanitize, and redact the Docker environment."""
     cfg = _load_cfg()
     client = connect(cfg.docker_host)
     try:
-        env = collect(client)
+        env = collect(client, containers=containers)
     finally:
         client.close()
     env = sanitize_environment(env)
@@ -79,7 +82,11 @@ def _enforce_size_limit(text: str, cap: int = 262144) -> str:
 
 
 @mcp.tool()
-async def docker_snapshot(show_env: bool = False, show_labels: bool = True) -> str:
+async def docker_snapshot(
+    show_env: bool = False,
+    show_labels: bool = True,
+    containers: list[str] | None = None,
+) -> str:
     """[OBSERVE] Generate a markdown snapshot of the Docker environment.
 
     Use when: you need an overview of all running containers.
@@ -88,9 +95,11 @@ async def docker_snapshot(show_env: bool = False, show_labels: bool = True) -> s
     Args:
         show_env: Include environment variables in output (redacted).
         show_labels: Include container labels in output.
+        containers: Optional list of container names to include. If omitted, all containers.
     """
     try:
-        env, cfg = await anyio.to_thread.run_sync(_collect_redacted, abandon_on_cancel=False)
+        _collect = functools.partial(_collect_redacted, containers=containers)
+        env, cfg = await anyio.to_thread.run_sync(_collect, abandon_on_cancel=False)
     except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     result = render(env, show_env=show_env, show_labels=show_labels)
@@ -98,11 +107,14 @@ async def docker_snapshot(show_env: bool = False, show_labels: bool = True) -> s
 
 
 @mcp.tool()
-async def docker_audit() -> str:
+async def docker_audit(containers: list[str] | None = None) -> str:
     """[OBSERVE] Run security checks against the Docker environment.
 
     Use when: you want to find security issues in the Docker setup.
     Returns: prioritized findings with severity, explanation, and fix.
+
+    Args:
+        containers: Optional list of container names to audit. If omitted, all containers.
     """
     try:
         cfg = _load_cfg()
@@ -110,7 +122,7 @@ async def docker_audit() -> str:
         def _run_audit() -> str:
             client = connect(cfg.docker_host)
             try:
-                env = collect(client)
+                env = collect(client, containers=containers)
             finally:
                 client.close()
             findings = audit(env, patterns=cfg.redact_patterns)
@@ -134,7 +146,8 @@ async def docker_container(name: str) -> str:
     """
     name = sanitize(name)[:128]
     try:
-        env, _cfg = await anyio.to_thread.run_sync(_collect_redacted, abandon_on_cancel=False)
+        _collect = functools.partial(_collect_redacted, containers=[name])
+        env, _cfg = await anyio.to_thread.run_sync(_collect, abandon_on_cancel=False)
     except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
     matches = [c for c in env.containers if c.name == name]
@@ -518,7 +531,7 @@ async def docker_net_check(
     except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
         return _envelope(f"Error: Cannot connect to Docker: {_safe_error(exc)}")
 
-    from roustabout.net_check import check_all_connectivity, check_connectivity
+    from roustabout.network_inspect import check_all_connectivity, check_connectivity
 
     if source and target:
         results = [check_connectivity(env, source, target)]

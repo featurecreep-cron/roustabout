@@ -39,7 +39,8 @@ _SECRET_FIELD_PATTERNS = re.compile(
     r"(PASSWORD|PASSWD|SECRET|TOKEN|API_KEY|PRIVATE_KEY|AUTH_KEY"
     r"|CREDENTIAL|DB_PASS|MYSQL_ROOT|POSTGRES_PASSWORD"
     r"|REDIS_PASSWORD|SMTP_PASS|MAIL_PASSWORD|ENCRYPTION_KEY"
-    r"|JWT_SECRET|AWS_SECRET|AZURE_KEY|GCP_KEY|OAUTH)",
+    r"|JWT_SECRET|AWS_SECRET|AZURE_KEY|GCP_KEY"
+    r"|OAUTH_SECRET|OAUTH_CLIENT)",
     re.IGNORECASE,
 )
 
@@ -164,28 +165,6 @@ class DigestInfo:
     needs_update: bool
     pin_reference: str
 
-
-@dataclass(frozen=True)
-class RenovatePolicy:
-    """Recommended Renovate policy for an image."""
-
-    package_name: str
-    datasource: str
-    registry: str
-    minimum_release_age: str
-    automerge: bool
-    allow_major: bool
-    version_constraint: str | None
-    reason: str
-
-
-@dataclass(frozen=True)
-class RenovateConfig:
-    """Generated Renovate configuration."""
-
-    config_json: str
-    policies: tuple[RenovatePolicy, ...]
-    warnings: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -774,175 +753,6 @@ def pin_compose_digests(
         skipped_reasons=tuple(skipped_reasons),
     )
 
-
-# Renovate config generation
-
-
-def generate_renovate_config(
-    audit: ComposeAudit,
-    own_registries: tuple[str, ...] = (),
-    default_cooldown_days: int = 3,
-    database_cooldown_days: int = 7,
-) -> RenovateConfig:
-    """Generate a Renovate configuration based on compose audit results."""
-    policies: list[RenovatePolicy] = []
-    warnings: list[str] = []
-    package_rules: list[dict[str, Any]] = []
-
-    # Group images by policy type
-    own_images: list[ImageReference] = []
-    db_images: list[ImageReference] = []
-    other_images: list[ImageReference] = []
-
-    for img in audit.images:
-        if any(img.registry.startswith(r) or img.image.startswith(r) for r in own_registries):
-            own_images.append(img)
-        elif img.service in audit.stateful_services:
-            db_images.append(img)
-        else:
-            other_images.append(img)
-
-        if img.tag_pattern == "latest":
-            warnings.append(
-                f"{img.service}: uses :latest tag — Renovate can't track versions. "
-                f"Pin to a specific tag first."
-            )
-        elif img.tag_pattern == "custom":
-            warnings.append(
-                f"{img.service}: non-standard tag '{img.tag}' — "
-                f"may need manual versioning config in Renovate."
-            )
-
-    # Own images — no delay, automerge
-    if own_images:
-        names = [_package_name(img) for img in own_images]
-        rule: dict[str, Any] = {
-            "description": "Own images — update immediately",
-            "matchDatasources": ["docker"],
-            "matchPackageNames": sorted(set(names)),
-            "minimumReleaseAge": "0 days",
-            "automerge": True,
-        }
-        package_rules.append(rule)
-        for img in own_images:
-            policies.append(
-                RenovatePolicy(
-                    package_name=_package_name(img),
-                    datasource="docker",
-                    registry=img.registry,
-                    minimum_release_age="0 days",
-                    automerge=True,
-                    allow_major=False,
-                    version_constraint=None,
-                    reason="Image from own registry — trusted source",
-                )
-            )
-
-    # Database/stateful images — longer cooldown, no automerge
-    if db_images:
-        names = [_package_name(img) for img in db_images]
-        rule = {
-            "description": f"Stateful services — {database_cooldown_days}d cooldown, manual merge",
-            "matchDatasources": ["docker"],
-            "matchPackageNames": sorted(set(names)),
-            "minimumReleaseAge": f"{database_cooldown_days} days",
-            "automerge": False,
-            "separateMajorMinor": True,
-            "major": {"enabled": False},
-        }
-        package_rules.append(rule)
-        for img in db_images:
-            constraint = _version_constraint(img)
-            policies.append(
-                RenovatePolicy(
-                    package_name=_package_name(img),
-                    datasource="docker",
-                    registry=img.registry,
-                    minimum_release_age=f"{database_cooldown_days} days",
-                    automerge=False,
-                    allow_major=False,
-                    version_constraint=constraint,
-                    reason=(
-                        f"Stateful service ({img.service})"
-                        " — breaking updates require backup/migration"
-                    ),
-                )
-            )
-
-    # Everything else — default cooldown, automerge
-    if other_images:
-        non_floating = [img for img in other_images if img.tag_pattern != "latest"]
-        if non_floating:
-            names = [_package_name(img) for img in non_floating]
-            rule = {
-                "description": f"Third-party services — {default_cooldown_days}d cooldown",
-                "matchDatasources": ["docker"],
-                "matchPackageNames": sorted(set(names)),
-                "minimumReleaseAge": f"{default_cooldown_days} days",
-                "automerge": True,
-            }
-            package_rules.append(rule)
-            for img in non_floating:
-                policies.append(
-                    RenovatePolicy(
-                        package_name=_package_name(img),
-                        datasource="docker",
-                        registry=img.registry,
-                        minimum_release_age=f"{default_cooldown_days} days",
-                        automerge=True,
-                        allow_major=False,
-                        version_constraint=None,
-                        reason=(
-                            "Third-party stateless service"
-                            " — cooldown protects against bad releases"
-                        ),
-                    )
-                )
-
-    config = {
-        "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-        "extends": ["config:best-practices"],
-        "docker": {"pinDigests": True},
-        "ignoreUnstable": True,
-        "packageRules": package_rules,
-    }
-
-    config_json = json.dumps(config, indent=2) + "\n"
-
-    return RenovateConfig(
-        config_json=config_json,
-        policies=tuple(policies),
-        warnings=tuple(warnings),
-    )
-
-
-def _package_name(img: ImageReference) -> str:
-    """Extract the package name Renovate uses for an image."""
-    name = img.image.split("@")[0]  # strip digest
-    if ":" in name:
-        name = name.rsplit(":", 1)[0]  # strip tag
-    return name
-
-
-def _version_constraint(img: ImageReference) -> str | None:
-    """Generate a version constraint regex for an image tag."""
-    if not img.tag or img.tag_pattern == "latest":
-        return None
-
-    if img.tag_pattern == "semver-os":
-        # e.g., 18-alpine -> /^18(\.\d+)*-alpine$/
-        match = re.match(r"^(\d+(?:\.\d+)*)-(.+)$", img.tag)
-        if match:
-            major = match.group(1).split(".")[0]
-            os_suffix = match.group(2)
-            return f"/^{major}(\\.\\d+)*-{re.escape(os_suffix)}$/"
-
-    if img.tag_pattern == "semver":
-        # e.g., 18.3 -> /^18\.\d+(\.\d+)*$/
-        major = img.tag.split(".")[0].lstrip("v")
-        return f"/^v?{major}\\.\\d+(\\.\\d+)*$/"
-
-    return None
 
 
 # --- Secret-safe generate-to-extract pipeline (LLD-036) ---

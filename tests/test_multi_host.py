@@ -6,14 +6,12 @@ import pytest
 
 from roustabout.multi_host import (
     HostConfig,
-    HostHealth,
     HostNotFound,
     HostPool,
     HostUnreachable,
     _create_client,
     hosts_from_config,
 )
-
 
 # --- HostConfig ---
 

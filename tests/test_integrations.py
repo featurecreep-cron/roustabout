@@ -2,8 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
+from roustabout.integrations.grafana import GrafanaAdapter
 from roustabout.integrations.manager import (
     IntegrationManager,
     ServiceHealth,
@@ -11,8 +10,6 @@ from roustabout.integrations.manager import (
 )
 from roustabout.integrations.traefik import TraefikAdapter, _matches_container
 from roustabout.integrations.uptime_kuma import UptimeKumaAdapter
-from roustabout.integrations.grafana import GrafanaAdapter
-
 
 # --- Circuit breaker ---
 

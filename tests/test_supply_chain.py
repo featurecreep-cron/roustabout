@@ -859,11 +859,11 @@ class TestGenerateAndExtract:
                 env=[("SECRET_TOKEN", "topsecret"), ("APP_NAME", "myapp")],
             ),
         )
-        output = tmp_path / "stacks"
+        output = tmp_path / "output"
         result = generate_and_extract(env, output, dry_run=True)
         assert result.dry_run is True
-        assert result.total_secrets_extracted == 1
-        assert not (output / "app").exists()
+        assert result.secrets_extracted == 1
+        assert not (output / "docker-compose.yml").exists()
 
     def test_writes_compose_and_env(self, tmp_path):
         env = _make_env(
@@ -874,21 +874,20 @@ class TestGenerateAndExtract:
                 env=[("POSTGRES_PASSWORD", "hunter2"), ("PGDATA", "/var/lib/pg")],
             ),
         )
-        output = tmp_path / "stacks"
+        output = tmp_path / "output"
         result = generate_and_extract(env, output)
         assert result.dry_run is False
-        assert result.total_secrets_extracted == 1
+        assert result.secrets_extracted == 1
 
-        stack_dir = output / "data"
-        assert (stack_dir / "docker-compose.yml").exists()
-        assert (stack_dir / ".env").exists()
+        assert (output / "docker-compose.yml").exists()
+        assert (output / ".env").exists()
 
         # .env has secret
-        env_content = (stack_dir / ".env").read_text()
+        env_content = (output / ".env").read_text()
         assert "hunter2" in env_content
 
         # compose has reference, not value
-        compose_content = (stack_dir / "docker-compose.yml").read_text()
+        compose_content = (output / "docker-compose.yml").read_text()
         assert "hunter2" not in compose_content
         assert "${DB_POSTGRES_PASSWORD}" in compose_content
 
@@ -901,52 +900,51 @@ class TestGenerateAndExtract:
                 env=[("POSTGRES_PASSWORD", "secret")],
             ),
         )
-        output = tmp_path / "stacks"
+        output = tmp_path / "output"
         generate_and_extract(env, output)
-        env_file = output / "data" / ".env"
+        env_file = output / ".env"
         assert oct(env_file.stat().st_mode)[-3:] == "600"
 
-    def test_multiple_stacks(self, tmp_path):
+    def test_multiple_services_one_output(self, tmp_path):
         env = _make_env(
             _make_container(
                 name="web",
-                compose_project="frontend",
                 compose_service="web",
                 env=[("SECRET_KEY", "webkey")],
             ),
             _make_container(
                 name="db",
-                compose_project="backend",
                 compose_service="db",
                 env=[("POSTGRES_PASSWORD", "dbpass")],
             ),
         )
-        output = tmp_path / "stacks"
+        output = tmp_path / "output"
         result = generate_and_extract(env, output)
-        assert len(result.stacks) == 2
-        assert result.total_secrets_extracted == 2
-        assert (output / "frontend" / "docker-compose.yml").exists()
-        assert (output / "backend" / "docker-compose.yml").exists()
+        assert result.secrets_extracted == 2
+        assert (output / "docker-compose.yml").exists()
+        # Both services in one compose file
+        compose_content = (output / "docker-compose.yml").read_text()
+        assert "web" in compose_content
+        assert "db" in compose_content
 
-    def test_with_mapping(self, tmp_path):
+    def test_services_filter(self, tmp_path):
         env = _make_env(
             _make_container(
-                name="sonarr",
-                compose_service="sonarr",
-                env=[("API_KEY", "sonarrkey")],
+                name="web",
+                compose_service="web",
+                env=[("SECRET_KEY", "webkey")],
             ),
             _make_container(
-                name="radarr",
-                compose_service="radarr",
-                env=[("API_KEY", "radarrkey")],
+                name="db",
+                compose_service="db",
+                env=[("POSTGRES_PASSWORD", "dbpass")],
             ),
         )
-        mapping = {"sonarr": "media", "radarr": "media"}
-        output = tmp_path / "stacks"
-        result = generate_and_extract(env, output, group_by="mapping", stack_mapping=mapping)
-        assert len(result.stacks) == 1
-        assert result.stacks[0].stack_name == "media"
-        assert result.total_secrets_extracted == 2
+        output = tmp_path / "output"
+        result = generate_and_extract(env, output, services=["web"])
+        assert "web" in result.services
+        # db should not be in services list
+        assert "db" not in result.services
 
     def test_gitignore_written(self, tmp_path):
         # Create a git repo so _update_gitignore works
@@ -959,9 +957,9 @@ class TestGenerateAndExtract:
                 env=[("POSTGRES_PASSWORD", "secret")],
             ),
         )
-        output = tmp_path / "stacks"
+        output = tmp_path / "output"
         generate_and_extract(env, output)
-        gitignore = output / "data" / ".gitignore"
+        gitignore = output / ".gitignore"
         assert gitignore.exists()
         assert ".env" in gitignore.read_text()
 
@@ -974,10 +972,10 @@ class TestGenerateAndExtract:
                 env=[("POSTGRES_PASSWORD", "secret")],
             ),
         )
-        output = tmp_path / "stacks"
+        output = tmp_path / "output"
         r1 = generate_and_extract(env, output)
         r2 = generate_and_extract(env, output)
-        assert r1.total_secrets_extracted == r2.total_secrets_extracted
+        assert r1.secrets_extracted == r2.secrets_extracted
 
 
 class TestValidateOutputDir:

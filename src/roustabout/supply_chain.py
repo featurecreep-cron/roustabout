@@ -949,26 +949,14 @@ def _version_constraint(img: ImageReference) -> str | None:
 
 
 @dataclass(frozen=True)
-class StackExtractionResult:
-    """Result of generating and extracting one stack."""
+class MigrationResult:
+    """Result of the generate-and-extract pipeline."""
 
-    stack_name: str
     compose_path: str
     env_file_path: str
     secrets_extracted: int
     env_files_consumed: int
     services: tuple[str, ...]
-    warnings: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class MigrationResult:
-    """Result of the full generate-and-extract pipeline."""
-
-    stacks: tuple[StackExtractionResult, ...]
-    total_secrets_extracted: int
-    shared_networks: tuple[str, ...]
-    shared_volumes: tuple[str, ...]
     warnings: tuple[str, ...]
     dry_run: bool
 
@@ -977,66 +965,40 @@ def generate_and_extract(
     env: DockerEnvironment,
     output_dir: Path,
     *,
-    stack_mapping: dict[str, str] | None = None,
-    group_by: str = "project",
+    services: list[str] | None = None,
     include_stopped: bool = False,
     dry_run: bool = False,
 ) -> MigrationResult:
-    """Atomic generate + split + secret extraction pipeline.
+    """Atomic generate + secret extraction pipeline.
 
     Runs entirely on the host — no secret values cross the API boundary.
     Returns MigrationResult with metadata only, never secret values.
     """
-    from roustabout.generator import generate_stacks
+    from roustabout.generator import generate
 
     output_dir = _validate_output_dir(output_dir)
 
-    split_result = generate_stacks(
-        env,
-        include_stopped=include_stopped,
-        group_by=group_by,
-        stack_mapping=stack_mapping,
-    )
+    compose_yaml = generate(env, include_stopped=include_stopped, services=services)
+
+    compose_path = output_dir / "docker-compose.yml"
+    env_file_path = output_dir / ".env"
+
+    # Parse the generated YAML for secret extraction
+    yaml_parser = YAML()
+    yaml_parser.preserve_quotes = True
+    yaml_parser.width = 4096
+    content = yaml_parser.load(compose_yaml)
 
     all_warnings: list[str] = []
-    stack_results: list[StackExtractionResult] = []
-    total_secrets = 0
+    extracted: dict[str, str] = {}
+    env_files_consumed = 0
+    svc_names: list[str] = []
 
-    # Forward cross-stack dependency warnings
-    for dep in split_result.cross_stack_deps:
-        all_warnings.append(dep.description)
+    if isinstance(content, dict) and "services" in content:
+        svc_section = content["services"]
 
-    for stack in split_result.stacks:
-        stack_dir = output_dir / stack.name
-        compose_path = stack_dir / "docker-compose.yml"
-        env_file_path = stack_dir / ".env"
-
-        # Parse the generated YAML for secret extraction
-        yaml_parser = YAML()
-        yaml_parser.preserve_quotes = True
-        yaml_parser.width = 4096
-        content = yaml_parser.load(stack.compose_yaml)
-
-        if not isinstance(content, dict) or "services" not in content:
-            stack_results.append(
-                StackExtractionResult(
-                    stack_name=stack.name,
-                    compose_path=str(compose_path),
-                    env_file_path=str(env_file_path),
-                    secrets_extracted=0,
-                    env_files_consumed=0,
-                    services=stack.services,
-                    warnings=("No services found in generated output",),
-                )
-            )
-            continue
-
-        services = content["services"]
-        extracted: dict[str, str] = {}
-        env_files_consumed = 0
-        stack_warnings: list[str] = list(stack.warnings)
-
-        for svc_name, svc_spec in services.items():
+        for svc_name, svc_spec in svc_section.items():
+            svc_names.append(svc_name)
             if not isinstance(svc_spec, dict):
                 continue
 
@@ -1047,12 +1009,11 @@ def generate_and_extract(
                     env_file_refs = [env_file_refs]
                 if isinstance(env_file_refs, list):
                     secrets, non_secrets, warnings = _process_env_file_directive(
-                        svc_name, env_file_refs, stack_dir
+                        svc_name, env_file_refs, output_dir
                     )
-                    stack_warnings.extend(warnings)
+                    all_warnings.extend(warnings)
                     for k, v in secrets.items():
                         extracted[k] = v
-                    # Merge non-secrets into environment block
                     if non_secrets:
                         env_block = svc_spec.get("environment")
                         if env_block is None:
@@ -1062,7 +1023,6 @@ def generate_and_extract(
                             for k, v in non_secrets.items():
                                 if k not in env_block:
                                     env_block[k] = v
-                    # Add ${VAR} references for extracted secrets
                     if secrets:
                         env_block = svc_spec.get("environment")
                         if env_block is None:
@@ -1070,7 +1030,6 @@ def generate_and_extract(
                             svc_spec["environment"] = env_block
                         if isinstance(env_block, dict):
                             for var_name in secrets:
-                                # env_file vars keep original names
                                 if var_name not in env_block:
                                     env_block[var_name] = f"${{{var_name}}}"
                     del svc_spec["env_file"]
@@ -1104,51 +1063,40 @@ def generate_and_extract(
                     extracted[var_name] = value
                     new_list.append(f"{key}=${{{var_name}}}")
                 svc_spec["environment"] = new_list
+    else:
+        all_warnings.append("No services found in generated output")
 
-        if not dry_run:
-            stack_dir.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-            # Write .env
-            if extracted:
-                # Read existing .env to merge
-                existing: dict[str, str] = {}
-                if env_file_path.exists():
-                    for line in env_file_path.read_text().splitlines():
-                        line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            k, v = line.split("=", 1)
-                            existing[k.strip()] = v.strip()
-                all_env = {**existing, **extracted}
-                env_lines = [f"{k}={v}" for k, v in sorted(all_env.items())]
-                env_file_path.write_text("\n".join(env_lines) + "\n")
-                env_file_path.chmod(0o600)
+        # Write .env
+        if extracted:
+            existing: dict[str, str] = {}
+            if env_file_path.exists():
+                for line in env_file_path.read_text().splitlines():
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        existing[k.strip()] = v.strip()
+            all_env = {**existing, **extracted}
+            env_lines = [f"{k}={v}" for k, v in sorted(all_env.items())]
+            env_file_path.write_text("\n".join(env_lines) + "\n")
+            env_file_path.chmod(0o600)
 
-            # Write compose
-            stream = StringIO()
-            yaml_parser.dump(content, stream)
-            compose_path.write_text(stream.getvalue())
+        # Write compose
+        stream = StringIO()
+        yaml_parser.dump(content, stream)
+        compose_path.write_text(stream.getvalue())
 
-            # Write .gitignore
-            _update_gitignore(stack_dir, ".env")
-
-        total_secrets += len(extracted)
-        stack_results.append(
-            StackExtractionResult(
-                stack_name=stack.name,
-                compose_path=str(compose_path),
-                env_file_path=str(env_file_path),
-                secrets_extracted=len(extracted),
-                env_files_consumed=env_files_consumed,
-                services=stack.services,
-                warnings=tuple(stack_warnings),
-            )
-        )
+        # Write .gitignore
+        _update_gitignore(output_dir, ".env")
 
     return MigrationResult(
-        stacks=tuple(stack_results),
-        total_secrets_extracted=total_secrets,
-        shared_networks=tuple(split_result.shared_networks),
-        shared_volumes=tuple(split_result.shared_volumes),
+        compose_path=str(compose_path),
+        env_file_path=str(env_file_path),
+        secrets_extracted=len(extracted),
+        env_files_consumed=env_files_consumed,
+        services=tuple(sorted(svc_names)),
         warnings=tuple(all_warnings),
         dry_run=dry_run,
     )

@@ -5,22 +5,15 @@ from unittest.mock import MagicMock
 import pytest
 
 from roustabout.network_inspect import (
-    ConnectivityProbeResult,
-    ContainerNetworkView,
-    DNSProbeResult,
-    NetworkDetail,
-    PortListenerInfo,
     _collect_port_info,
     _parse_dns_output,
     _validate_host,
     inspect_container_network,
     inspect_network,
-    list_container_ports,
     probe_connectivity,
     probe_dns,
 )
 from roustabout.session import DockerSession
-
 
 # --- Input validation ---
 
@@ -272,6 +265,7 @@ class TestParseDNSOutput:
 class TestProbeDNS:
     def test_getent_success(self):
         from unittest.mock import patch
+
         from roustabout.container_exec import ExecResult
 
         session = DockerSession(client=MagicMock(), host="localhost")

@@ -2,11 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from roustabout.deep_health import (
-    DeepHealthResult,
-    EnvironmentHealth,
     HealthProfile,
     _check_port,
     _determine_overall,
@@ -14,8 +10,6 @@ from roustabout.deep_health import (
     check_environment_health,
     resolve_profile,
 )
-from roustabout.session import DockerSession
-
 
 # --- Overall determination ---
 

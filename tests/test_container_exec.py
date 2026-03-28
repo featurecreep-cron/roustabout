@@ -1,22 +1,20 @@
 """Tests for container_exec module."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from roustabout.container_exec import (
     DENIED_BINARIES,
     DENIED_PATTERNS,
+    MAX_OUTPUT_BYTES,
     DeniedCommand,
     ExecCommand,
-    ExecResult,
-    MAX_OUTPUT_BYTES,
     _check_denylist,
     _process_output,
     execute,
 )
 from roustabout.session import DockerSession
-
 
 # --- Denylist tests ---
 

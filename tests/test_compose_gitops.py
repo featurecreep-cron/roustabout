@@ -1,25 +1,19 @@
 """Tests for compose_gitops module."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from roustabout.compose_gitops import (
-    ComposeChange,
     ComposeProject,
-    Drift,
-    DriftReport,
-    SemanticDiff,
     _normalize_env,
     _normalize_field,
     compose_at_commit,
     compose_history,
     detect_drift,
-    discover_projects,
     semantic_diff,
 )
-
 
 # --- Normalize helpers ---
 

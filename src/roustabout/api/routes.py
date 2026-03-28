@@ -345,7 +345,7 @@ async def net_check_route(
     def _run() -> list[dict[str, Any]]:
         from roustabout.collector import collect
         from roustabout.connection import connect
-        from roustabout.net_check import check_all_connectivity, check_connectivity
+        from roustabout.network_inspect import check_all_connectivity, check_connectivity
 
         client = connect()
         try:

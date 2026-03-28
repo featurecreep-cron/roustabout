@@ -518,7 +518,7 @@ def _is_extractable_secret(key: str, value: Any) -> bool:
 
 def _extract_from_dict(
     service: str,
-    env: dict,
+    env: dict[str, str],
     extracted: dict[str, str],
     modified: set[str],
 ) -> None:
@@ -537,10 +537,10 @@ def _extract_from_dict(
 
 def _extract_from_list(
     service: str,
-    env: list,
+    env: list[str],
     extracted: dict[str, str],
     modified: set[str],
-) -> list:
+) -> list[str]:
     """Extract secrets from list-style environment, returning new list."""
     new_list = []
     for item in env:

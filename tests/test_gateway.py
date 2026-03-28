@@ -199,7 +199,13 @@ class TestLockdownGate:
 
 
 class TestPermissionGate:
-    def test_observe_session_denied_mutation(self):
+    def test_observe_session_passes_permission_with_directed_friction(self):
+        """Observe session passes permission gate with DIRECTED friction.
+
+        In the friction model, OBSERVE tier gets DIRECTED friction for
+        mutations instead of PermissionDenied. The gateway proceeds past
+        step 2 — friction routing will be handled in a later step.
+        """
         session = _make_session(PermissionTier.OBSERVE)
         cmd = _make_command(action="restart")
 
@@ -208,8 +214,9 @@ class TestPermissionGate:
                 with patch("roustabout.gateway.lockdown.check"):
                     result = execute(cmd, session=session, db=None)
 
+        # Fails at TargetNotFound (step 0a), NOT at permission gate
         assert result.success is False
-        assert result.gate_failed == "PermissionDenied"
+        assert result.gate_failed == "TargetNotFound"
 
     def test_operate_session_allowed_mutation(self):
         """Operate session passes permission gate (may fail later)."""

@@ -2,15 +2,10 @@
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from roustabout.api.discovery import (
-    APIInfo,
-    RouteInfo,
     _get_route_tier,
     get_api_info,
 )
-
 
 # --- Tier derivation ---
 
@@ -63,7 +58,6 @@ class TestGetRouteTier:
 class TestGetAPIInfo:
     def test_collects_routes(self):
         from fastapi import FastAPI
-        from fastapi.routing import APIRoute
 
         app = FastAPI()
 

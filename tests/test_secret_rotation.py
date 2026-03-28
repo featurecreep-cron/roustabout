@@ -2,21 +2,14 @@
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from roustabout.secret_rotation import (
     RotationPolicy,
-    RotationResult,
-    RotationStatus,
-    SecretSharingReport,
-    SharedSecret,
     audit_secret_sharing,
     check_stale_secrets,
     get_rotation_status,
     policies_from_config,
     rotate_secret,
 )
-
 
 # --- Helpers ---
 

@@ -6,7 +6,6 @@ import pytest
 
 from roustabout.metrics import _available, init_metrics, update_container_metrics
 
-
 # --- Availability ---
 
 

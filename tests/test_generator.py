@@ -2,10 +2,9 @@
 
 from io import StringIO
 
-import pytest
 from ruamel.yaml import YAML
 
-from roustabout.generator import generate, generate_stacks
+from roustabout.generator import generate
 from roustabout.models import (
     HealthcheckConfig,
     MountInfo,
@@ -514,116 +513,46 @@ class TestYamlOutput:
         assert "secrets" in result.lower()
 
 
-# --- Stack splitting (LLD-035) ---
+# --- Services filter ---
 
 
-class TestGenerateStacksGroupByProject:
-    def test_groups_by_compose_project(self):
+class TestServicesFilter:
+    def test_services_filter_by_name(self):
         env = _env(
-            _container(name="web", compose_project="frontend", compose_service="web"),
-            _container(name="api", compose_project="backend", compose_service="api"),
+            _container(name="web", compose_service="web"),
+            _container(name="db", compose_service="db"),
         )
-        result = generate_stacks(env, group_by="project")
-        assert len(result.stacks) == 2
-        stack_names = {s.name for s in result.stacks}
-        assert stack_names == {"frontend", "backend"}
+        doc = _parse_yaml(generate(env, services=["web"]))
+        assert "web" in doc["services"]
+        assert "db" not in doc["services"]
 
-    def test_no_label_goes_to_default(self):
+    def test_services_filter_by_service_name(self):
         env = _env(
-            _container(name="web", compose_project=None),
+            _container(name="my-web-container", compose_service="web"),
+            _container(name="my-db-container", compose_service="db"),
         )
-        result = generate_stacks(env, group_by="project")
-        assert len(result.stacks) == 1
-        assert result.stacks[0].name == "_default"
+        doc = _parse_yaml(generate(env, services=["web"]))
+        assert "web" in doc["services"]
+        assert "db" not in doc["services"]
 
-    def test_stopped_excluded_by_default(self):
+    def test_services_filter_nonexistent(self):
         env = _env(
-            _container(name="web", compose_project="app", status="running"),
-            _container(name="old", compose_project="app", status="exited"),
+            _container(name="web", compose_service="web"),
         )
-        result = generate_stacks(env, group_by="project")
-        assert result.stacks[0].services == ("web",)
+        result = generate(env, services=["nonexistent"])
+        assert "No running containers" in result
 
-    def test_stopped_included_with_flag(self):
+    def test_services_filter_none_includes_all(self):
         env = _env(
-            _container(name="web", compose_project="app", status="running"),
-            _container(name="old", compose_project="app", status="exited"),
+            _container(name="web", compose_service="web"),
+            _container(name="db", compose_service="db"),
         )
-        result = generate_stacks(env, group_by="project", include_stopped=True)
-        assert len(result.stacks[0].services) == 2
+        doc = _parse_yaml(generate(env, services=None))
+        assert "web" in doc["services"]
+        assert "db" in doc["services"]
 
-    def test_each_stack_has_valid_yaml(self):
-        env = _env(
-            _container(name="web", compose_project="frontend", compose_service="web"),
-            _container(name="db", compose_project="backend", compose_service="db"),
-        )
-        result = generate_stacks(env, group_by="project")
-        for stack in result.stacks:
-            doc = _parse_yaml(stack.compose_yaml)
-            assert "services" in doc
-
-
-class TestGenerateStacksGroupByMapping:
-    def test_explicit_mapping(self):
-        env = _env(
-            _container(name="sonarr", compose_service="sonarr"),
-            _container(name="radarr", compose_service="radarr"),
-            _container(name="grafana", compose_service="grafana"),
-        )
-        mapping = {"sonarr": "media", "radarr": "media", "grafana": "monitoring"}
-        result = generate_stacks(env, group_by="mapping", stack_mapping=mapping)
-        stack_names = {s.name for s in result.stacks}
-        assert stack_names == {"media", "monitoring"}
-
-        media = next(s for s in result.stacks if s.name == "media")
-        assert set(media.services) == {"sonarr", "radarr"}
-
-    def test_unmapped_services(self):
-        env = _env(
-            _container(name="sonarr", compose_service="sonarr"),
-            _container(name="mystery", compose_service="mystery"),
-        )
-        mapping = {"sonarr": "media"}
-        result = generate_stacks(env, group_by="mapping", stack_mapping=mapping)
-        assert "mystery" in result.unmapped_services
-
-    def test_missing_mapping_raises(self):
-        env = _env(_container())
-        with pytest.raises(ValueError, match="stack_mapping is required"):
-            generate_stacks(env, group_by="mapping", stack_mapping=None)
-
-    def test_invalid_group_by_raises(self):
-        env = _env(_container())
-        with pytest.raises(ValueError, match="group_by must be"):
-            generate_stacks(env, group_by="invalid")
-
-
-class TestCrossStackDeps:
-    def test_network_mode_cross_stack(self):
-        vpn = _container(name="vpn", compose_service="vpn")
-        app = _container(name="torrent", compose_service="torrent", network_mode="container:vpn")
-        env = _env(vpn, app)
-        mapping = {"vpn": "networking", "torrent": "media"}
-        result = generate_stacks(env, group_by="mapping", stack_mapping=mapping)
-        assert len(result.cross_stack_deps) == 1
-        dep = result.cross_stack_deps[0]
-        assert dep.source_service == "torrent"
-        assert dep.target_service == "vpn"
-        assert dep.source_stack == "media"
-        assert dep.target_stack == "networking"
-        assert dep.dependency_type == "network_mode"
-
-    def test_same_stack_no_cross_dep(self):
-        vpn = _container(name="vpn", compose_service="vpn")
-        app = _container(name="torrent", compose_service="torrent", network_mode="container:vpn")
-        env = _env(vpn, app)
-        mapping = {"vpn": "media", "torrent": "media"}
-        result = generate_stacks(env, group_by="mapping", stack_mapping=mapping)
-        assert len(result.cross_stack_deps) == 0
-
-
-class TestSharedResources:
-    def test_shared_network(self):
+    def test_filtered_network_marked_external(self):
+        """Network used by an excluded container should be external: true."""
         web = _container(
             name="web",
             compose_service="web",
@@ -635,30 +564,11 @@ class TestSharedResources:
             networks=[NetworkMembership("shared_net", "172.18.0.3", ())],
         )
         env = _env(web, api)
-        mapping = {"web": "frontend", "api": "backend"}
-        result = generate_stacks(env, group_by="mapping", stack_mapping=mapping)
-        assert "shared_net" in result.shared_networks
+        doc = _parse_yaml(generate(env, services=["web"]))
+        assert doc["networks"]["shared_net"]["external"] is True
 
-        frontend = next(s for s in result.stacks if s.name == "frontend")
-        assert "shared_net" in frontend.shared_networks
-
-    def test_shared_volume(self):
-        web = _container(
-            name="web",
-            compose_service="web",
-            mounts=[MountInfo("shared_data", "/data", "rw", "volume")],
-        )
-        worker = _container(
-            name="worker",
-            compose_service="worker",
-            mounts=[MountInfo("shared_data", "/data", "rw", "volume")],
-        )
-        env = _env(web, worker)
-        mapping = {"web": "frontend", "worker": "backend"}
-        result = generate_stacks(env, group_by="mapping", stack_mapping=mapping)
-        assert "shared_data" in result.shared_volumes
-
-    def test_non_shared_network(self):
+    def test_unfiltered_network_stays_inline(self):
+        """Network used only by included containers should not be external."""
         web = _container(
             name="web",
             compose_service="web",
@@ -670,6 +580,23 @@ class TestSharedResources:
             networks=[NetworkMembership("other_net", "172.18.0.3", ())],
         )
         env = _env(web, api)
-        mapping = {"web": "frontend", "api": "backend"}
-        result = generate_stacks(env, group_by="mapping", stack_mapping=mapping)
-        assert len(result.shared_networks) == 0
+        doc = _parse_yaml(generate(env, services=["web"]))
+        assert "private_net" in doc["networks"]
+        net_decl = doc["networks"]["private_net"]
+        assert net_decl is None or net_decl.get("external") is not True
+
+    def test_filtered_volume_marked_external(self):
+        """Volume used by an excluded container should be external: true."""
+        web = _container(
+            name="web",
+            compose_service="web",
+            mounts=[MountInfo("shared_data", "/data", "rw", "volume")],
+        )
+        worker = _container(
+            name="worker",
+            compose_service="worker",
+            mounts=[MountInfo("shared_data", "/data", "rw", "volume")],
+        )
+        env = _env(web, worker)
+        doc = _parse_yaml(generate(env, services=["web"]))
+        assert doc["volumes"]["shared_data"]["external"] is True

@@ -416,11 +416,13 @@ async def capabilities(request: Request) -> dict[str, Any]:
     }
 
 
-# --- Generate + Stack Splitting (LLD-035) ---
+# --- Generate (compose from live state) ---
 
 
-def _generate_single(project: str | None, include_stopped: bool) -> str:
-    """Generate compose YAML for a single project (redacted)."""
+def _generate_single(
+    project: str | None, include_stopped: bool, services: list[str] | None = None
+) -> str:
+    """Generate compose YAML (redacted), optionally filtered by services."""
     from roustabout.collector import collect
     from roustabout.config import load_config
     from roustabout.connection import connect
@@ -436,60 +438,7 @@ def _generate_single(project: str | None, include_stopped: bool) -> str:
         redacted = redact(env, patterns)
         if project:
             redacted = filter_by_project(redacted, project)
-        return generate(redacted, include_stopped=include_stopped)
-    finally:
-        client.close()
-
-
-def _generate_stacks_handler(body: dict[str, Any]) -> dict[str, Any]:
-    """Generate per-stack compose YAML (redacted)."""
-    from roustabout.collector import collect
-    from roustabout.config import load_config
-    from roustabout.connection import connect
-    from roustabout.generator import generate_stacks
-    from roustabout.redactor import redact, resolve_patterns
-
-    config = load_config()
-    client = connect()
-    try:
-        env = collect(client)
-        patterns = resolve_patterns(config.redact_patterns)
-        redacted = redact(env, patterns)
-
-        result = generate_stacks(
-            redacted,
-            include_stopped=body.get("include_stopped", False),
-            group_by=body.get("group_by", "project"),
-            stack_mapping=body.get("stack_mapping"),
-        )
-
-        return {
-            "stacks": [
-                {
-                    "name": s.name,
-                    "compose_yaml": s.compose_yaml,
-                    "services": list(s.services),
-                    "shared_networks": list(s.shared_networks),
-                    "shared_volumes": list(s.shared_volumes),
-                    "warnings": list(s.warnings),
-                }
-                for s in result.stacks
-            ],
-            "cross_stack_deps": [
-                {
-                    "source_service": d.source_service,
-                    "source_stack": d.source_stack,
-                    "target_service": d.target_service,
-                    "target_stack": d.target_stack,
-                    "type": d.dependency_type,
-                    "description": d.description,
-                }
-                for d in result.cross_stack_deps
-            ],
-            "unmapped_services": list(result.unmapped_services),
-            "shared_networks": list(result.shared_networks),
-            "shared_volumes": list(result.shared_volumes),
-        }
+        return generate(redacted, include_stopped=include_stopped, services=services)
     finally:
         client.close()
 
@@ -499,26 +448,17 @@ async def generate_route(
     request: Request,
     project: str | None = None,
     include_stopped: bool = False,
+    services: str | None = None,
 ) -> Any:
     """Generate compose YAML from current container state (redacted)."""
     import anyio
     from fastapi.responses import PlainTextResponse
 
-    result = await anyio.to_thread.run_sync(lambda: _generate_single(project, include_stopped))
+    svc_list = services.split(",") if services else None
+    result = await anyio.to_thread.run_sync(
+        lambda: _generate_single(project, include_stopped, svc_list)
+    )
     return PlainTextResponse(result, media_type="text/yaml")
-
-
-@router.post("/generate/stacks")
-async def generate_stacks_route(request: Request) -> JSONResponse:
-    """Split containers into per-stack compose files (redacted)."""
-    import anyio
-
-    body = await request.json()
-    try:
-        result = await anyio.to_thread.run_sync(lambda: _generate_stacks_handler(body))
-        return JSONResponse(content=result)
-    except ValueError as exc:
-        return JSONResponse(status_code=400, content={"error": str(exc)})
 
 
 # --- Secret-Safe Migration Pipeline (LLD-036) ---
@@ -532,33 +472,24 @@ def _migrate_handler(body: dict[str, Any]) -> dict[str, Any]:
     from roustabout.connection import connect
     from roustabout.supply_chain import generate_and_extract
 
+    svc_list = body.get("services")
+
     client = connect()
     try:
         env = collect(client)
         result = generate_and_extract(
             env,
             Path(body["output_dir"]),
-            stack_mapping=body.get("stack_mapping"),
-            group_by=body.get("group_by", "project"),
+            services=svc_list,
             include_stopped=body.get("include_stopped", False),
             dry_run=body.get("dry_run", True),
         )
         return {
-            "stacks": [
-                {
-                    "stack_name": s.stack_name,
-                    "compose_path": s.compose_path,
-                    "env_file_path": s.env_file_path,
-                    "secrets_extracted": s.secrets_extracted,
-                    "env_files_consumed": s.env_files_consumed,
-                    "services": list(s.services),
-                    "warnings": list(s.warnings),
-                }
-                for s in result.stacks
-            ],
-            "total_secrets_extracted": result.total_secrets_extracted,
-            "shared_networks": list(result.shared_networks),
-            "shared_volumes": list(result.shared_volumes),
+            "compose_path": result.compose_path,
+            "env_file_path": result.env_file_path,
+            "secrets_extracted": result.secrets_extracted,
+            "env_files_consumed": result.env_files_consumed,
+            "services": list(result.services),
             "warnings": list(result.warnings),
             "dry_run": result.dry_run,
         }
@@ -568,7 +499,7 @@ def _migrate_handler(body: dict[str, Any]) -> dict[str, Any]:
 
 @router.post("/supply-chain/migrate")
 async def migrate_route(request: Request) -> JSONResponse:
-    """Generate per-stack compose files with secrets extracted to .env."""
+    """Generate compose file with secrets extracted to .env."""
     import anyio
 
     key_info: KeyInfo = request.state.key_info

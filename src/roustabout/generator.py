@@ -2,13 +2,10 @@
 
 Takes the same frozen model objects that the auditor and renderer use.
 Produces a valid compose file that recreates the running environment.
-
-LLD: docs/roustabout/designs/035-generate-stack-splitting.md
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from io import StringIO
 
 from ruamel.yaml import YAML
@@ -85,6 +82,7 @@ def generate(
     *,
     include_stopped: bool = False,
     project_name: str | None = None,
+    services: list[str] | None = None,
 ) -> str:
     """Generate a docker-compose.yml from a DockerEnvironment.
 
@@ -92,13 +90,26 @@ def generate(
         env: The environment snapshot to convert.
         include_stopped: Include stopped containers (default: running only).
         project_name: Optional compose project name for the x-project comment.
+        services: Optional list of service/container names to include.
+            When provided, only containers whose name or compose service name
+            matches are included. Networks and volumes used by excluded
+            containers are marked ``external: true``.
 
     Returns:
         A valid docker-compose.yml as a string.
     """
-    containers = list(env.containers)
+    all_containers = list(env.containers)
     if not include_stopped:
-        containers = [c for c in containers if c.status == "running"]
+        all_containers = [c for c in all_containers if c.status == "running"]
+
+    # Apply services filter
+    if services is not None:
+        svc_set = set(services)
+        containers = [
+            c for c in all_containers if c.name in svc_set or _service_name(c) in svc_set
+        ]
+    else:
+        containers = all_containers
 
     if not containers:
         return "# No running containers found.\n"
@@ -123,14 +134,14 @@ def generate(
     )
 
     # Build services
-    services = CommentedMap()
+    svc_map = CommentedMap()
     all_volumes: set[str] = set()
     all_networks: set[str] = set()
 
     for container in containers:
         service_name = name_to_service[container.name]
         service = _build_service(container, name_to_service)
-        services[service_name] = service
+        svc_map[service_name] = service
 
         # Track volumes and networks for top-level declarations
         for mount in container.mounts:
@@ -142,19 +153,35 @@ def generate(
 
         # Add compose origin comment
         if container.compose_config_files:
-            services.yaml_set_comment_before_after_key(
+            svc_map.yaml_set_comment_before_after_key(
                 service_name,
                 before=f"Originally from compose file: {container.compose_config_files}",
             )
 
-    doc["services"] = services
+    doc["services"] = svc_map
+
+    # When filtering by services, determine which resources are also used by
+    # excluded containers — those must stay external.
+    if services is not None:
+        excluded = [c for c in all_containers if c not in containers]
+        external_nets = _resources_used_by(excluded, "networks")
+        external_vols = _resources_used_by(excluded, "volumes")
+    else:
+        external_nets = set()
+        external_vols = set()
 
     # Top-level volumes (only named volumes, not anonymous)
     if all_volumes:
-        volumes = CommentedMap()
+        volumes_map = CommentedMap()
         for vol_name in sorted(all_volumes):
-            volumes[vol_name] = CommentedMap([("external", True)])
-        doc["volumes"] = volumes
+            if services is not None and vol_name in external_vols:
+                volumes_map[vol_name] = CommentedMap([("external", True)])
+            elif services is None:
+                # Default behaviour: all external (existing host volumes)
+                volumes_map[vol_name] = CommentedMap([("external", True)])
+            else:
+                volumes_map[vol_name] = CommentedMap()
+        doc["volumes"] = volumes_map
         doc.yaml_set_comment_before_after_key(
             "volumes",
             before=(
@@ -165,10 +192,15 @@ def generate(
 
     # Top-level networks
     if all_networks:
-        networks = CommentedMap()
+        networks_map = CommentedMap()
         for net_name in sorted(all_networks):
-            networks[net_name] = CommentedMap([("external", True)])
-        doc["networks"] = networks
+            if services is not None and net_name in external_nets:
+                networks_map[net_name] = CommentedMap([("external", True)])
+            elif services is None:
+                networks_map[net_name] = CommentedMap([("external", True)])
+            else:
+                networks_map[net_name] = CommentedMap()
+        doc["networks"] = networks_map
         doc.yaml_set_comment_before_after_key(
             "networks",
             before=(
@@ -178,6 +210,21 @@ def generate(
         )
 
     return _dump_yaml(doc)
+
+
+def _resources_used_by(containers: list[ContainerInfo], kind: str) -> set[str]:
+    """Collect network or volume names used by a set of containers."""
+    names: set[str] = set()
+    for c in containers:
+        if kind == "networks":
+            for n in c.networks:
+                if n.name not in _DEFAULT_NETWORKS:
+                    names.add(n.name)
+        elif kind == "volumes":
+            for m in c.mounts:
+                if m.type == "volume" and not _is_anonymous_volume(m.source):
+                    names.add(m.source)
+    return names
 
 
 def _header_comment(
@@ -545,244 +592,3 @@ def _dump_yaml(doc: CommentedMap) -> str:
     stream = StringIO()
     yaml.dump(doc, stream)
     return stream.getvalue()
-
-
-# --- Stack splitting (LLD-035) ---
-
-
-@dataclass(frozen=True)
-class CrossStackDependency:
-    """A dependency that crosses stack boundaries."""
-
-    source_service: str
-    source_stack: str
-    target_service: str
-    target_stack: str
-    dependency_type: str
-    description: str
-
-
-@dataclass(frozen=True)
-class StackOutput:
-    """Generated compose output for a single stack."""
-
-    name: str
-    compose_yaml: str
-    services: tuple[str, ...]
-    shared_networks: tuple[str, ...]
-    shared_volumes: tuple[str, ...]
-    warnings: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class StackSplitResult:
-    """Result of splitting a DockerEnvironment into per-stack compose files."""
-
-    stacks: tuple[StackOutput, ...]
-    cross_stack_deps: tuple[CrossStackDependency, ...]
-    unmapped_services: tuple[str, ...]
-    shared_networks: tuple[str, ...]
-    shared_volumes: tuple[str, ...]
-
-
-def generate_stacks(
-    env: DockerEnvironment,
-    *,
-    include_stopped: bool = False,
-    group_by: str = "project",
-    stack_mapping: dict[str, str] | None = None,
-) -> StackSplitResult:
-    """Split a DockerEnvironment into per-stack compose outputs.
-
-    group_by="project": groups by com.docker.compose.project label.
-    group_by="mapping": uses stack_mapping (service_name → stack_name).
-    """
-    if group_by == "mapping" and stack_mapping is None:
-        msg = "stack_mapping is required when group_by='mapping'"
-        raise ValueError(msg)
-    if group_by not in ("project", "mapping"):
-        msg = f"group_by must be 'project' or 'mapping', got '{group_by}'"
-        raise ValueError(msg)
-
-    containers = list(env.containers)
-    if not include_stopped:
-        containers = [c for c in containers if c.status == "running"]
-
-    # Build service name lookup (container.name → service_name)
-    name_to_service: dict[str, str] = {}
-    used_names: dict[str, int] = {}
-    for container in containers:
-        svc_name = _service_name(container)
-        if svc_name in used_names:
-            used_names[svc_name] += 1
-            svc_name = f"{svc_name}-{used_names[svc_name]}"
-        else:
-            used_names[svc_name] = 1
-        name_to_service[container.name] = svc_name
-
-    # Group containers into stacks
-    if group_by == "project":
-        groups = _group_by_project(containers)
-    else:
-        groups = _group_by_mapping(containers, name_to_service, stack_mapping or {})
-
-    # Build lookup: service_name → stack_name
-    service_to_stack: dict[str, str] = {}
-    stack_services: dict[str, list[str]] = {}
-    for stack_name, stack_containers in groups.items():
-        svc_names = []
-        for c in stack_containers:
-            svc = name_to_service[c.name]
-            service_to_stack[svc] = stack_name
-            svc_names.append(svc)
-        stack_services[stack_name] = svc_names
-
-    # Identify shared networks and volumes
-    shared_nets, shared_vols = _classify_shared_resources(groups)
-
-    # Detect cross-stack dependencies
-    cross_deps = _detect_cross_stack_deps(groups, name_to_service, service_to_stack)
-
-    # Generate per-stack compose YAML
-    stacks: list[StackOutput] = []
-    for stack_name in sorted(groups.keys()):
-        stack_containers = groups[stack_name]
-        stack_env = DockerEnvironment(
-            containers=tuple(sorted(stack_containers, key=lambda c: c.name)),
-            generated_at=env.generated_at,
-            docker_version=env.docker_version,
-            warnings=env.warnings,
-        )
-
-        yaml_str = generate(stack_env, include_stopped=include_stopped)
-
-        # Post-process: mark shared resources as external
-        stack_shared_nets = tuple(
-            n for n in shared_nets if _stack_uses_network(stack_containers, n)
-        )
-        stack_shared_vols = tuple(
-            v for v in shared_vols if _stack_uses_volume(stack_containers, v)
-        )
-
-        # Build warnings for this stack
-        warnings: list[str] = []
-        for dep in cross_deps:
-            if dep.source_stack == stack_name:
-                warnings.append(dep.description)
-
-        svc_names = tuple(sorted(name_to_service[c.name] for c in stack_containers))
-
-        stacks.append(
-            StackOutput(
-                name=stack_name,
-                compose_yaml=yaml_str,
-                services=svc_names,
-                shared_networks=stack_shared_nets,
-                shared_volumes=stack_shared_vols,
-                warnings=tuple(warnings),
-            )
-        )
-
-    # Collect unmapped services (mapping mode only)
-    unmapped: tuple[str, ...] = ()
-    if group_by == "mapping" and "_unmapped" in groups:
-        unmapped = tuple(sorted(name_to_service[c.name] for c in groups["_unmapped"]))
-
-    return StackSplitResult(
-        stacks=tuple(stacks),
-        cross_stack_deps=tuple(cross_deps),
-        unmapped_services=unmapped,
-        shared_networks=tuple(sorted(shared_nets)),
-        shared_volumes=tuple(sorted(shared_vols)),
-    )
-
-
-def _group_by_project(
-    containers: list[ContainerInfo],
-) -> dict[str, list[ContainerInfo]]:
-    """Group containers by compose project label."""
-    groups: dict[str, list[ContainerInfo]] = {}
-    for c in containers:
-        project = c.compose_project or "_default"
-        groups.setdefault(project, []).append(c)
-    return groups
-
-
-def _group_by_mapping(
-    containers: list[ContainerInfo],
-    name_to_service: dict[str, str],
-    stack_mapping: dict[str, str],
-) -> dict[str, list[ContainerInfo]]:
-    """Group containers by explicit stack mapping (service_name → stack_name)."""
-    groups: dict[str, list[ContainerInfo]] = {}
-    for c in containers:
-        svc_name = name_to_service[c.name]
-        stack = stack_mapping.get(svc_name, "_unmapped")
-        groups.setdefault(stack, []).append(c)
-    return groups
-
-
-def _classify_shared_resources(
-    groups: dict[str, list[ContainerInfo]],
-) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Identify networks and volumes shared across stacks."""
-    net_stacks: dict[str, set[str]] = {}
-    vol_stacks: dict[str, set[str]] = {}
-
-    for stack_name, containers in groups.items():
-        for c in containers:
-            for n in c.networks:
-                if n.name not in _DEFAULT_NETWORKS:
-                    net_stacks.setdefault(n.name, set()).add(stack_name)
-            for m in c.mounts:
-                if m.type == "volume" and not _is_anonymous_volume(m.source):
-                    vol_stacks.setdefault(m.source, set()).add(stack_name)
-
-    shared_nets = tuple(sorted(n for n, stacks in net_stacks.items() if len(stacks) > 1))
-    shared_vols = tuple(sorted(v for v, stacks in vol_stacks.items() if len(stacks) > 1))
-    return shared_nets, shared_vols
-
-
-def _detect_cross_stack_deps(
-    groups: dict[str, list[ContainerInfo]],
-    name_to_service: dict[str, str],
-    service_to_stack: dict[str, str],
-) -> tuple[CrossStackDependency, ...]:
-    """Detect dependencies between services in different stacks."""
-    deps: list[CrossStackDependency] = []
-
-    for stack_name, containers in groups.items():
-        for c in containers:
-            svc_name = name_to_service[c.name]
-
-            # Check network_mode: container:X / service:X
-            if c.network_mode and c.network_mode.startswith("container:"):
-                ref_container = c.network_mode.split(":", 1)[1]
-                ref_service = name_to_service.get(ref_container, ref_container)
-                ref_stack = service_to_stack.get(ref_service)
-                if ref_stack and ref_stack != stack_name:
-                    deps.append(
-                        CrossStackDependency(
-                            source_service=svc_name,
-                            source_stack=stack_name,
-                            target_service=ref_service,
-                            target_stack=ref_stack,
-                            dependency_type="network_mode",
-                            description=(
-                                f"{svc_name} uses network_mode: container:{ref_container}"
-                                f" which is in stack '{ref_stack}'"
-                            ),
-                        )
-                    )
-
-    return tuple(deps)
-
-
-def _stack_uses_network(containers: list[ContainerInfo], network: str) -> bool:
-    """Check if any container in a stack uses a network."""
-    return any(n.name == network for c in containers for n in c.networks)
-
-
-def _stack_uses_volume(containers: list[ContainerInfo], volume: str) -> bool:
-    """Check if any container in a stack uses a named volume."""
-    return any(m.type == "volume" and m.source == volume for c in containers for m in c.mounts)

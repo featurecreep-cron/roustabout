@@ -157,6 +157,11 @@ def main(url: str | None, api_key: str | None) -> None:
 @click.option("--docker-host", default=None, help="Docker host URL.")
 @click.option("--project", "filter_project", default=None, help="Filter by compose project.")
 @click.option(
+    "--containers",
+    default=None,
+    help="Comma-separated container names to include.",
+)
+@click.option(
     "--format",
     "output_format",
     type=click.Choice(["markdown", "json"]),
@@ -170,6 +175,7 @@ def snapshot(
     config_path: str | None,
     docker_host: str | None,
     filter_project: str | None,
+    containers: str | None,
     output_format: str,
 ) -> None:
     """Generate a markdown snapshot of the Docker environment."""
@@ -199,7 +205,8 @@ def snapshot(
     cfg = _load_cfg(config_path, **overrides)
 
     client = _connect(cfg.docker_host)
-    env = collect(client)
+    container_filter = containers.split(",") if containers else None
+    env = collect(client, containers=container_filter)
 
     if filter_project:
         env = filter_by_project(env, filter_project)
@@ -230,6 +237,11 @@ def snapshot(
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
 @click.option("--project", "filter_project", default=None, help="Filter by compose project.")
+@click.option(
+    "--containers",
+    default=None,
+    help="Comma-separated container names to include.",
+)
 @_state_path_option()
 @click.option(
     "--hide-accepted",
@@ -249,6 +261,7 @@ def audit(
     config_path: str | None,
     docker_host: str | None,
     filter_project: str | None,
+    containers: str | None,
     state_file: str | None,
     hide_accepted: bool,
     output_format: str,
@@ -273,7 +286,8 @@ def audit(
     cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
 
     client = _connect(cfg.docker_host)
-    env = collect(client)
+    container_filter = containers.split(",") if containers else None
+    env = collect(client, containers=container_filter)
 
     if filter_project:
         env = filter_by_project(env, filter_project)
@@ -318,6 +332,16 @@ def audit(
     "--filter-project", default=None, help="Only include containers from this compose project."
 )
 @click.option(
+    "--containers",
+    default=None,
+    help="Comma-separated container names to include.",
+)
+@click.option(
+    "--services",
+    default=None,
+    help="Comma-separated service names to include in output.",
+)
+@click.option(
     "--redact/--no-redact",
     default=True,
     help="Redact secrets in environment variables (default: redact).",
@@ -329,13 +353,16 @@ def generate(
     include_stopped: bool,
     project: str | None,
     filter_project: str | None,
+    containers: str | None,
+    services: str | None,
     redact: bool,
 ) -> None:
     """Generate a docker-compose.yml from running containers."""
     cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
 
     client = _connect(cfg.docker_host)
-    env = collect(client)
+    container_filter = containers.split(",") if containers else None
+    env = collect(client, containers=container_filter)
 
     if filter_project:
         env = filter_by_project(env, filter_project)
@@ -344,7 +371,10 @@ def generate(
         patterns = resolve_patterns(cfg.redact_patterns)
         env = redact_env(env, patterns=patterns)
 
-    yaml_output = run_generate(env, include_stopped=include_stopped, project_name=project)
+    svc_list = services.split(",") if services else None
+    yaml_output = run_generate(
+        env, include_stopped=include_stopped, project_name=project, services=svc_list
+    )
 
     if cfg.output:
         Path(cfg.output).write_text(yaml_output)
@@ -365,6 +395,11 @@ def generate(
 @click.option("--docker-host", default=None, help="Docker host URL.")
 @click.option("--project", "filter_project", default=None, help="Filter by compose project.")
 @click.option(
+    "--containers",
+    default=None,
+    help="Comma-separated container names to include.",
+)
+@click.option(
     "--strip-versions",
     is_flag=True,
     default=False,
@@ -375,6 +410,7 @@ def dr_plan(
     config_path: str | None,
     docker_host: str | None,
     filter_project: str | None,
+    containers: str | None,
     strip_versions: bool,
 ) -> None:
     """Generate a disaster recovery plan from running containers."""
@@ -390,7 +426,8 @@ def dr_plan(
     should_strip = strip_versions or cfg.strip_versions
 
     client = _connect(cfg.docker_host)
-    env = collect(client)
+    container_filter = containers.split(",") if containers else None
+    env = collect(client, containers=container_filter)
 
     if filter_project:
         env = filter_by_project(env, filter_project)
@@ -868,6 +905,11 @@ def disconnect_cmd() -> None:
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
 @click.option("--project", "filter_project", default=None, help="Filter by compose project.")
+@click.option(
+    "--containers",
+    default=None,
+    help="Comma-separated container names to include.",
+)
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON.")
 def net_check_cmd(
     source: str | None,
@@ -875,6 +917,7 @@ def net_check_cmd(
     config_path: str | None,
     docker_host: str | None,
     filter_project: str | None,
+    containers: str | None,
     as_json: bool,
 ) -> None:
     """Check network connectivity between containers.
@@ -889,14 +932,15 @@ def net_check_cmd(
       roustabout net-check              # check all pairs
       roustabout net-check --json       # all pairs as JSON
     """
-    from roustabout.net_check import check_all_connectivity, check_connectivity
+    from roustabout.network_inspect import check_all_connectivity, check_connectivity
 
     if (source is None) != (target is None):
         raise click.ClickException("Provide both SOURCE and TARGET, or neither for all pairs.")
 
     cfg = _load_cfg(config_path, docker_host=docker_host)
     client = _connect(cfg.docker_host)
-    env = collect(client)
+    container_filter = containers.split(",") if containers else None
+    env = collect(client, containers=container_filter)
 
     if filter_project:
         env = filter_by_project(env, filter_project)
@@ -925,6 +969,54 @@ def net_check_cmd(
         for r in results:
             icon = "✓" if r.reachable else "✗"
             click.echo(f"  {icon} {r.source} → {r.target}: {r.reason}")
+
+
+@main.command("migrate")
+@click.option(
+    "--output-dir", "-o", required=True, type=click.Path(),
+    help="Directory for compose and .env files.",
+)
+@click.option(
+    "--config", "config_path", type=click.Path(exists=True),
+    default=None, help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+@click.option("--services", default=None, help="Comma-separated service names to include.")
+@click.option("--include-stopped", is_flag=True, default=False, help="Include stopped containers.")
+@click.option("--dry-run", is_flag=True, default=False, help="Preview without writing files.")
+def migrate(
+    output_dir: str,
+    config_path: str | None,
+    docker_host: str | None,
+    services: str | None,
+    include_stopped: bool,
+    dry_run: bool,
+) -> None:
+    """Generate compose file with secrets extracted to .env."""
+    from roustabout.supply_chain import generate_and_extract
+
+    cfg = _load_cfg(config_path, docker_host=docker_host)
+    client = _connect(cfg.docker_host)
+    env = collect(client)
+
+    svc_list = services.split(",") if services else None
+    result = generate_and_extract(
+        env,
+        Path(output_dir),
+        services=svc_list,
+        include_stopped=include_stopped,
+        dry_run=dry_run,
+    )
+
+    click.echo(f"Services: {', '.join(result.services)}")
+    click.echo(f"Secrets extracted: {result.secrets_extracted}")
+    click.echo(f"Compose: {result.compose_path}")
+    click.echo(f"Env file: {result.env_file_path}")
+    if result.warnings:
+        for w in result.warnings:
+            click.echo(f"  ⚠ {w}", err=True)
+    if dry_run:
+        click.echo("(dry run — no files written)")
 
 
 @main.command("version")

@@ -164,9 +164,28 @@ def _check_allowlist(
 def load_exec_config(target: str) -> ExecConfig | None:
     """Load exec configuration for a container from roustabout.toml.
 
-    Stub until config module is implemented. Returns None.
+    Reads from [exec.<container>] section. If no section exists for this
+    container, returns None (caller falls back to denylist mode).
+
+    Example config:
+        [exec.nginx]
+        allowed = ["cat /etc/nginx", "nginx -t", "getent hosts"]
+        timeout = 10
     """
-    return None
+    try:
+        from roustabout.config import load_config
+
+        cfg = load_config()
+        exec_section = cfg.raw.get("exec", {})
+        container_config = exec_section.get(target)
+        if not container_config or not isinstance(container_config, dict):
+            return None
+        return ExecConfig(
+            allowed=tuple(container_config.get("allowed", ())),
+            timeout=container_config.get("timeout", 30),
+        )
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _process_output(raw: bytes | None) -> tuple[str, bool]:

@@ -38,6 +38,17 @@ class FileOpsConfig:
     ttl_hours: int = DEFAULT_STAGING_TTL_HOURS
     max_total_size: int = MAX_STAGING_TOTAL
 
+    def __post_init__(self) -> None:
+        """Validate roots are not filesystem root."""
+        for field_name in ("root", "read_root"):
+            value = getattr(self, field_name).resolve()
+            if value == Path("/"):
+                msg = (
+                    f"{field_name} must not be '/' — "
+                    f"file operations need a scoped root directory"
+                )
+                raise ValueError(msg)
+
 
 @dataclass(frozen=True)
 class FileReadResult:

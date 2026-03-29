@@ -192,8 +192,11 @@ def check_container_health(
         bindings = port_bindings.get(port_key)
         if bindings:
             host_port = bindings[0].get("HostPort")
+            host_ip = bindings[0].get("HostIp") or ""
             if host_port:
-                port_open = _check_port("127.0.0.1", int(host_port), profile.timeout)
+                # Use the bound IP, defaulting to localhost for 0.0.0.0/empty
+                check_ip = host_ip if host_ip and host_ip != "0.0.0.0" else "127.0.0.1"
+                port_open = _check_port(check_ip, int(host_port), profile.timeout)
                 checks_performed.append("port_check")
 
     # Service probe

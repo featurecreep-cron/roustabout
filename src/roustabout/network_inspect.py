@@ -361,27 +361,17 @@ def probe_connectivity(
 
     _validate_host(target_host, "target_host")
 
-    # Approach 1: bash /dev/tcp
-    cmd = (
-        "bash",
-        "-c",
-        f"echo > /dev/tcp/{target_host}/{port} && echo CONNECTED || echo FAILED",
-    )
-    result = exec_execute(
-        docker_session,
-        ExecCommand(target=source_container, command=cmd, timeout=timeout + 2),
-    )
-
-    if result.success and "CONNECTED" in result.stdout:
+    if not (0 < port <= 65535):
         return ConnectivityProbeResult(
             source=source_container,
             target=target_host,
             port=port,
-            reachable=True,
+            reachable=False,
             latency_ms=None,
+            error=f"Invalid port: {port}",
         )
 
-    # Approach 2: nc/ncat
+    # nc/ncat — available in most Alpine and Debian-based containers
     cmd = ("nc", "-z", "-w", str(timeout), target_host, str(port))
     result = exec_execute(
         docker_session,

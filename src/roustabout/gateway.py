@@ -236,19 +236,24 @@ def _check_blast_radius(command: MutationCommand, session: Session) -> None:
 def _build_suggested_command(command: MutationCommand) -> str:
     """Build the shell command an operator should run for DIRECTED friction.
 
-    Returns a copy-pasteable command string.
+    Returns a copy-pasteable command string. All values are shell-quoted
+    to prevent injection via malicious container names or paths.
     """
+    import shlex
+
+    target = shlex.quote(command.target)
     if command.action in ("start", "stop", "restart"):
-        return f"docker {command.action} {command.target}"
+        return f"docker {command.action} {target}"
     elif command.action == "recreate":
-        return f"docker compose up -d {command.target}"
+        return f"docker compose up -d {target}"
     elif command.action == "exec" and command.exec_command:
-        cmd_str = " ".join(command.exec_command)
-        return f"docker exec {command.target} {cmd_str}"
+        cmd_str = " ".join(shlex.quote(c) for c in command.exec_command)
+        return f"docker exec {target} {cmd_str}"
     elif command.action == "compose-apply" and command.compose_path:
-        return f"docker compose -f {command.compose_path} up -d"
+        path = shlex.quote(command.compose_path)
+        return f"docker compose -f {path} up -d"
     else:
-        return f"# Manual action required: {command.action} on {command.target}"
+        return f"# Manual action required: {command.action} on {target}"
 
 
 def _handle_staging(

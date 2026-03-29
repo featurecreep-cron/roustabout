@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import docker.errors
-import requests.exceptions
+import requests.exceptions  # type: ignore[import-untyped]
 
 from roustabout.permissions import FrictionMechanism
 from roustabout.redactor import sanitize
@@ -239,7 +239,7 @@ def execute(
 
     # Resolve container
     try:
-        container = docker_session.client.containers.get(cmd.target)
+        container = docker_session.client.containers.get(cmd.target)  # type: ignore[attr-defined]
     except docker.errors.NotFound:
         return ExecResult(
             success=False,

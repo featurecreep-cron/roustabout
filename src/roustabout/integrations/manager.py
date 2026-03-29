@@ -74,18 +74,18 @@ class IntegrationManager:
 
         if "traefik" in integrations:
             cfg = integrations["traefik"]
-            adapters["traefik"] = TraefikAdapter(url=cfg.get("url", ""))
+            adapters["traefik"] = TraefikAdapter(url=cfg.get("url", ""))  # type: ignore[assignment]
 
         if "uptime_kuma" in integrations:
             cfg = integrations["uptime_kuma"]
-            adapters["uptime_kuma"] = UptimeKumaAdapter(
+            adapters["uptime_kuma"] = UptimeKumaAdapter(  # type: ignore[assignment]
                 url=cfg.get("url", ""),
                 api_key=cfg.get("api_key", ""),
             )
 
         if "grafana" in integrations:
             cfg = integrations["grafana"]
-            adapters["grafana"] = GrafanaAdapter(
+            adapters["grafana"] = GrafanaAdapter(  # type: ignore[assignment]
                 url=cfg.get("url", ""),
                 api_key=cfg.get("api_key", ""),
             )

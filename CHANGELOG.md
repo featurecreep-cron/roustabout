@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.13.1 (2026-03-29)
+
+### Bug Fixes
+
+- Apply ruff format to all modified files
+  ([`88a38e6`](https://github.com/featurecreep-cron/roustabout/commit/88a38e6f57e5ab564d5074b3d7669185bd51d92f))
+
+
 ## v0.13.0 (2026-03-29)
 
 ### Bug Fixes

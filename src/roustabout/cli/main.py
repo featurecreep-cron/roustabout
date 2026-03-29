@@ -1326,6 +1326,172 @@ def migrate(
         click.echo("(dry run — no files written)")
 
 
+@main.command("exec")
+@click.argument("container_name")
+@click.argument("command", nargs=-1, required=True)
+@click.option("--user", default=None, help="User to run as inside the container.")
+@click.option("--workdir", default=None, help="Working directory inside the container.")
+@click.option("--timeout", default=30, type=int, help="Timeout in seconds (default 30).")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+def exec_cmd(
+    container_name: str,
+    command: tuple[str, ...],
+    user: str | None,
+    workdir: str | None,
+    timeout: int,
+    config_path: str | None,
+    docker_host: str | None,
+) -> None:
+    """Run a command inside a container.
+
+    Uses denylist safety model — blocked binaries and patterns are rejected.
+
+    \b
+    Examples:
+      roustabout exec myapp -- cat /etc/nginx/conf.d/default.conf
+      roustabout exec myapp -- getent hosts othercontainer
+      roustabout exec myapp --user nobody -- ls /tmp
+    """
+    from roustabout.exec import DeniedCommand, ExecCommand, execute
+    from roustabout.session import DockerSession
+
+    cfg = _load_cfg(config_path, docker_host=docker_host)
+    client = _connect(cfg.docker_host)
+    docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
+
+    cmd = ExecCommand(
+        target=container_name,
+        command=command,
+        user=user,
+        workdir=workdir,
+        timeout=timeout,
+    )
+
+    try:
+        result = execute(docker_session, cmd)
+    except DeniedCommand as e:
+        raise click.ClickException(str(e))
+
+    if result.stdout:
+        click.echo(result.stdout)
+    if result.stderr:
+        click.echo(result.stderr, err=True)
+    if result.error:
+        raise click.ClickException(result.error)
+    if result.truncated:
+        click.echo("(output truncated)", err=True)
+
+    raise SystemExit(result.exit_code or 0)
+
+
+@main.command("file-read")
+@click.argument("path")
+@click.option(
+    "--root",
+    default="/",
+    help="Root directory for path validation (default /).",
+)
+def file_read_cmd(path: str, root: str) -> None:
+    """Read a file from the Docker host.
+
+    Content is redacted for secrets. Large files are truncated.
+
+    \b
+    Examples:
+      roustabout file-read /etc/nginx/conf.d/default.conf
+      roustabout file-read compose.yml --root /opt/stacks
+    """
+    from roustabout.file_ops import FileOpsConfig, read_file
+
+    root_path = Path(root).resolve()
+    config = FileOpsConfig(
+        root=root_path,
+        read_root=root_path,
+        staging_root=root_path / ".roustabout-staging",
+    )
+
+    result = read_file(path, config=config)
+
+    if not result.success:
+        raise click.ClickException(result.error or "Read failed")
+
+    click.echo(result.content)
+    if result.truncated:
+        click.echo(f"(truncated — file is {result.size} bytes)", err=True)
+
+
+@main.command("file-write")
+@click.argument("path")
+@click.argument("content_file", type=click.File("r"))
+@click.option(
+    "--root",
+    default="/",
+    help="Root directory for path validation (default /).",
+)
+@click.option(
+    "--direct",
+    is_flag=True,
+    default=False,
+    help="Write directly instead of staging.",
+)
+def file_write_cmd(
+    path: str,
+    content_file: Any,
+    root: str,
+    direct: bool,
+) -> None:
+    """Write a file to the Docker host.
+
+    By default, writes are staged for operator review. Use --direct to
+    write immediately (with automatic backup).
+
+    \b
+    Examples:
+      roustabout file-write /opt/stacks/myapp/compose.yml new-compose.yml
+      roustabout file-write config.yml updated.yml --root /opt/stacks --direct
+    """
+    from roustabout.file_ops import FileOpsConfig, write_file
+    from roustabout.permissions import FrictionMechanism
+
+    content = content_file.read()
+    root_path = Path(root).resolve()
+    config = FileOpsConfig(
+        root=root_path,
+        read_root=root_path,
+        staging_root=root_path / ".roustabout-staging",
+    )
+
+    friction = FrictionMechanism.DIRECT if direct else FrictionMechanism.STAGE
+    result = write_file(
+        path,
+        content,
+        config=config,
+        friction=friction,
+        session_id="cli",
+    )
+
+    if not result.success:
+        raise click.ClickException(result.error or "Write failed")
+
+    if result.staged:
+        click.echo(f"Staged at {result.staging_path}")
+        if result.diff:
+            click.echo(result.diff)
+        if result.apply_command:
+            click.echo(f"To apply: {result.apply_command}")
+    else:
+        click.echo(f"Written to {result.path}")
+        if result.backup_path:
+            click.echo(f"Backup at {result.backup_path}")
+
+
 @main.command("version")
 def version_cmd() -> None:
     """Show roustabout version."""

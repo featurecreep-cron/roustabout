@@ -2,17 +2,21 @@
 
 Every mutation from every interface (CLI, MCP, future API) routes through
 gateway.execute(). The gateway enforces the gate sequence, logs to the
-audit trail, and dispatches notifications.
+audit trail, dispatches notifications, and implements the friction model's
+confirmation and directed-command gates.
 
 Gate sequence:
 0. Pre-gate inspect
 1. Lockdown check
-2. Permission check
+2. Permission check → friction routing
+   - DIRECTED: return suggested command, no mutation
+   - STAGE: delegate to staging handler, no mutation
 3. Rate limit reserve
 4. Circuit breaker check
 5. Blast radius check
-6. Pre-hash from step 0 (TargetNotFound if None)
+6. Confirmation gate (CONFIRM friction only)
 7. TOCTOU verify (fresh read vs pre-hash)
+7b. Pre-mutation backup (stub)
 8. Execute mutation
 9. Audit log + notification
 """
@@ -22,13 +26,16 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
 import docker.errors
 
 from roustabout import lockdown, permissions
-from roustabout.session import PermissionTier, RateLimitExceeded, Session, get_current_session
+from roustabout.permissions import FrictionMechanism
+from roustabout.session import RateLimitExceeded, Session, get_current_session
 from roustabout.state_db import StateDB
 
 logger = logging.getLogger(__name__)
@@ -37,10 +44,12 @@ logger = logging.getLogger(__name__)
 _MUTATION_ACTIONS = frozenset(
     action
     for action, cap in permissions.ACTION_CAPABILITY.items()
-    if permissions.CAPABILITY_TIER[cap] >= PermissionTier.OPERATE
+    if cap not in permissions._READ_CAPABILITIES
 )
 
 # Command and result types
+
+DEFAULT_CONFIRMATION_TIMEOUT = 300  # 5 minutes
 
 
 @dataclass(frozen=True)
@@ -53,6 +62,8 @@ class MutationCommand:
     new_image: str | None = None
     new_env: tuple[tuple[str, str], ...] | None = None
     new_labels: tuple[tuple[str, str], ...] | None = None
+    exec_command: tuple[str, ...] | None = None
+    compose_path: str | None = None
     dry_run: bool = False
 
 
@@ -65,10 +76,29 @@ class GatewayResult:
     target: str
     pre_state_hash: str
     post_state_hash: str | None
-    result: str  # success, failed, rolled-back, denied, dry-run
+    # success, failed, rolled-back, denied, dry-run, directed,
+    # pending-confirmation, staged
+    result: str
     error: str | None = None
     gate_failed: str | None = None
     audit_id: int | None = None
+    friction: str | None = None
+    suggested_command: str | None = None
+    confirmation_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ConfirmationRequest:
+    """Pending confirmation for an OPERATE-tier operation."""
+
+    id: str
+    command: MutationCommand
+    session_id: str
+    semantic_diff: str | None
+    audit_findings: list[str] | None
+    created_at: float
+    expires_at: float
+    pre_state_hash: str
 
 
 # Gate exceptions
@@ -203,6 +233,105 @@ def _check_blast_radius(command: MutationCommand, session: Session) -> None:
     """
 
 
+def _build_suggested_command(command: MutationCommand) -> str:
+    """Build the shell command an operator should run for DIRECTED friction.
+
+    Returns a copy-pasteable command string. All values are shell-quoted
+    to prevent injection via malicious container names or paths.
+    """
+    import shlex
+
+    target = shlex.quote(command.target)
+    if command.action in ("start", "stop", "restart"):
+        return f"docker {command.action} {target}"
+    elif command.action == "recreate":
+        return f"docker compose up -d {target}"
+    elif command.action == "exec" and command.exec_command:
+        cmd_str = " ".join(shlex.quote(c) for c in command.exec_command)
+        return f"docker exec {target} {cmd_str}"
+    elif command.action == "compose-apply" and command.compose_path:
+        path = shlex.quote(command.compose_path)
+        return f"docker compose -f {path} up -d"
+    else:
+        return f"# Manual action required: {command.action} on {target}"
+
+
+def _handle_staging(
+    command: MutationCommand,
+    session: Session,
+    db: StateDB | None,
+) -> GatewayResult:
+    """Handle STAGE friction — write to staging area, return apply command.
+
+    Stub until file_ops module is implemented.
+    """
+    return GatewayResult(
+        success=True,
+        action=command.action,
+        target=command.target,
+        pre_state_hash="",
+        post_state_hash=None,
+        result="staged",
+        friction="stage",
+    )
+
+
+def _create_confirmation(
+    command: MutationCommand,
+    session: Session,
+    target_info: Any,
+    pre_hash: str | None,
+) -> ConfirmationRequest:
+    """Create a pending confirmation request for OPERATE-tier operations."""
+    now = time.time()
+    return ConfirmationRequest(
+        id=str(uuid.uuid4()),
+        command=command,
+        session_id=session.id,
+        semantic_diff=None,
+        audit_findings=None,
+        created_at=now,
+        expires_at=now + DEFAULT_CONFIRMATION_TIMEOUT,
+        pre_state_hash=pre_hash or "",
+    )
+
+
+def _run_pre_mutation_backup(
+    session: Session,
+    target: str,
+    db: StateDB | None,
+) -> None:
+    """Run pre-mutation backup command if configured.
+
+    Stub until exec module is implemented. Always returns None (no backup configured).
+    """
+    return None
+
+
+def approve_confirmation(
+    confirmation_id: str,
+    *,
+    db: StateDB | None = None,
+) -> GatewayResult:
+    """Approve a pending confirmation and execute the operation.
+
+    Stub until confirmation persistence is implemented.
+    """
+    raise NotImplementedError("Confirmation approval not yet implemented")
+
+
+def reject_confirmation(
+    confirmation_id: str,
+    *,
+    db: StateDB | None = None,
+) -> None:
+    """Reject a pending confirmation.
+
+    Stub until confirmation persistence is implemented.
+    """
+    raise NotImplementedError("Confirmation rejection not yet implemented")
+
+
 # Public API
 
 
@@ -234,8 +363,30 @@ def execute(
         # Step 1: Lockdown
         lockdown.check()
 
-        # Step 2: Permission check
-        permissions.check(s, command.action, target_info)
+        # Step 2: Permission check → PermissionResult (friction model)
+        perm_result = permissions.check(s, command.action, target_info)
+
+        # --- Friction routing ---
+
+        # DIRECTED: No mutation. Return the command for the operator to run.
+        if perm_result.friction == FrictionMechanism.DIRECTED:
+            suggested = _build_suggested_command(command)
+            return GatewayResult(
+                success=True,
+                action=command.action,
+                target=command.target,
+                pre_state_hash="",
+                post_state_hash=None,
+                result="directed",
+                friction="directed",
+                suggested_command=suggested,
+            )
+
+        # STAGE: Delegate to staging handler (file_ops or compose module).
+        if perm_result.friction == FrictionMechanism.STAGE:
+            return _handle_staging(command, s, database)
+
+        # --- From here: DIRECT, CONFIRM, ALLOWLIST, DENYLIST proceed through gates ---
 
         # Step 3: Rate limit reserve
         reservation = s.rate_limiter.reserve(command.target)
@@ -252,7 +403,66 @@ def execute(
         # Step 5: Blast radius
         _check_blast_radius(command, s)
 
-        # Step 6: Target existence (pre_hash is None if not found)
+        # Step 6: Confirmation gate (CONFIRM friction only)
+        if perm_result.friction == FrictionMechanism.CONFIRM:
+            confirmation = _create_confirmation(command, s, target_info, pre_hash)
+            return GatewayResult(
+                success=False,
+                action=command.action,
+                target=command.target,
+                pre_state_hash=pre_hash or "",
+                post_state_hash=None,
+                result="pending-confirmation",
+                friction="confirm",
+                confirmation_id=confirmation.id,
+            )
+
+        # Step 7: Compose-apply takes a different path — no TOCTOU
+        # (it operates on a compose file, not a single container)
+        if command.action == "compose-apply" and command.compose_path:
+            if command.dry_run:
+                return GatewayResult(
+                    success=True,
+                    action=command.action,
+                    target=command.target,
+                    pre_state_hash="",
+                    post_state_hash=None,
+                    result="dry-run",
+                    friction=perm_result.friction.value,
+                )
+
+            from pathlib import Path
+
+            from roustabout.compose_gitops import apply_compose
+
+            apply_result = apply_compose(Path(command.compose_path))
+
+            s.rate_limiter.commit(reservation)
+            reservation = None
+
+            result_str = "success" if apply_result.success else "failed"
+
+            from roustabout import notifications
+
+            notifications.send_mutation_event(
+                action=command.action,
+                target=command.target,
+                success=apply_result.success,
+                session_id=s.id,
+            )
+
+            return GatewayResult(
+                success=apply_result.success,
+                action=command.action,
+                target=command.target,
+                pre_state_hash="",
+                post_state_hash=None,
+                result=result_str,
+                error=apply_result.error,
+                friction=perm_result.friction.value,
+            )
+
+        # Step 7: Target existence (pre_hash is None if not found)
         if pre_hash is None:
             raise TargetNotFound(target=command.target)
 
@@ -267,6 +477,9 @@ def execute(
                 actual_hash=verify_hash,
             )
 
+        # Step 7b: Pre-mutation backup (stub — always None)
+        _run_pre_mutation_backup(s, command.target, database)
+
         # Step 8: Dry-run check
         if command.dry_run:
             return GatewayResult(
@@ -276,6 +489,7 @@ def execute(
                 pre_state_hash=verify_hash,
                 post_state_hash=None,
                 result="dry-run",
+                friction=perm_result.friction.value,
             )
 
         # Step 9: Execute mutation
@@ -332,6 +546,7 @@ def execute(
             result=result_str,
             error=mutation_result.error,
             audit_id=audit_id,
+            friction=perm_result.friction.value,
         )
 
     except (

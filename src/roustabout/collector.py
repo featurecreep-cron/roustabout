@@ -28,8 +28,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def collect(client: docker.DockerClient) -> DockerEnvironment:
-    """Snapshot the entire Docker environment into model objects.
+def collect(
+    client: docker.DockerClient,
+    *,
+    containers: list[str] | None = None,
+) -> DockerEnvironment:
+    """Snapshot the Docker environment into model objects.
+
+    Args:
+        client: Docker API client.
+        containers: Optional list of container names to include.
+            If None, all containers are collected.
 
     Does NOT catch DockerException from client.containers.list() — if the
     daemon is unreachable, that's a hard failure the caller must handle.
@@ -37,12 +46,18 @@ def collect(client: docker.DockerClient) -> DockerEnvironment:
     """
     raw_containers = client.containers.list(all=True)
 
-    containers: list[ContainerInfo] = []
+    if containers is not None:
+        wanted = set(containers)
+        raw_containers = [
+            c for c in raw_containers if getattr(c, "name", "").lstrip("/") in wanted
+        ]
+
+    collected: list[ContainerInfo] = []
     warnings: list[str] = []
 
     for raw in raw_containers:
         try:
-            containers.append(_collect_container(raw))
+            collected.append(_collect_container(raw))
         except Exception as exc:
             name = getattr(raw, "name", "unknown")
             msg = f"container '{name}' skipped: {exc}"
@@ -53,7 +68,7 @@ def collect(client: docker.DockerClient) -> DockerEnvironment:
     daemon = _collect_daemon_info(client)
 
     return make_environment(
-        containers=containers,
+        containers=collected,
         generated_at=datetime.now(UTC).isoformat(),
         docker_version=version_info.get("Version", "unknown"),
         warnings=warnings,

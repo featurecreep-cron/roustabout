@@ -85,12 +85,12 @@ class HTTPBackend:
     def snapshot(self, *, redact: bool = True, fmt: str = "json") -> dict[str, Any] | str:
         if fmt == "markdown":
             return self._get_text("/v1/snapshot", format="markdown")
-        return self._get("/v1/snapshot")
+        return self._get("/v1/snapshot", format=fmt)
 
     def audit(self, *, fmt: str = "json") -> dict[str, Any] | str:
         if fmt == "markdown":
             return self._get_text("/v1/audit", format="markdown")
-        return self._get("/v1/audit")
+        return self._get("/v1/audit", format=fmt)
 
     def health(self, name: str | None = None) -> dict[str, Any]:
         if name:

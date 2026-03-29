@@ -38,7 +38,7 @@ class TestCapabilities:
 
 class TestListCapabilities:
     def test_returns_all_capabilities(self):
-        from roustabout.permissions import CAPABILITY_TIER, list_capabilities
+        from roustabout.permissions import ACTION_CAPABILITY, list_capabilities
         from roustabout.session import (
             DockerSession,
             RateLimiter,
@@ -56,9 +56,10 @@ class TestListCapabilities:
         )
 
         caps = list_capabilities(session)
-        assert len(caps) == len(CAPABILITY_TIER)
-        # Each has capability, tier, available keys
+        assert len(caps) == len(ACTION_CAPABILITY)
+        # Each has capability, action, friction, available keys
         for c in caps:
             assert "capability" in c
-            assert "tier" in c
+            assert "action" in c
+            assert "friction" in c
             assert "available" in c

@@ -82,6 +82,7 @@ def generate(
     *,
     include_stopped: bool = False,
     project_name: str | None = None,
+    services: list[str] | None = None,
 ) -> str:
     """Generate a docker-compose.yml from a DockerEnvironment.
 
@@ -89,13 +90,26 @@ def generate(
         env: The environment snapshot to convert.
         include_stopped: Include stopped containers (default: running only).
         project_name: Optional compose project name for the x-project comment.
+        services: Optional list of service/container names to include.
+            When provided, only containers whose name or compose service name
+            matches are included. Networks and volumes used by excluded
+            containers are marked ``external: true``.
 
     Returns:
         A valid docker-compose.yml as a string.
     """
-    containers = list(env.containers)
+    all_containers = list(env.containers)
     if not include_stopped:
-        containers = [c for c in containers if c.status == "running"]
+        all_containers = [c for c in all_containers if c.status == "running"]
+
+    # Apply services filter
+    if services is not None:
+        svc_set = set(services)
+        containers = [
+            c for c in all_containers if c.name in svc_set or _service_name(c) in svc_set
+        ]
+    else:
+        containers = all_containers
 
     if not containers:
         return "# No running containers found.\n"
@@ -120,14 +134,14 @@ def generate(
     )
 
     # Build services
-    services = CommentedMap()
+    svc_map = CommentedMap()
     all_volumes: set[str] = set()
     all_networks: set[str] = set()
 
     for container in containers:
         service_name = name_to_service[container.name]
         service = _build_service(container, name_to_service)
-        services[service_name] = service
+        svc_map[service_name] = service
 
         # Track volumes and networks for top-level declarations
         for mount in container.mounts:
@@ -139,19 +153,35 @@ def generate(
 
         # Add compose origin comment
         if container.compose_config_files:
-            services.yaml_set_comment_before_after_key(
+            svc_map.yaml_set_comment_before_after_key(
                 service_name,
                 before=f"Originally from compose file: {container.compose_config_files}",
             )
 
-    doc["services"] = services
+    doc["services"] = svc_map
+
+    # When filtering by services, determine which resources are also used by
+    # excluded containers — those must stay external.
+    if services is not None:
+        excluded = [c for c in all_containers if c not in containers]
+        external_nets = _resources_used_by(excluded, "networks")
+        external_vols = _resources_used_by(excluded, "volumes")
+    else:
+        external_nets = set()
+        external_vols = set()
 
     # Top-level volumes (only named volumes, not anonymous)
     if all_volumes:
-        volumes = CommentedMap()
+        volumes_map = CommentedMap()
         for vol_name in sorted(all_volumes):
-            volumes[vol_name] = CommentedMap([("external", True)])
-        doc["volumes"] = volumes
+            if services is not None and vol_name in external_vols:
+                volumes_map[vol_name] = CommentedMap([("external", True)])
+            elif services is None:
+                # Default behaviour: all external (existing host volumes)
+                volumes_map[vol_name] = CommentedMap([("external", True)])
+            else:
+                volumes_map[vol_name] = CommentedMap()
+        doc["volumes"] = volumes_map
         doc.yaml_set_comment_before_after_key(
             "volumes",
             before=(
@@ -162,10 +192,15 @@ def generate(
 
     # Top-level networks
     if all_networks:
-        networks = CommentedMap()
+        networks_map = CommentedMap()
         for net_name in sorted(all_networks):
-            networks[net_name] = CommentedMap([("external", True)])
-        doc["networks"] = networks
+            if services is not None and net_name in external_nets:
+                networks_map[net_name] = CommentedMap([("external", True)])
+            elif services is None:
+                networks_map[net_name] = CommentedMap([("external", True)])
+            else:
+                networks_map[net_name] = CommentedMap()
+        doc["networks"] = networks_map
         doc.yaml_set_comment_before_after_key(
             "networks",
             before=(
@@ -175,6 +210,21 @@ def generate(
         )
 
     return _dump_yaml(doc)
+
+
+def _resources_used_by(containers: list[ContainerInfo], kind: str) -> set[str]:
+    """Collect network or volume names used by a set of containers."""
+    names: set[str] = set()
+    for c in containers:
+        if kind == "networks":
+            for n in c.networks:
+                if n.name not in _DEFAULT_NETWORKS:
+                    names.add(n.name)
+        elif kind == "volumes":
+            for m in c.mounts:
+                if m.type == "volume" and not _is_anonymous_volume(m.source):
+                    names.add(m.source)
+    return names
 
 
 def _header_comment(

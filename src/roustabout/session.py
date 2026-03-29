@@ -48,11 +48,15 @@ _OBSERVE_CAPABILITIES: frozenset[str] = frozenset(
     {
         "can_snapshot",
         "can_audit",
+        "can_audit_compose",
         "can_diff",
         "can_generate",
         "can_read_logs",
         "can_read_health",
         "can_dr_plan",
+        "can_file_read",
+        "can_digest_age",
+        "can_reverse_map_env",
     }
 )
 
@@ -69,7 +73,9 @@ _OPERATE_CAPABILITIES: frozenset[str] = _OBSERVE_CAPABILITIES | frozenset(
 _ELEVATE_CAPABILITIES: frozenset[str] = _OPERATE_CAPABILITIES | frozenset(
     {
         "can_update_image",
-        "can_modify_compose",
+        "can_recreate_spec_change",
+        "can_compose_apply",
+        "can_file_write",
         "can_prune",
         "can_exec",
         "can_modify_secrets",

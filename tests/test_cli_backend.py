@@ -98,7 +98,7 @@ class TestHTTPBackend:
         backend._client = mock_client
 
         result = backend.snapshot()
-        mock_client.get.assert_called_once_with("/v1/snapshot", params=None)
+        mock_client.get.assert_called_once_with("/v1/snapshot", params={"format": "json"})
         assert result == {"containers": []}
 
     def test_mutate_calls_post(self):
@@ -159,6 +159,51 @@ class TestHTTPBackend:
 
         with pytest.raises(RuntimeError, match="Rate limit exceeded"):
             backend.mutate("nginx", "restart")
+
+    def test_snapshot_markdown_uses_get_text(self):
+        from roustabout.cli.http import HTTPBackend
+
+        backend = HTTPBackend.__new__(HTTPBackend)
+        mock_client = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.is_success = True
+        mock_resp.text = "# Snapshot\n..."
+        mock_client.get.return_value = mock_resp
+        backend._client = mock_client
+
+        result = backend.snapshot(fmt="markdown")
+        mock_client.get.assert_called_once_with("/v1/snapshot", params={"format": "markdown"})
+        assert result == "# Snapshot\n..."
+
+    def test_audit_passes_format_param(self):
+        from roustabout.cli.http import HTTPBackend
+
+        backend = HTTPBackend.__new__(HTTPBackend)
+        mock_client = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.is_success = True
+        mock_resp.json.return_value = {"findings": []}
+        mock_client.get.return_value = mock_resp
+        backend._client = mock_client
+
+        result = backend.audit()
+        mock_client.get.assert_called_once_with("/v1/audit", params={"format": "json"})
+        assert result == {"findings": []}
+
+    def test_audit_markdown_uses_get_text(self):
+        from roustabout.cli.http import HTTPBackend
+
+        backend = HTTPBackend.__new__(HTTPBackend)
+        mock_client = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.is_success = True
+        mock_resp.text = "# Audit\n..."
+        mock_client.get.return_value = mock_resp
+        backend._client = mock_client
+
+        result = backend.audit(fmt="markdown")
+        mock_client.get.assert_called_once_with("/v1/audit", params={"format": "markdown"})
+        assert result == "# Audit\n..."
 
     def test_logs_with_tail_parameter(self):
         from roustabout.cli.http import HTTPBackend

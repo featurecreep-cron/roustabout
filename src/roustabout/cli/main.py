@@ -157,6 +157,11 @@ def main(url: str | None, api_key: str | None) -> None:
 @click.option("--docker-host", default=None, help="Docker host URL.")
 @click.option("--project", "filter_project", default=None, help="Filter by compose project.")
 @click.option(
+    "--containers",
+    default=None,
+    help="Comma-separated container names to include.",
+)
+@click.option(
     "--format",
     "output_format",
     type=click.Choice(["markdown", "json"]),
@@ -170,6 +175,7 @@ def snapshot(
     config_path: str | None,
     docker_host: str | None,
     filter_project: str | None,
+    containers: str | None,
     output_format: str,
 ) -> None:
     """Generate a markdown snapshot of the Docker environment."""
@@ -199,7 +205,8 @@ def snapshot(
     cfg = _load_cfg(config_path, **overrides)
 
     client = _connect(cfg.docker_host)
-    env = collect(client)
+    container_filter = containers.split(",") if containers else None
+    env = collect(client, containers=container_filter)
 
     if filter_project:
         env = filter_by_project(env, filter_project)
@@ -230,6 +237,11 @@ def snapshot(
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
 @click.option("--project", "filter_project", default=None, help="Filter by compose project.")
+@click.option(
+    "--containers",
+    default=None,
+    help="Comma-separated container names to include.",
+)
 @_state_path_option()
 @click.option(
     "--hide-accepted",
@@ -249,6 +261,7 @@ def audit(
     config_path: str | None,
     docker_host: str | None,
     filter_project: str | None,
+    containers: str | None,
     state_file: str | None,
     hide_accepted: bool,
     output_format: str,
@@ -273,7 +286,8 @@ def audit(
     cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
 
     client = _connect(cfg.docker_host)
-    env = collect(client)
+    container_filter = containers.split(",") if containers else None
+    env = collect(client, containers=container_filter)
 
     if filter_project:
         env = filter_by_project(env, filter_project)
@@ -318,6 +332,16 @@ def audit(
     "--filter-project", default=None, help="Only include containers from this compose project."
 )
 @click.option(
+    "--containers",
+    default=None,
+    help="Comma-separated container names to include.",
+)
+@click.option(
+    "--services",
+    default=None,
+    help="Comma-separated service names to include in output.",
+)
+@click.option(
     "--redact/--no-redact",
     default=True,
     help="Redact secrets in environment variables (default: redact).",
@@ -329,13 +353,16 @@ def generate(
     include_stopped: bool,
     project: str | None,
     filter_project: str | None,
+    containers: str | None,
+    services: str | None,
     redact: bool,
 ) -> None:
     """Generate a docker-compose.yml from running containers."""
     cfg = _load_cfg(config_path, output=output, docker_host=docker_host)
 
     client = _connect(cfg.docker_host)
-    env = collect(client)
+    container_filter = containers.split(",") if containers else None
+    env = collect(client, containers=container_filter)
 
     if filter_project:
         env = filter_by_project(env, filter_project)
@@ -344,7 +371,10 @@ def generate(
         patterns = resolve_patterns(cfg.redact_patterns)
         env = redact_env(env, patterns=patterns)
 
-    yaml_output = run_generate(env, include_stopped=include_stopped, project_name=project)
+    svc_list = services.split(",") if services else None
+    yaml_output = run_generate(
+        env, include_stopped=include_stopped, project_name=project, services=svc_list
+    )
 
     if cfg.output:
         Path(cfg.output).write_text(yaml_output)
@@ -365,6 +395,11 @@ def generate(
 @click.option("--docker-host", default=None, help="Docker host URL.")
 @click.option("--project", "filter_project", default=None, help="Filter by compose project.")
 @click.option(
+    "--containers",
+    default=None,
+    help="Comma-separated container names to include.",
+)
+@click.option(
     "--strip-versions",
     is_flag=True,
     default=False,
@@ -375,6 +410,7 @@ def dr_plan(
     config_path: str | None,
     docker_host: str | None,
     filter_project: str | None,
+    containers: str | None,
     strip_versions: bool,
 ) -> None:
     """Generate a disaster recovery plan from running containers."""
@@ -390,7 +426,8 @@ def dr_plan(
     should_strip = strip_versions or cfg.strip_versions
 
     client = _connect(cfg.docker_host)
-    env = collect(client)
+    container_filter = containers.split(",") if containers else None
+    env = collect(client, containers=container_filter)
 
     if filter_project:
         env = filter_by_project(env, filter_project)
@@ -410,6 +447,7 @@ def dr_plan(
 
 @main.command("health")
 @click.option("--container", default=None, help="Filter to a single container.")
+@click.option("--deep", is_flag=True, default=False, help="Deep health checks (port + probes).")
 @click.option(
     "--config",
     "config_path",
@@ -418,24 +456,78 @@ def dr_plan(
     help="Path to config file.",
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON.")
 def health_cmd(
     container: str | None,
+    deep: bool,
     config_path: str | None,
     docker_host: str | None,
+    as_json: bool,
 ) -> None:
-    """Show container health status."""
-    if _is_remote():
+    """Show container health status.
+
+    \b
+    Without --deep: Docker health status (restart count, OOM, healthcheck).
+    With --deep: adds port checks and service probes.
+    """
+    if _is_remote() and not deep:
         _run_remote("health", name=container)
         return
 
-    from roustabout.health_stats import collect_health, render_health
-
     cfg = _load_cfg(config_path, docker_host=docker_host)
     client = _connect(cfg.docker_host)
-    healths = collect_health(client)
-    if container:
-        healths = [h for h in healths if h.name == container]
-    click.echo(render_health(healths))
+
+    if deep:
+        from roustabout.deep_health import (
+            check_container_health,
+            check_environment_health,
+        )
+        from roustabout.session import DockerSession
+
+        docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
+
+        if container:
+            result = check_container_health(client, container, docker_session=docker_session)
+            results = [result]
+        else:
+            env_health = check_environment_health(client, docker_session=docker_session)
+            results = list(env_health.results)
+
+        if as_json:
+            click.echo(
+                _json.dumps(
+                    [
+                        {
+                            "container_name": r.container_name,
+                            "profile": r.profile,
+                            "docker_health": r.docker_health,
+                            "port_open": r.port_open,
+                            "service_healthy": r.service_healthy,
+                            "overall": r.overall,
+                            "checks_performed": list(r.checks_performed),
+                        }
+                        for r in results
+                    ],
+                    indent=2,
+                )
+            )
+        else:
+            for r in results:
+                icon = {"healthy": "✓", "degraded": "~", "unhealthy": "✗"}.get(r.overall, "?")
+                click.echo(f"  {icon} {r.container_name}: {r.overall} (profile={r.profile})")
+                if r.docker_health:
+                    click.echo(f"    Docker health: {r.docker_health}")
+                if r.port_open is not None:
+                    click.echo(f"    Port open: {r.port_open}")
+                if r.service_healthy is not None:
+                    click.echo(f"    Service healthy: {r.service_healthy}")
+    else:
+        from roustabout.health_stats import collect_health, render_health
+
+        healths = collect_health(client)
+        if container:
+            healths = [h for h in healths if h.name == container]
+        click.echo(render_health(healths))
 
 
 @main.command("stats")
@@ -868,6 +960,11 @@ def disconnect_cmd() -> None:
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
 @click.option("--project", "filter_project", default=None, help="Filter by compose project.")
+@click.option(
+    "--containers",
+    default=None,
+    help="Comma-separated container names to include.",
+)
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON.")
 def net_check_cmd(
     source: str | None,
@@ -875,6 +972,7 @@ def net_check_cmd(
     config_path: str | None,
     docker_host: str | None,
     filter_project: str | None,
+    containers: str | None,
     as_json: bool,
 ) -> None:
     """Check network connectivity between containers.
@@ -889,14 +987,15 @@ def net_check_cmd(
       roustabout net-check              # check all pairs
       roustabout net-check --json       # all pairs as JSON
     """
-    from roustabout.net_check import check_all_connectivity, check_connectivity
+    from roustabout.network_inspect import check_all_connectivity, check_connectivity
 
     if (source is None) != (target is None):
         raise click.ClickException("Provide both SOURCE and TARGET, or neither for all pairs.")
 
     cfg = _load_cfg(config_path, docker_host=docker_host)
     client = _connect(cfg.docker_host)
-    env = collect(client)
+    container_filter = containers.split(",") if containers else None
+    env = collect(client, containers=container_filter)
 
     if filter_project:
         env = filter_by_project(env, filter_project)
@@ -925,6 +1024,306 @@ def net_check_cmd(
         for r in results:
             icon = "✓" if r.reachable else "✗"
             click.echo(f"  {icon} {r.source} → {r.target}: {r.reason}")
+
+
+@main.command("network")
+@click.argument("container", required=False, default=None)
+@click.option("--inspect-network", "network_name", default=None, help="Inspect a Docker network.")
+@click.option(
+    "--probe-dns",
+    "probe_dns_host",
+    default=None,
+    help="Resolve hostname from inside container (requires --container).",
+)
+@click.option(
+    "--probe-connect",
+    "probe_connect_target",
+    default=None,
+    help="Test TCP connectivity: HOST:PORT (requires --container).",
+)
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON.")
+def network_cmd(
+    container: str | None,
+    network_name: str | None,
+    probe_dns_host: str | None,
+    probe_connect_target: str | None,
+    config_path: str | None,
+    docker_host: str | None,
+    as_json: bool,
+) -> None:
+    """Network inspection — DNS, aliases, ports, connectivity.
+
+    \b
+    Examples:
+      roustabout network myapp                              # full network view
+      roustabout network --inspect-network bridge           # network details
+      roustabout network myapp --probe-dns othercontainer   # DNS probe
+      roustabout network myapp --probe-connect db:5432      # TCP probe
+    """
+    cfg = _load_cfg(config_path, docker_host=docker_host)
+    client = _connect(cfg.docker_host)
+
+    if network_name:
+        from roustabout.network_inspect import inspect_network
+
+        detail = inspect_network(client, network_name)
+        if as_json:
+            click.echo(
+                _json.dumps(
+                    {
+                        "name": detail.name,
+                        "driver": detail.driver,
+                        "subnet": detail.subnet,
+                        "gateway": detail.gateway,
+                        "internal": detail.internal,
+                        "containers": [
+                            {"name": m.container_name, "ipv4": m.ipv4_address}
+                            for m in detail.containers
+                        ],
+                    },
+                    indent=2,
+                )
+            )
+        else:
+            click.echo(f"Network: {detail.name} ({detail.driver})")
+            if detail.subnet:
+                click.echo(f"  Subnet: {detail.subnet}  Gateway: {detail.gateway}")
+            click.echo(f"  Internal: {detail.internal}")
+            for m in detail.containers:
+                click.echo(f"  {m.container_name}: {m.ipv4_address or 'no IP'}")
+        return
+
+    if not container:
+        raise click.ClickException("Provide a container name, or use --inspect-network.")
+
+    if probe_dns_host:
+        from roustabout.network_inspect import probe_dns
+        from roustabout.session import DockerSession
+
+        docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
+        result = probe_dns(docker_session, container, probe_dns_host)
+        if as_json:
+            click.echo(
+                _json.dumps(
+                    {
+                        "source": result.source,
+                        "query": result.query,
+                        "resolved": result.resolved,
+                        "addresses": list(result.addresses),
+                        "error": result.error,
+                    },
+                    indent=2,
+                )
+            )
+        elif result.resolved:
+            click.echo(f"✓ {result.query} → {', '.join(result.addresses)}")
+        else:
+            click.echo(f"✗ {result.query}: {result.error}")
+        return
+
+    if probe_connect_target:
+        parts = probe_connect_target.rsplit(":", 1)
+        if len(parts) != 2:
+            raise click.ClickException("Use HOST:PORT format for --probe-connect.")
+        target_host, port_str = parts
+        try:
+            port = int(port_str)
+        except ValueError:
+            raise click.ClickException(f"Invalid port: {port_str}")  # noqa: B904
+
+        from roustabout.network_inspect import probe_connectivity
+        from roustabout.session import DockerSession
+
+        docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
+        conn = probe_connectivity(docker_session, container, target_host, port)
+        if as_json:
+            click.echo(
+                _json.dumps(
+                    {
+                        "source": conn.source,
+                        "target": conn.target,
+                        "port": conn.port,
+                        "reachable": conn.reachable,
+                        "error": conn.error,
+                    },
+                    indent=2,
+                )
+            )
+        elif conn.reachable:
+            click.echo(f"✓ {conn.source} → {conn.target}:{conn.port} reachable")
+        else:
+            click.echo(f"✗ {conn.source} → {conn.target}:{conn.port}: {conn.error}")
+        return
+
+    # Default: full network view
+    from roustabout.network_inspect import inspect_container_network
+
+    view = inspect_container_network(client, container)
+    if as_json:
+        click.echo(
+            _json.dumps(
+                {
+                    "container_name": view.container_name,
+                    "network_mode": view.network_mode,
+                    "networks": [
+                        {"name": n.name, "ip_address": n.ip_address, "aliases": list(n.aliases)}
+                        for n in view.networks
+                    ],
+                    "published_ports": [
+                        {
+                            "container_port": p.container_port,
+                            "protocol": p.protocol,
+                            "host_ip": p.host_ip,
+                            "host_port": p.host_port,
+                        }
+                        for p in view.published_ports
+                    ],
+                },
+                indent=2,
+            )
+        )
+    else:
+        click.echo(f"Network View: {view.container_name}")
+        if view.network_mode:
+            click.echo(f"  Mode: {view.network_mode}")
+        click.echo()
+        if view.networks:
+            click.echo("  Networks:")
+            for n in view.networks:
+                aliases = f" (aliases: {', '.join(n.aliases)})" if n.aliases else ""
+                click.echo(f"    {n.name}: {n.ip_address}{aliases}")
+        if view.published_ports:
+            click.echo("  Ports:")
+            for p in view.published_ports:
+                host = p.host_ip or "0.0.0.0"
+                binding = f"{host}:{p.host_port}" if p.published else "not published"
+                click.echo(f"    {p.container_port}/{p.protocol} → {binding}")
+        if view.dns_servers:
+            click.echo(f"  DNS: {', '.join(view.dns_servers)}")
+        if view.network_details:
+            click.echo()
+            for d in view.network_details:
+                click.echo(f"  Network {d.name} ({d.driver}):")
+                if d.subnet:
+                    click.echo(f"    Subnet: {d.subnet}  Gateway: {d.gateway}")
+                for m in d.containers:
+                    click.echo(f"    {m.container_name}: {m.ipv4_address or 'no IP'}")
+
+
+@main.command("ports")
+@click.argument("container")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON.")
+def ports_cmd(
+    container: str,
+    config_path: str | None,
+    docker_host: str | None,
+    as_json: bool,
+) -> None:
+    """Show exposed and published ports for a container."""
+    from roustabout.network_inspect import list_container_ports
+
+    cfg = _load_cfg(config_path, docker_host=docker_host)
+    client = _connect(cfg.docker_host)
+    ports = list_container_ports(client, container)
+
+    if as_json:
+        click.echo(
+            _json.dumps(
+                [
+                    {
+                        "container_port": p.container_port,
+                        "protocol": p.protocol,
+                        "host_ip": p.host_ip,
+                        "host_port": p.host_port,
+                        "exposed": p.exposed,
+                        "published": p.published,
+                    }
+                    for p in ports
+                ],
+                indent=2,
+            )
+        )
+    else:
+        if not ports:
+            click.echo("No ports exposed or published.")
+            return
+        for p in ports:
+            flags = []
+            if p.exposed:
+                flags.append("EXPOSE")
+            if p.published:
+                flags.append(f"→ {p.host_ip or '0.0.0.0'}:{p.host_port}")
+            click.echo(f"  {p.container_port}/{p.protocol}  {' '.join(flags)}")
+
+
+@main.command("migrate")
+@click.option(
+    "--output-dir",
+    "-o",
+    required=True,
+    type=click.Path(),
+    help="Directory for compose and .env files.",
+)
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
+)
+@click.option("--docker-host", default=None, help="Docker host URL.")
+@click.option("--services", default=None, help="Comma-separated service names to include.")
+@click.option("--include-stopped", is_flag=True, default=False, help="Include stopped containers.")
+@click.option("--dry-run", is_flag=True, default=False, help="Preview without writing files.")
+def migrate(
+    output_dir: str,
+    config_path: str | None,
+    docker_host: str | None,
+    services: str | None,
+    include_stopped: bool,
+    dry_run: bool,
+) -> None:
+    """Generate compose file with secrets extracted to .env."""
+    from roustabout.supply_chain import generate_and_extract
+
+    cfg = _load_cfg(config_path, docker_host=docker_host)
+    client = _connect(cfg.docker_host)
+    env = collect(client)
+
+    svc_list = services.split(",") if services else None
+    result = generate_and_extract(
+        env,
+        Path(output_dir),
+        services=svc_list,
+        include_stopped=include_stopped,
+        dry_run=dry_run,
+    )
+
+    click.echo(f"Services: {', '.join(result.services)}")
+    click.echo(f"Secrets extracted: {result.secrets_extracted}")
+    click.echo(f"Compose: {result.compose_path}")
+    click.echo(f"Env file: {result.env_file_path}")
+    if result.warnings:
+        for w in result.warnings:
+            click.echo(f"  ⚠ {w}", err=True)
+    if dry_run:
+        click.echo("(dry run — no files written)")
 
 
 @main.command("version")

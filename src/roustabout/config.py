@@ -80,6 +80,9 @@ class Config:
     # DR plan
     strip_versions: bool = False
 
+    # File operations — scoped root for read/write via API
+    file_root: str = "/opt/stacks"
+
     # State database path
     state_db: str | None = None
 

@@ -811,24 +811,20 @@ def exec_cmd(
 
 @main.command("file-read")
 @click.argument("path")
-@click.option(
-    "--root",
-    default="/",
-    help="Root directory for path validation (default /).",
-)
-def file_read_cmd(path: str, root: str) -> None:
+def file_read_cmd(path: str) -> None:
     """Read a file from the Docker host.
 
+    Paths are relative to the server's configured file_root.
     Content is redacted for secrets. Large files are truncated.
 
     \b
     Examples:
-      roustabout file-read /etc/nginx/conf.d/default.conf
-      roustabout file-read compose.yml --root /opt/stacks
+      roustabout file-read compose.yml
+      roustabout file-read nginx/conf.d/default.conf
     """
     backend = _backend()
     try:
-        result = backend.file_read(path, read_root=root)
+        result = backend.file_read(path)
     except RuntimeError as exc:
         raise click.ClickException(str(exc))
 
@@ -844,11 +840,6 @@ def file_read_cmd(path: str, root: str) -> None:
 @click.argument("path")
 @click.argument("content_file", type=click.File("r"))
 @click.option(
-    "--root",
-    default="/",
-    help="Root directory for path validation (default /).",
-)
-@click.option(
     "--direct",
     is_flag=True,
     default=False,
@@ -857,23 +848,23 @@ def file_read_cmd(path: str, root: str) -> None:
 def file_write_cmd(
     path: str,
     content_file: Any,
-    root: str,
     direct: bool,
 ) -> None:
     """Write a file to the Docker host.
 
+    Paths are relative to the server's configured file_root.
     By default, writes are staged for operator review. Use --direct to
     write immediately (with automatic backup).
 
     \b
     Examples:
-      roustabout file-write /opt/stacks/myapp/compose.yml new-compose.yml
-      roustabout file-write config.yml updated.yml --root /opt/stacks --direct
+      roustabout file-write myapp/compose.yml new-compose.yml
+      roustabout file-write config.yml updated.yml --direct
     """
     content = content_file.read()
     backend = _backend()
     try:
-        result = backend.file_write(path, content, write_root=root, direct=direct)
+        result = backend.file_write(path, content, direct=direct)
     except RuntimeError as exc:
         raise click.ClickException(str(exc))
 

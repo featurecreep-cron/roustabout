@@ -192,15 +192,14 @@ class HTTPBackend:
             body["workdir"] = workdir
         return self._post(f"/v1/containers/{container}/exec", json=body)
 
-    def file_read(self, path: str, *, read_root: str = "/") -> dict[str, Any]:
-        return self._post("/v1/files/read", json={"path": path, "read_root": read_root})
+    def file_read(self, path: str) -> dict[str, Any]:
+        return self._post("/v1/files/read", json={"path": path})
 
     def file_write(
         self,
         path: str,
         content: str,
         *,
-        write_root: str = "/",
         direct: bool = False,
         session_id: str = "cli",
     ) -> dict[str, Any]:
@@ -209,7 +208,6 @@ class HTTPBackend:
             json={
                 "path": path,
                 "content": content,
-                "write_root": write_root,
                 "direct": direct,
                 "session_id": session_id,
             },

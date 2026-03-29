@@ -28,6 +28,30 @@ class TestFileOpsConfig:
         assert config.ttl_hours == 48
         assert config.max_total_size == 100_000_000
 
+    def test_root_must_not_be_filesystem_root(self):
+        from pathlib import Path
+
+        from roustabout.file_ops import FileOpsConfig
+
+        with pytest.raises(ValueError, match="must not be '/'"):
+            FileOpsConfig(
+                root=Path("/"),
+                read_root=Path("/"),
+                staging_root=Path("/tmp/staging"),
+            )
+
+    def test_read_root_must_not_be_filesystem_root(self, tmp_path):
+        from pathlib import Path
+
+        from roustabout.file_ops import FileOpsConfig
+
+        with pytest.raises(ValueError, match="must not be '/'"):
+            FileOpsConfig(
+                root=tmp_path / "apps",
+                read_root=Path("/"),
+                staging_root=tmp_path / "staging",
+            )
+
 
 # --- Path traversal ---
 

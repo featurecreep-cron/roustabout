@@ -396,3 +396,56 @@ class TestSchemas:
         )
         data = resp.model_dump()
         assert len(data["containers"]) == 1
+
+
+class TestAuditLogging:
+    """Audit log emits structured records for all API requests."""
+
+    def test_successful_request_logged(self, client, caplog):
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="roustabout.audit"):
+            with patch("roustabout.api.routes._snapshot") as mock:
+                mock.return_value = {"containers": []}
+                client.get("/v1/snapshot", headers=_auth("sk-observe"))
+
+        assert any(
+            "GET /v1/snapshot key=test-observe tier=observe status=200" in r.message
+            for r in caplog.records
+        )
+
+    def test_auth_failure_logged(self, client, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="roustabout.audit"):
+            client.get("/v1/snapshot", headers=_auth("sk-wrong"))
+
+        assert any(
+            "auth=invalid status=401" in r.message
+            for r in caplog.records
+        )
+
+    def test_missing_auth_logged(self, client, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="roustabout.audit"):
+            client.get("/v1/snapshot")
+
+        assert any(
+            "auth=missing status=401" in r.message
+            for r in caplog.records
+        )
+
+    def test_tier_denied_logged(self, client, caplog):
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="roustabout.audit"):
+            client.post(
+                "/v1/containers/nginx/restart",
+                headers=_auth("sk-observe"),
+            )
+
+        assert any(
+            "key=test-observe tier=observe status=403" in r.message
+            for r in caplog.records
+        )

@@ -49,7 +49,8 @@ class TestMutationMethodConstraint:
 
     def test_no_mutation_calls_outside_mutations_py(self):
         violations = []
-        for path in _python_files(exclude={"mutations.py", "exec.py", "file_ops.py", "multi_host.py"}):
+        skip = {"mutations.py", "exec.py", "file_ops.py", "multi_host.py"}
+        for path in _python_files(exclude=skip):
             tree = ast.parse(path.read_text())
             for node in ast.walk(tree):
                 if (

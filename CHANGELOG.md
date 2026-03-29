@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v0.12.0 (2026-03-29)
+
+### Bug Fixes
+
+- Handle PermissionError in file_ops.read_file
+  ([`7e7fffe`](https://github.com/featurecreep-cron/roustabout/commit/7e7fffee11d35c029cfe3d8c13d65af71ebee75d))
+
+### Features
+
+- Add exec, file-read, and file-write CLI commands
+  ([`d9e5688`](https://github.com/featurecreep-cron/roustabout/commit/d9e5688495867ae1da5f683feb834fae40bc3222))
+
+
 ## v0.11.0 (2026-03-29)
 
 ### Bug Fixes

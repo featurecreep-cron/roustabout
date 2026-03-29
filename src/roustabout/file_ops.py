@@ -135,10 +135,32 @@ def read_file(
             error="File not found",
         )
 
-    size = resolved.stat().st_size
+    try:
+        size = resolved.stat().st_size
+    except PermissionError:
+        return FileReadResult(
+            success=False,
+            path=str(resolved),
+            content=None,
+            size=0,
+            truncated=False,
+            error="Permission denied",
+        )
+
     truncated = size > MAX_READ_BYTES
 
-    raw = resolved.read_bytes()[:MAX_READ_BYTES]
+    try:
+        raw = resolved.read_bytes()[:MAX_READ_BYTES]
+    except PermissionError:
+        return FileReadResult(
+            success=False,
+            path=str(resolved),
+            content=None,
+            size=size,
+            truncated=False,
+            error="Permission denied",
+        )
+
     text = raw.decode("utf-8", errors="replace")
     content = sanitize(text)
 

@@ -2,6 +2,44 @@
 
 <!-- version list -->
 
+## v0.13.0 (2026-03-29)
+
+### Bug Fixes
+
+- Line length lint in test_import_constraints
+  ([`36b894e`](https://github.com/featurecreep-cron/roustabout/commit/36b894e386197614577ec1759cec94538d54a153))
+
+### Features
+
+- Add API audit logging for all authenticated requests
+  ([`1293c8a`](https://github.com/featurecreep-cron/roustabout/commit/1293c8af2c82e66979a54d3b59318989f06f890d))
+
+- Add API endpoints for exec, file ops, stats; wire all CLI commands
+  ([`bb64a83`](https://github.com/featurecreep-cron/roustabout/commit/bb64a83c99fa8286c37994bc4ab1d3aa5b0aafc7))
+
+- Complete CLI migration to HTTP-only (Rule 0)
+  ([`f584f46`](https://github.com/featurecreep-cron/roustabout/commit/f584f46ddedae8ab62e0fb91e463e02a2cb5b12a))
+
+- Enforce Rule 0 client/server security boundary
+  ([`5348efa`](https://github.com/featurecreep-cron/roustabout/commit/5348efa8fb487db717731a5e3be5f25525d403fb))
+
+- Harden file ops and exec safety boundaries
+  ([`f474908`](https://github.com/featurecreep-cron/roustabout/commit/f474908b933b5344c4cb6fdf06b1835c7dbb50c4))
+
+
+## v0.12.0 (2026-03-29)
+
+### Bug Fixes
+
+- Handle PermissionError in file_ops.read_file
+  ([`7e7fffe`](https://github.com/featurecreep-cron/roustabout/commit/7e7fffee11d35c029cfe3d8c13d65af71ebee75d))
+
+### Features
+
+- Add exec, file-read, and file-write CLI commands
+  ([`d9e5688`](https://github.com/featurecreep-cron/roustabout/commit/d9e5688495867ae1da5f683feb834fae40bc3222))
+
+
 ## v0.11.0 (2026-03-29)
 
 ### Bug Fixes

@@ -420,10 +420,7 @@ class TestAuditLogging:
         with caplog.at_level(logging.WARNING, logger="roustabout.audit"):
             client.get("/v1/snapshot", headers=_auth("sk-wrong"))
 
-        assert any(
-            "auth=invalid status=401" in r.message
-            for r in caplog.records
-        )
+        assert any("auth=invalid status=401" in r.message for r in caplog.records)
 
     def test_missing_auth_logged(self, client, caplog):
         import logging
@@ -431,10 +428,7 @@ class TestAuditLogging:
         with caplog.at_level(logging.WARNING, logger="roustabout.audit"):
             client.get("/v1/snapshot")
 
-        assert any(
-            "auth=missing status=401" in r.message
-            for r in caplog.records
-        )
+        assert any("auth=missing status=401" in r.message for r in caplog.records)
 
     def test_tier_denied_logged(self, client, caplog):
         import logging
@@ -445,7 +439,4 @@ class TestAuditLogging:
                 headers=_auth("sk-observe"),
             )
 
-        assert any(
-            "key=test-observe tier=observe status=403" in r.message
-            for r in caplog.records
-        )
+        assert any("key=test-observe tier=observe status=403" in r.message for r in caplog.records)

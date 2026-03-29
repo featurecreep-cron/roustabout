@@ -175,3 +175,64 @@ class HTTPBackend:
             f"/v1/containers/{container}/probe/connect",
             json={"target_host": target_host, "port": port},
         )
+
+    def exec(
+        self,
+        container: str,
+        command: list[str],
+        *,
+        user: str | None = None,
+        workdir: str | None = None,
+        timeout: int = 30,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"command": command, "timeout": timeout}
+        if user:
+            body["user"] = user
+        if workdir:
+            body["workdir"] = workdir
+        return self._post(f"/v1/containers/{container}/exec", json=body)
+
+    def file_read(self, path: str, *, read_root: str = "/") -> dict[str, Any]:
+        return self._post("/v1/files/read", json={"path": path, "read_root": read_root})
+
+    def file_write(
+        self,
+        path: str,
+        content: str,
+        *,
+        write_root: str = "/",
+        direct: bool = False,
+        session_id: str = "cli",
+    ) -> dict[str, Any]:
+        return self._post(
+            "/v1/files/write",
+            json={
+                "path": path,
+                "content": content,
+                "write_root": write_root,
+                "direct": direct,
+                "session_id": session_id,
+            },
+        )
+
+    def stats(self, container: str | None = None) -> dict[str, Any]:
+        if container:
+            return self._get("/v1/stats", container=container)
+        return self._get("/v1/stats")
+
+    def migrate(
+        self,
+        output_dir: str,
+        *,
+        services: str | None = None,
+        include_stopped: bool = False,
+        dry_run: bool = True,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "output_dir": output_dir,
+            "dry_run": dry_run,
+            "include_stopped": include_stopped,
+        }
+        if services:
+            body["services"] = services.split(",")
+        return self._post("/v1/supply-chain/migrate", json=body)

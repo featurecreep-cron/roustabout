@@ -19,6 +19,15 @@ from roustabout.state import FindingState, set_finding_state
 _CONNECTION_CONFIG = Path.home() / ".config" / "roustabout" / "config.toml"
 
 
+def _format_bytes(n: int) -> str:
+    """Format byte count as human-readable string."""
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if abs(n) < 1024:
+            return f"{n:.1f} {unit}"
+        n //= 1024
+    return f"{n:.1f} TiB"
+
+
 def _backend() -> Any:
     """Get HTTPBackend, converting RuntimeError to ClickException."""
     try:
@@ -238,16 +247,36 @@ def health_cmd(container: str | None, deep: bool, as_json: bool) -> None:
 
 @main.command("stats")
 @click.option("--container", default=None, help="Filter to a single container.")
-def stats_cmd(container: str | None) -> None:
-    """Show container resource usage.
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON.")
+def stats_cmd(container: str | None, as_json: bool) -> None:
+    """Show container resource usage."""
+    backend = _backend()
+    try:
+        data = backend.stats(container=container)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
 
-    Note: This command requires an API endpoint that is not yet available.
-    """
-    # TODO(rule-0): Add /v1/stats API endpoint, then wire this through HTTPBackend.
-    raise click.ClickException(
-        "Stats command requires a /v1/stats API endpoint that is not yet implemented.\n"
-        "Track this in the Rule 0 enforcement plan."
-    )
+    stats = data.get("stats", [])
+
+    if as_json:
+        click.echo(_json.dumps(stats, indent=2))
+    else:
+        if not stats:
+            click.echo("No stats available.")
+            return
+        # Simple table output
+        cols = f"{'Container':<25} {'CPU%':>6} {'Mem%':>6} {'Mem':>10} {'RX':>10} {'TX':>10}"
+        click.echo(cols)
+        click.echo("-" * 75)
+        for s in stats:
+            mem = _format_bytes(s.get("memory_usage_bytes", 0))
+            rx = _format_bytes(s.get("network_rx_bytes", 0))
+            tx = _format_bytes(s.get("network_tx_bytes", 0))
+            click.echo(
+                f"{s['name']:<25} {s.get('cpu_percent', 0):>5.1f}%"
+                f" {s.get('memory_percent', 0):>5.1f}%"
+                f" {mem:>10} {rx:>10} {tx:>10}"
+            )
 
 
 @main.command("logs")
@@ -753,11 +782,31 @@ def exec_cmd(
       roustabout exec myapp -- getent hosts othercontainer
       roustabout exec myapp --user nobody -- ls /tmp
     """
-    # TODO(rule-0): Add /v1/exec API endpoint, then wire through HTTPBackend.
-    raise click.ClickException(
-        "Exec command requires a /v1/exec API endpoint that is not yet implemented.\n"
-        "Track this in the Rule 0 enforcement plan."
-    )
+    backend = _backend()
+    try:
+        result = backend.exec(
+            container_name,
+            list(command),
+            user=user,
+            workdir=workdir,
+            timeout=timeout,
+        )
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+
+    if result.get("denied"):
+        raise click.ClickException(result.get("error", "Command denied"))
+
+    if result.get("stdout"):
+        click.echo(result["stdout"])
+    if result.get("stderr"):
+        click.echo(result["stderr"], err=True)
+    if result.get("error"):
+        raise click.ClickException(result["error"])
+    if result.get("truncated"):
+        click.echo("(output truncated)", err=True)
+
+    raise SystemExit(result.get("exit_code") or 0)
 
 
 @main.command("file-read")
@@ -777,11 +826,18 @@ def file_read_cmd(path: str, root: str) -> None:
       roustabout file-read /etc/nginx/conf.d/default.conf
       roustabout file-read compose.yml --root /opt/stacks
     """
-    # TODO(rule-0): Add /v1/file-read API endpoint, then wire through HTTPBackend.
-    raise click.ClickException(
-        "File-read command requires a /v1/files API endpoint that is not yet implemented.\n"
-        "Track this in the Rule 0 enforcement plan."
-    )
+    backend = _backend()
+    try:
+        result = backend.file_read(path, read_root=root)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+
+    if not result.get("success"):
+        raise click.ClickException(result.get("error") or "Read failed")
+
+    click.echo(result.get("content", ""))
+    if result.get("truncated"):
+        click.echo(f"(truncated — file is {result.get('size', 0)} bytes)", err=True)
 
 
 @main.command("file-write")
@@ -814,11 +870,26 @@ def file_write_cmd(
       roustabout file-write /opt/stacks/myapp/compose.yml new-compose.yml
       roustabout file-write config.yml updated.yml --root /opt/stacks --direct
     """
-    # TODO(rule-0): Add /v1/file-write API endpoint, then wire through HTTPBackend.
-    raise click.ClickException(
-        "File-write command requires a /v1/files API endpoint that is not yet implemented.\n"
-        "Track this in the Rule 0 enforcement plan."
-    )
+    content = content_file.read()
+    backend = _backend()
+    try:
+        result = backend.file_write(path, content, write_root=root, direct=direct)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+
+    if not result.get("success"):
+        raise click.ClickException(result.get("error") or "Write failed")
+
+    if result.get("staged"):
+        click.echo(f"Staged at {result.get('staging_path', '')}")
+        if result.get("diff"):
+            click.echo(result["diff"])
+        if result.get("apply_command"):
+            click.echo(f"To apply: {result['apply_command']}")
+    else:
+        click.echo(f"Written to {result.get('path', '')}")
+        if result.get("backup_path"):
+            click.echo(f"Backup at {result['backup_path']}")
 
 
 @main.command("migrate")
@@ -838,17 +909,26 @@ def migrate(
     include_stopped: bool,
     dry_run: bool,
 ) -> None:
-    """Generate compose file with secrets extracted to .env.
+    """Generate compose file with secrets extracted to .env."""
+    backend = _backend()
+    try:
+        result = backend.migrate(
+            output_dir,
+            services=services,
+            include_stopped=include_stopped,
+            dry_run=dry_run,
+        )
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
 
-    Note: This command requires the supply-chain/migrate API endpoint
-    and ELEVATE tier permissions.
-    """
-    # TODO(rule-0): Wire through HTTPBackend when ready.
-    raise click.ClickException(
-        "Migrate command requires a /v1/supply-chain/migrate API endpoint.\n"
-        "The endpoint exists server-side but the CLI HTTPBackend method is not yet wired.\n"
-        "Track this in the Rule 0 enforcement plan."
-    )
+    click.echo(f"Services: {', '.join(result.get('services', []))}")
+    click.echo(f"Secrets extracted: {result.get('secrets_extracted', 0)}")
+    click.echo(f"Compose: {result.get('compose_path', '')}")
+    click.echo(f"Env file: {result.get('env_file_path', '')}")
+    for w in result.get("warnings", []):
+        click.echo(f"  ⚠ {w}", err=True)
+    if result.get("dry_run"):
+        click.echo("(dry run — no files written)")
 
 
 @main.command("version")

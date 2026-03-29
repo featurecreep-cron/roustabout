@@ -550,6 +550,320 @@ async def docker_net_check(
 
 
 @mcp.tool()
+async def docker_network_inspect(target: str) -> str:
+    """[OBSERVE] Get detailed network configuration for a container.
+
+    Use when: you need to see networks, IP addresses, DNS aliases, published
+    ports, and subnet details for a specific container.
+    Returns: JSON with full network view.
+
+    Args:
+        target: Container name to inspect.
+    """
+    import json as _json
+
+    target = sanitize(target)[:128]
+
+    try:
+        cfg = _load_cfg()
+
+        def _run() -> str:
+            from roustabout.network_inspect import inspect_container_network
+
+            client = connect(cfg.docker_host)
+            try:
+                view = inspect_container_network(client, target)
+                return _json.dumps(
+                    {
+                        "container_name": view.container_name,
+                        "network_mode": view.network_mode,
+                        "networks": [
+                            {
+                                "name": n.name,
+                                "ip_address": n.ip_address,
+                                "aliases": list(n.aliases),
+                            }
+                            for n in view.networks
+                        ],
+                        "published_ports": [
+                            {
+                                "container_port": p.container_port,
+                                "protocol": p.protocol,
+                                "host_ip": p.host_ip,
+                                "host_port": p.host_port,
+                                "exposed": p.exposed,
+                                "published": p.published,
+                            }
+                            for p in view.published_ports
+                        ],
+                        "dns_servers": list(view.dns_servers),
+                        "dns_search": list(view.dns_search),
+                        "extra_hosts": list(view.extra_hosts),
+                        "network_details": [
+                            {
+                                "name": d.name,
+                                "driver": d.driver,
+                                "subnet": d.subnet,
+                                "gateway": d.gateway,
+                                "internal": d.internal,
+                                "containers": [
+                                    {
+                                        "name": m.container_name,
+                                        "ipv4": m.ipv4_address,
+                                    }
+                                    for m in d.containers
+                                ],
+                            }
+                            for d in view.network_details
+                        ],
+                    },
+                    indent=2,
+                )
+            finally:
+                client.close()
+
+        result = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
+    except _docker_errors.NotFound:
+        return _envelope(f"Container '{target}' not found")
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
+        return _envelope(f"Error: {_safe_error(exc)}")
+    return _enforce_size_limit(result, cfg.response_size_cap)
+
+
+@mcp.tool()
+async def docker_ports(target: str) -> str:
+    """[OBSERVE] List all exposed and published ports for a container.
+
+    Use when: you need to see which ports are available and their host bindings.
+    Returns: JSON array of port info.
+
+    Args:
+        target: Container name.
+    """
+    import json as _json
+
+    target = sanitize(target)[:128]
+
+    try:
+        cfg = _load_cfg()
+
+        def _run() -> str:
+            from roustabout.network_inspect import list_container_ports
+
+            client = connect(cfg.docker_host)
+            try:
+                ports = list_container_ports(client, target)
+                return _json.dumps(
+                    [
+                        {
+                            "container_port": p.container_port,
+                            "protocol": p.protocol,
+                            "host_ip": p.host_ip,
+                            "host_port": p.host_port,
+                            "exposed": p.exposed,
+                            "published": p.published,
+                        }
+                        for p in ports
+                    ],
+                    indent=2,
+                )
+            finally:
+                client.close()
+
+        result = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
+    except _docker_errors.NotFound:
+        return _envelope(f"Container '{target}' not found")
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
+        return _envelope(f"Error: {_safe_error(exc)}")
+    return _enforce_size_limit(result, cfg.response_size_cap)
+
+
+@mcp.tool()
+async def docker_probe_dns(source: str, hostname: str) -> str:
+    """[ELEVATE] Resolve a hostname from inside a container.
+
+    Use when: you need to verify DNS resolution between containers.
+    Returns: resolved addresses or error.
+
+    Args:
+        source: Container to run the probe from.
+        hostname: Hostname to resolve.
+    """
+    import json as _json
+
+    source = sanitize(source)[:128]
+    hostname = sanitize(hostname)[:256]
+
+    try:
+        cfg = _load_cfg()
+
+        def _run() -> str:
+            from roustabout.network_inspect import probe_dns
+            from roustabout.session import DockerSession
+
+            client = connect(cfg.docker_host)
+            docker_session = DockerSession(
+                client=client, host=cfg.docker_host or "localhost"
+            )
+            try:
+                result = probe_dns(docker_session, source, hostname)
+                return _json.dumps(
+                    {
+                        "source": result.source,
+                        "query": result.query,
+                        "resolved": result.resolved,
+                        "addresses": list(result.addresses),
+                        "error": result.error,
+                    },
+                    indent=2,
+                )
+            finally:
+                client.close()
+
+        result = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
+        return _envelope(f"Error: {_safe_error(exc)}")
+    return result
+
+
+@mcp.tool()
+async def docker_probe_connectivity(
+    source: str, target_host: str, port: int
+) -> str:
+    """[ELEVATE] Test TCP connectivity from a container to a host:port.
+
+    Use when: you need to verify a container can reach a service.
+    Returns: reachability result.
+
+    Args:
+        source: Container to run the probe from.
+        target_host: Hostname or IP to connect to.
+        port: TCP port to test.
+    """
+    import json as _json
+
+    source = sanitize(source)[:128]
+    target_host = sanitize(target_host)[:256]
+
+    try:
+        cfg = _load_cfg()
+
+        def _run() -> str:
+            from roustabout.network_inspect import probe_connectivity
+            from roustabout.session import DockerSession
+
+            client = connect(cfg.docker_host)
+            docker_session = DockerSession(
+                client=client, host=cfg.docker_host or "localhost"
+            )
+            try:
+                result = probe_connectivity(
+                    docker_session, source, target_host, port
+                )
+                return _json.dumps(
+                    {
+                        "source": result.source,
+                        "target": result.target,
+                        "port": result.port,
+                        "reachable": result.reachable,
+                        "latency_ms": result.latency_ms,
+                        "error": result.error,
+                    },
+                    indent=2,
+                )
+            finally:
+                client.close()
+
+        result = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
+        return _envelope(f"Error: {_safe_error(exc)}")
+    return result
+
+
+@mcp.tool()
+async def docker_deep_health(
+    target: str | None = None, include_probes: bool = False
+) -> str:
+    """[OBSERVE] Run deep health checks on containers.
+
+    Use when: you need to know if services are actually working, not just running.
+    Without include_probes: Docker health + port checks.
+    With include_probes: + service probes via exec (requires ELEVATE).
+    Returns: JSON with health results.
+
+    Args:
+        target: Optional container name. If omitted, checks all containers.
+        include_probes: Include service probes (ELEVATE tier).
+    """
+    import json as _json
+
+    if target:
+        target = sanitize(target)[:128]
+
+    try:
+        cfg = _load_cfg()
+
+        def _run() -> str:
+            from roustabout.deep_health import (
+                check_container_health,
+                check_environment_health,
+            )
+
+            client = connect(cfg.docker_host)
+            docker_session = None
+            if include_probes:
+                from roustabout.session import DockerSession
+
+                docker_session = DockerSession(
+                    client=client, host=cfg.docker_host or "localhost"
+                )
+            try:
+                if target:
+                    result = check_container_health(
+                        client, target, docker_session=docker_session
+                    )
+                    data = {
+                        "container_name": result.container_name,
+                        "profile": result.profile,
+                        "docker_health": result.docker_health,
+                        "port_open": result.port_open,
+                        "service_healthy": result.service_healthy,
+                        "overall": result.overall,
+                        "checks_performed": list(result.checks_performed),
+                    }
+                else:
+                    health = check_environment_health(
+                        client, docker_session=docker_session
+                    )
+                    data = {
+                        "total": health.total,
+                        "healthy": health.healthy,
+                        "degraded": health.degraded,
+                        "unhealthy": health.unhealthy,
+                        "unknown": health.unknown,
+                        "results": [
+                            {
+                                "container_name": r.container_name,
+                                "profile": r.profile,
+                                "overall": r.overall,
+                                "checks_performed": list(r.checks_performed),
+                            }
+                            for r in health.results
+                        ],
+                    }
+                return _json.dumps(data, indent=2)
+            finally:
+                client.close()
+
+        result = await anyio.to_thread.run_sync(_run, abandon_on_cancel=False)
+    except _docker_errors.NotFound:
+        return _envelope(f"Container '{target}' not found")
+    except (ConnectionError, OSError, _docker_errors.DockerException, ValueError) as exc:
+        return _envelope(f"Error: {_safe_error(exc)}")
+    return _enforce_size_limit(result, cfg.response_size_cap)
+
+
+@mcp.tool()
 async def docker_manage(
     action: str,
     container_name: str,

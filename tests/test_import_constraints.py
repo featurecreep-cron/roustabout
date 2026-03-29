@@ -206,7 +206,8 @@ class TestDockerIsolation:
                 if isinstance(node, ast.Import):
                     for alias in node.names:
                         if alias.name.startswith("docker") and not _is_guarded_import(tree, node):
-                            violations.append(f"cli/{path.name}:{node.lineno} imports {alias.name}")
+                            msg = f"cli/{path.name}:{node.lineno} imports {alias.name}"
+                            violations.append(msg)
                 elif isinstance(node, ast.ImportFrom):
                     if (
                         node.module

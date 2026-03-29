@@ -1,10 +1,10 @@
-"""Tests for container_exec module."""
+"""Tests for exec module (v1 compat — imported from roustabout.exec)."""
 
 from unittest.mock import MagicMock
 
 import pytest
 
-from roustabout.container_exec import (
+from roustabout.exec import (
     DENIED_BINARIES,
     DENIED_PATTERNS,
     MAX_OUTPUT_BYTES,
@@ -38,9 +38,10 @@ class TestDenylist:
         with pytest.raises(DeniedCommand, match="denied pattern"):
             _check_denylist(("cat", pattern))
 
-    def test_shell_wrapper_passes_denylist(self):
-        # Known limitation: shell wrappers bypass binary check
-        _check_denylist(("bash", "-c", "nsenter --target 1"))
+    def test_shell_interpreters_denied(self):
+        # v2: shell interpreters are on the denylist to prevent bypass
+        with pytest.raises(DeniedCommand, match="denylist"):
+            _check_denylist(("bash", "-c", "nsenter --target 1"))
 
     @pytest.mark.parametrize(
         "cmd",

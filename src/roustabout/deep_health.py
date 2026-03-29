@@ -96,8 +96,8 @@ def _service_probe(
 
     Returns (healthy, sanitized_output).
     """
-    from roustabout.container_exec import ExecCommand
-    from roustabout.container_exec import execute as exec_execute
+    from roustabout.exec import ExecCommand
+    from roustabout.exec import execute as exec_execute
 
     try:
         cmd_parts = tuple(shlex.split(probe_command))

@@ -314,8 +314,8 @@ def probe_dns(
     hostname: str,
 ) -> DNSProbeResult:
     """Resolve a hostname from inside a container. ELEVATE tier (uses exec)."""
-    from roustabout.container_exec import ExecCommand
-    from roustabout.container_exec import execute as exec_execute
+    from roustabout.exec import ExecCommand
+    from roustabout.exec import execute as exec_execute
 
     _validate_host(hostname, "hostname")
 
@@ -356,8 +356,8 @@ def probe_connectivity(
     timeout: int = 5,
 ) -> ConnectivityProbeResult:
     """Test TCP connectivity from one container to a host:port. ELEVATE tier."""
-    from roustabout.container_exec import ExecCommand
-    from roustabout.container_exec import execute as exec_execute
+    from roustabout.exec import ExecCommand
+    from roustabout.exec import execute as exec_execute
 
     _validate_host(target_host, "target_host")
 

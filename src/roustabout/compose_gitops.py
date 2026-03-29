@@ -418,3 +418,75 @@ def _normalize_field(key: str, value: Any) -> Any:
     return value
 
 
+# --- Compose apply ---
+
+
+@dataclass(frozen=True)
+class ComposeApplyResult:
+    """Result of applying a compose file."""
+
+    success: bool
+    compose_path: str
+    services_affected: tuple[str, ...]
+    output: str
+    error: str | None = None
+
+
+def apply_compose(compose_path: Path) -> ComposeApplyResult:
+    """Deploy a compose file via docker compose up -d.
+
+    Runs as a subprocess. Returns structured result with output.
+    """
+    path = Path(compose_path)
+
+    if not path.exists():
+        return ComposeApplyResult(
+            success=False,
+            compose_path=str(path),
+            services_affected=(),
+            output="",
+            error=f"Compose file not found: {path}",
+        )
+
+    # Parse to find service names
+    try:
+        with open(path) as f:
+            content = _yaml.load(f)
+        services = tuple(sorted(content.get("services", {}).keys()))
+    except Exception:  # noqa: broad-except — report parse failures
+        services = ()
+
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "-f", str(path), "up", "-d"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=str(path.parent),
+        )
+    except subprocess.TimeoutExpired:
+        return ComposeApplyResult(
+            success=False,
+            compose_path=str(path),
+            services_affected=services,
+            output="",
+            error="docker compose up -d timed out after 120s",
+        )
+    except FileNotFoundError:
+        return ComposeApplyResult(
+            success=False,
+            compose_path=str(path),
+            services_affected=services,
+            output="",
+            error="docker compose not found on PATH",
+        )
+
+    output = sanitize(result.stdout + result.stderr)
+
+    return ComposeApplyResult(
+        success=result.returncode == 0,
+        compose_path=str(path),
+        services_affected=services,
+        output=output,
+        error=output if result.returncode != 0 else None,
+    )

@@ -419,35 +419,175 @@ class TestPortsCommand:
         assert "container_port" in result.output
 
 
-class TestPendingApiCommands:
-    """Commands that need API endpoints should fail with clear messages."""
+class TestExecCommand:
+    def test_exec_basic(self, runner, mock_backend):
+        mock_backend.exec.return_value = {
+            "success": True,
+            "stdout": "hello world",
+            "stderr": "",
+            "exit_code": 0,
+            "truncated": False,
+            "error": None,
+        }
+        result = runner.invoke(main, ["exec", "nginx", "--", "echo", "hello"])
+        assert result.exit_code == 0
+        assert "hello world" in result.output
+        mock_backend.exec.assert_called_once_with(
+            "nginx", ["echo", "hello"], user=None, workdir=None, timeout=30
+        )
 
-    def test_stats_errors(self, runner):
-        result = runner.invoke(main, ["stats"])
+    def test_exec_denied(self, runner, mock_backend):
+        mock_backend.exec.return_value = {
+            "success": False,
+            "denied": True,
+            "error": "Command blocked: sh is in denylist",
+            "stdout": "",
+            "stderr": "",
+            "exit_code": None,
+            "truncated": False,
+        }
+        result = runner.invoke(main, ["exec", "nginx", "--", "sh"])
         assert result.exit_code != 0
-        assert "not yet implemented" in result.output
+        assert "denied" in result.output.lower() or "blocked" in result.output.lower()
 
-    def test_exec_errors(self, runner):
-        result = runner.invoke(main, ["exec", "nginx", "--", "ls"])
-        assert result.exit_code != 0
-        assert "not yet implemented" in result.output
+    def test_exec_with_options(self, runner, mock_backend):
+        mock_backend.exec.return_value = {
+            "success": True,
+            "stdout": "",
+            "stderr": "",
+            "exit_code": 0,
+            "truncated": False,
+            "error": None,
+        }
+        runner.invoke(
+            main, ["exec", "nginx", "--user", "nobody", "--timeout", "10", "--", "ls"]
+        )
+        mock_backend.exec.assert_called_once_with(
+            "nginx", ["ls"], user="nobody", workdir=None, timeout=10
+        )
 
-    def test_file_read_errors(self, runner):
+
+class TestFileReadCommand:
+    def test_file_read_basic(self, runner, mock_backend):
+        mock_backend.file_read.return_value = {
+            "success": True,
+            "path": "/etc/hosts",
+            "content": "127.0.0.1 localhost",
+            "size": 19,
+            "truncated": False,
+        }
         result = runner.invoke(main, ["file-read", "/etc/hosts"])
-        assert result.exit_code != 0
-        assert "not yet implemented" in result.output
+        assert result.exit_code == 0
+        assert "127.0.0.1" in result.output
 
-    def test_file_write_errors(self, runner, tmp_path):
-        content = tmp_path / "content.txt"
-        content.write_text("hello")
-        result = runner.invoke(main, ["file-write", "/etc/hosts", str(content)])
+    def test_file_read_error(self, runner, mock_backend):
+        mock_backend.file_read.return_value = {
+            "success": False,
+            "error": "path outside read root",
+        }
+        result = runner.invoke(main, ["file-read", "/etc/shadow"])
         assert result.exit_code != 0
-        assert "not yet implemented" in result.output
+        assert "outside" in result.output
 
-    def test_migrate_errors(self, runner):
-        result = runner.invoke(main, ["migrate", "-o", "/tmp/out"])
-        assert result.exit_code != 0
-        assert "not yet wired" in result.output
+
+class TestFileWriteCommand:
+    def test_file_write_staged(self, runner, mock_backend, tmp_path):
+        content_file = tmp_path / "new.yml"
+        content_file.write_text("services:\n  app:\n    image: nginx")
+        mock_backend.file_write.return_value = {
+            "success": True,
+            "staged": True,
+            "staging_path": "/staging/abc123",
+            "diff": "--- old\n+++ new",
+            "apply_command": "roustabout apply abc123",
+            "path": "/opt/compose.yml",
+        }
+        result = runner.invoke(main, ["file-write", "/opt/compose.yml", str(content_file)])
+        assert result.exit_code == 0
+        assert "Staged" in result.output
+
+    def test_file_write_direct(self, runner, mock_backend, tmp_path):
+        content_file = tmp_path / "new.yml"
+        content_file.write_text("content")
+        mock_backend.file_write.return_value = {
+            "success": True,
+            "staged": False,
+            "path": "/opt/config.yml",
+            "backup_path": "/opt/config.yml.bak",
+        }
+        result = runner.invoke(
+            main, ["file-write", "/opt/config.yml", str(content_file), "--direct"]
+        )
+        assert result.exit_code == 0
+        assert "Written to" in result.output
+
+
+class TestStatsCommand:
+    def test_stats_basic(self, runner, mock_backend):
+        mock_backend.stats.return_value = {
+            "stats": [
+                {
+                    "name": "nginx",
+                    "cpu_percent": 1.5,
+                    "memory_usage_bytes": 50_000_000,
+                    "memory_limit_bytes": 500_000_000,
+                    "memory_percent": 10.0,
+                    "network_rx_bytes": 1_000_000,
+                    "network_tx_bytes": 500_000,
+                    "block_read_bytes": None,
+                    "block_write_bytes": None,
+                }
+            ]
+        }
+        result = runner.invoke(main, ["stats"])
+        assert result.exit_code == 0
+        assert "nginx" in result.output
+
+    def test_stats_json(self, runner, mock_backend):
+        mock_backend.stats.return_value = {
+            "stats": [{"name": "nginx", "cpu_percent": 1.5, "memory_percent": 10.0}]
+        }
+        result = runner.invoke(main, ["stats", "--json"])
+        assert result.exit_code == 0
+        assert "cpu_percent" in result.output
+
+    def test_stats_with_container(self, runner, mock_backend):
+        mock_backend.stats.return_value = {"stats": []}
+        runner.invoke(main, ["stats", "--container", "nginx"])
+        mock_backend.stats.assert_called_once_with(container="nginx")
+
+
+class TestMigrateCommand:
+    def test_migrate_basic(self, runner, mock_backend):
+        mock_backend.migrate.return_value = {
+            "services": ["nginx", "redis"],
+            "secrets_extracted": 5,
+            "compose_path": "/out/compose.yml",
+            "env_file_path": "/out/.env",
+            "dry_run": True,
+            "warnings": [],
+        }
+        result = runner.invoke(main, ["migrate", "-o", "/out"])
+        assert result.exit_code == 0
+        assert "nginx" in result.output
+        assert "dry run" in result.output
+        mock_backend.migrate.assert_called_once_with(
+            "/out", services=None, include_stopped=False, dry_run=False
+        )
+
+    def test_migrate_with_options(self, runner, mock_backend):
+        mock_backend.migrate.return_value = {
+            "services": ["app"],
+            "secrets_extracted": 0,
+            "compose_path": "/out/compose.yml",
+            "env_file_path": "/out/.env",
+            "dry_run": False,
+            "warnings": ["no secrets found"],
+        }
+        result = runner.invoke(
+            main, ["migrate", "-o", "/out", "--services", "app", "--include-stopped"]
+        )
+        assert result.exit_code == 0
 
 
 class TestConnectionManagement:

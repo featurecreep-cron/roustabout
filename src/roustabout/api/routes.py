@@ -1056,3 +1056,244 @@ async def parse_env_route(
         return JSONResponse(content=result)
     except FileNotFoundError as exc:
         return JSONResponse(status_code=404, content={"error": str(exc)})
+
+
+# --- Container Exec (Rule 0) ---
+
+
+@router.post("/containers/{name}/exec")
+async def exec_route(name: str, request: Request) -> JSONResponse:
+    """Execute a command inside a container. ELEVATE tier."""
+    import anyio
+
+    name = sanitize(name)[:128]
+    key_info: KeyInfo = request.state.key_info
+    if not _has_tier(key_info.tier, "elevate"):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "exec requires elevate tier",
+                "required_tier": "elevate",
+                "your_tier": key_info.tier,
+            },
+        )
+
+    body = await request.json()
+    command = body.get("command")
+    if not command or not isinstance(command, list):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "command is required (list of strings)"},
+        )
+
+    user = body.get("user")
+    workdir = body.get("workdir")
+    timeout = body.get("timeout", 30)
+
+    def _run() -> dict[str, Any]:
+        from roustabout.connection import connect
+        from roustabout.exec import DeniedCommand, ExecCommand, execute
+        from roustabout.session import DockerSession
+
+        cfg = _load_cfg_simple()
+        client = connect(cfg)
+        docker_session = DockerSession(client=client, host=cfg or "localhost")
+        try:
+            cmd = ExecCommand(
+                target=name,
+                command=tuple(command),
+                user=user,
+                workdir=workdir,
+                timeout=timeout,
+            )
+            result = execute(docker_session, cmd)
+            return {
+                "success": result.success,
+                "target": result.target,
+                "command": list(result.command),
+                "exit_code": result.exit_code,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "truncated": result.truncated,
+                "error": result.error,
+                "timed_out": result.timed_out,
+            }
+        except DeniedCommand as exc:
+            return {
+                "success": False,
+                "target": name,
+                "command": list(command),
+                "exit_code": None,
+                "stdout": "",
+                "stderr": "",
+                "truncated": False,
+                "error": str(exc),
+                "timed_out": False,
+                "denied": True,
+                "reason": exc.reason,
+            }
+        finally:
+            client.close()
+
+    try:
+        data = await anyio.to_thread.run_sync(_run)
+        return JSONResponse(content=data)
+    except Exception as exc:
+        if type(exc).__name__ == "NotFound":
+            return JSONResponse(
+                status_code=404, content={"error": f"container '{name}' not found"}
+            )
+        raise
+
+
+# --- File Operations (Rule 0) ---
+
+
+@router.post("/files/read")
+async def file_read_route(request: Request) -> JSONResponse:
+    """Read a file from the Docker host. ELEVATE tier."""
+    import anyio
+
+    key_info: KeyInfo = request.state.key_info
+    if not _has_tier(key_info.tier, "elevate"):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "file operations require elevate tier",
+                "required_tier": "elevate",
+                "your_tier": key_info.tier,
+            },
+        )
+
+    body = await request.json()
+    path = body.get("path")
+    if not path:
+        return JSONResponse(status_code=400, content={"error": "path is required"})
+
+    read_root = body.get("read_root", "/")
+
+    def _run() -> dict[str, Any]:
+        from pathlib import Path
+
+        from roustabout.file_ops import FileOpsConfig, read_file
+
+        root = Path(read_root).resolve()
+        config = FileOpsConfig(
+            root=root,
+            read_root=root,
+            staging_root=root / ".roustabout-staging",
+        )
+        result = read_file(path, config=config)
+        return {
+            "success": result.success,
+            "path": result.path,
+            "content": result.content,
+            "size": result.size,
+            "truncated": result.truncated,
+            "error": result.error,
+        }
+
+    data = await anyio.to_thread.run_sync(_run)
+    if not data["success"]:
+        return JSONResponse(status_code=400, content=data)
+    return JSONResponse(content=data)
+
+
+@router.post("/files/write")
+async def file_write_route(request: Request) -> JSONResponse:
+    """Write a file to the Docker host. ELEVATE tier, staged by default."""
+    import anyio
+
+    key_info: KeyInfo = request.state.key_info
+    if not _has_tier(key_info.tier, "elevate"):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "file operations require elevate tier",
+                "required_tier": "elevate",
+                "your_tier": key_info.tier,
+            },
+        )
+
+    body = await request.json()
+    path = body.get("path")
+    content = body.get("content")
+    if not path or content is None:
+        return JSONResponse(
+            status_code=400, content={"error": "path and content are required"}
+        )
+
+    write_root = body.get("write_root", "/")
+    direct = body.get("direct", False)
+    session_id = body.get("session_id", "api")
+
+    def _run() -> dict[str, Any]:
+        from pathlib import Path
+
+        from roustabout.file_ops import FileOpsConfig, write_file
+        from roustabout.permissions import FrictionMechanism
+
+        root = Path(write_root).resolve()
+        config = FileOpsConfig(
+            root=root,
+            read_root=root,
+            staging_root=root / ".roustabout-staging",
+        )
+        friction = FrictionMechanism.DIRECT if direct else FrictionMechanism.STAGE
+        result = write_file(
+            path, content, config=config, friction=friction, session_id=session_id
+        )
+        return {
+            "success": result.success,
+            "path": result.path,
+            "staged": result.staged,
+            "staging_path": result.staging_path,
+            "backup_path": result.backup_path,
+            "diff": result.diff,
+            "apply_command": result.apply_command,
+            "error": result.error,
+        }
+
+    data = await anyio.to_thread.run_sync(_run)
+    if not data["success"]:
+        return JSONResponse(status_code=400, content=data)
+    return JSONResponse(content=data)
+
+
+# --- Stats (Rule 0) ---
+
+
+@router.get("/stats")
+async def stats_route(
+    request: Request,
+    container: str | None = None,
+) -> JSONResponse:
+    """Get container resource usage stats."""
+    import anyio
+
+    def _run() -> list[dict[str, Any]]:
+        from roustabout.connection import connect
+        from roustabout.health_stats import collect_stats
+
+        client = connect()
+        try:
+            stats = collect_stats(client, target=container)
+            return [
+                {
+                    "name": s.name,
+                    "cpu_percent": s.cpu_percent,
+                    "memory_usage_bytes": s.memory_usage_bytes,
+                    "memory_limit_bytes": s.memory_limit_bytes,
+                    "memory_percent": s.memory_percent,
+                    "network_rx_bytes": s.network_rx_bytes,
+                    "network_tx_bytes": s.network_tx_bytes,
+                    "block_read_bytes": s.block_read_bytes,
+                    "block_write_bytes": s.block_write_bytes,
+                }
+                for s in stats
+            ]
+        finally:
+            client.close()
+
+    data = await anyio.to_thread.run_sync(_run)
+    return JSONResponse(content={"stats": data})

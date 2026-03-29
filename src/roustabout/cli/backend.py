@@ -45,6 +45,34 @@ class Backend(Protocol):
     def probe_connect(
         self, container: str, target_host: str, port: int
     ) -> dict[str, Any]: ...
+    def exec(
+        self,
+        container: str,
+        command: list[str],
+        *,
+        user: str | None = None,
+        workdir: str | None = None,
+        timeout: int = 30,
+    ) -> dict[str, Any]: ...
+    def file_read(self, path: str, *, read_root: str = "/") -> dict[str, Any]: ...
+    def file_write(
+        self,
+        path: str,
+        content: str,
+        *,
+        write_root: str = "/",
+        direct: bool = False,
+        session_id: str = "cli",
+    ) -> dict[str, Any]: ...
+    def stats(self, container: str | None = None) -> dict[str, Any]: ...
+    def migrate(
+        self,
+        output_dir: str,
+        *,
+        services: str | None = None,
+        include_stopped: bool = False,
+        dry_run: bool = True,
+    ) -> dict[str, Any]: ...
 
 
 _UNIX_SOCKET_PATH = "/var/run/roustabout.sock"

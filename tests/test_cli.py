@@ -341,29 +341,16 @@ class TestMutationBackend:
         assert result.exit_code != 0
         assert "Permission denied" in result.output
 
-    def test_mutation_falls_back_to_direct_when_no_server(self, runner):
-        """When get_backend raises (no server), falls back to direct gateway."""
-        from roustabout.gateway import GatewayResult
-
-        mock_result = GatewayResult(
-            success=True,
-            action="restart",
-            target="nginx",
-            pre_state_hash="h",
-            post_state_hash="h",
-            result="success",
-        )
-
+    def test_mutation_errors_when_no_server(self, runner):
+        """When get_backend raises (no server), mutation fails — no direct fallback."""
         with patch(
             "roustabout.cli.main.get_backend",
             side_effect=RuntimeError("No roustabout server found"),
         ):
-            with patch("roustabout.cli.main.connect", return_value=MagicMock()):
-                with patch("roustabout.gateway.execute", return_value=mock_result):
-                    result = runner.invoke(main, ["restart", "nginx"])
+            result = runner.invoke(main, ["restart", "nginx"])
 
-        assert result.exit_code == 0
-        assert "Restarted nginx" in result.output
+        assert result.exit_code != 0
+        assert "No roustabout server found" in result.output
 
     def test_mutation_gateway_failure_shows_error(self, runner):
         mock_backend = MagicMock()

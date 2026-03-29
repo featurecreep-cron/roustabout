@@ -171,17 +171,13 @@ class TestDrPlanCommand:
 
 class TestHealthCommand:
     def test_health_basic(self, runner, mock_backend):
-        mock_backend.health.return_value = {
-            "entries": [{"name": "nginx", "health": "healthy"}]
-        }
+        mock_backend.health.return_value = {"entries": [{"name": "nginx", "health": "healthy"}]}
         result = runner.invoke(main, ["health"])
         assert result.exit_code == 0
         mock_backend.health.assert_called_once_with(name=None)
 
     def test_health_with_container(self, runner, mock_backend):
-        mock_backend.health.return_value = {
-            "entries": [{"name": "nginx", "health": "healthy"}]
-        }
+        mock_backend.health.return_value = {"entries": [{"name": "nginx", "health": "healthy"}]}
         result = runner.invoke(main, ["health", "--container", "nginx"])
         assert result.exit_code == 0
         mock_backend.health.assert_called_once_with(name="nginx")
@@ -229,9 +225,7 @@ class TestLogsCommand:
             main, ["logs", "nginx", "--tail", "50", "--since", "1h", "--grep", "error"]
         )
         assert result.exit_code == 0
-        mock_backend.logs.assert_called_once_with(
-            name="nginx", tail=50, since="1h", grep="error"
-        )
+        mock_backend.logs.assert_called_once_with(name="nginx", tail=50, since="1h", grep="error")
 
 
 class TestMutationCommands:
@@ -459,9 +453,7 @@ class TestExecCommand:
             "truncated": False,
             "error": None,
         }
-        runner.invoke(
-            main, ["exec", "nginx", "--user", "nobody", "--timeout", "10", "--", "ls"]
-        )
+        runner.invoke(main, ["exec", "nginx", "--user", "nobody", "--timeout", "10", "--", "ls"])
         mock_backend.exec.assert_called_once_with(
             "nginx", ["ls"], user="nobody", workdir=None, timeout=10
         )

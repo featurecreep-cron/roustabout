@@ -266,7 +266,7 @@ class TestProbeDNS:
     def test_getent_success(self):
         from unittest.mock import patch
 
-        from roustabout.container_exec import ExecResult
+        from roustabout.exec import ExecResult
 
         session = DockerSession(client=MagicMock(), host="localhost")
         success_result = ExecResult(
@@ -279,7 +279,7 @@ class TestProbeDNS:
             truncated=False,
         )
 
-        with patch("roustabout.container_exec.execute", return_value=success_result):
+        with patch("roustabout.exec.execute", return_value=success_result):
             result = probe_dns(session, "app", "tandoor")
             assert result.resolved is True
             assert "172.18.0.2" in result.addresses

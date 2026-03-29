@@ -1,14 +1,12 @@
 """Tests for compose_gitops module."""
 
-from pathlib import Path
-from unittest.mock import MagicMock
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from roustabout.compose_gitops import (
     ComposeProject,
     _normalize_env,
     _normalize_field,
+    apply_compose,
     detect_drift,
     semantic_diff,
 )
@@ -182,3 +180,98 @@ class TestSemanticDiff:
         assert result[0].changes[0].security_relevant is True
 
 
+# --- Compose apply ---
+
+
+class TestApplyCompose:
+    def test_file_not_found(self, tmp_path):
+        result = apply_compose(tmp_path / "missing.yml")
+        assert result.success is False
+        assert "not found" in result.error
+
+    def test_successful_apply(self, tmp_path):
+        compose_file = tmp_path / "compose.yml"
+        compose_file.write_text(
+            "services:\n  web:\n    image: nginx:latest\n"
+        )
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Creating web ... done\n"
+        mock_result.stderr = ""
+
+        with patch("roustabout.compose_gitops.subprocess.run",
+                    return_value=mock_result):
+            result = apply_compose(compose_file)
+
+        assert result.success is True
+        assert result.services_affected == ("web",)
+
+    def test_failed_apply(self, tmp_path):
+        compose_file = tmp_path / "compose.yml"
+        compose_file.write_text(
+            "services:\n  web:\n    image: nginx:latest\n"
+        )
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        mock_result.stderr = "Error: something failed\n"
+
+        with patch("roustabout.compose_gitops.subprocess.run",
+                    return_value=mock_result):
+            result = apply_compose(compose_file)
+
+        assert result.success is False
+        assert result.error is not None
+
+    def test_timeout(self, tmp_path):
+        import subprocess
+
+        compose_file = tmp_path / "compose.yml"
+        compose_file.write_text(
+            "services:\n  web:\n    image: nginx:latest\n"
+        )
+
+        with patch(
+            "roustabout.compose_gitops.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(
+                cmd="docker compose", timeout=120,
+            ),
+        ):
+            result = apply_compose(compose_file)
+
+        assert result.success is False
+        assert "timed out" in result.error
+
+    def test_docker_not_found(self, tmp_path):
+        compose_file = tmp_path / "compose.yml"
+        compose_file.write_text(
+            "services:\n  web:\n    image: nginx:latest\n"
+        )
+
+        with patch(
+            "roustabout.compose_gitops.subprocess.run",
+            side_effect=FileNotFoundError("docker not found"),
+        ):
+            result = apply_compose(compose_file)
+
+        assert result.success is False
+        assert "not found" in result.error
+
+    def test_output_sanitized(self, tmp_path):
+        compose_file = tmp_path / "compose.yml"
+        compose_file.write_text(
+            "services:\n  web:\n    image: nginx:latest\n"
+        )
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "done\x1b[31m\n"
+        mock_result.stderr = ""
+
+        with patch("roustabout.compose_gitops.subprocess.run",
+                    return_value=mock_result):
+            result = apply_compose(compose_file)
+
+        assert "\x1b" not in result.output

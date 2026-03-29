@@ -143,9 +143,7 @@ class HTTPBackend:
             return self._get(f"/v1/deep-health/{name}")
         return self._get("/v1/deep-health")
 
-    def net_check(
-        self, source: str | None = None, target: str | None = None
-    ) -> dict[str, Any]:
+    def net_check(self, source: str | None = None, target: str | None = None) -> dict[str, Any]:
         params: dict[str, str | int] = {}
         if source:
             params["source"] = source
@@ -168,9 +166,7 @@ class HTTPBackend:
             json={"hostname": hostname},
         )
 
-    def probe_connect(
-        self, container: str, target_host: str, port: int
-    ) -> dict[str, Any]:
+    def probe_connect(self, container: str, target_host: str, port: int) -> dict[str, Any]:
         return self._post(
             f"/v1/containers/{container}/probe/connect",
             json={"target_host": target_host, "port": port},

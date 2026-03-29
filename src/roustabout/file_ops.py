@@ -44,8 +44,7 @@ class FileOpsConfig:
             value = getattr(self, field_name).resolve()
             if value == Path("/"):
                 msg = (
-                    f"{field_name} must not be '/' — "
-                    f"file operations need a scoped root directory"
+                    f"{field_name} must not be '/' — file operations need a scoped root directory"
                 )
                 raise ValueError(msg)
 

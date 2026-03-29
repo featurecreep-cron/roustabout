@@ -52,12 +52,12 @@ def collect(
             c for c in raw_containers if getattr(c, "name", "").lstrip("/") in wanted
         ]
 
-    containers: list[ContainerInfo] = []
+    collected: list[ContainerInfo] = []
     warnings: list[str] = []
 
     for raw in raw_containers:
         try:
-            containers.append(_collect_container(raw))
+            collected.append(_collect_container(raw))
         except Exception as exc:
             name = getattr(raw, "name", "unknown")
             msg = f"container '{name}' skipped: {exc}"
@@ -68,7 +68,7 @@ def collect(
     daemon = _collect_daemon_info(client)
 
     return make_environment(
-        containers=containers,
+        containers=collected,
         generated_at=datetime.now(UTC).isoformat(),
         docker_version=version_info.get("Version", "unknown"),
         warnings=warnings,

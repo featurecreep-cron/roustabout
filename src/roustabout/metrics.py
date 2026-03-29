@@ -18,12 +18,12 @@ from roustabout.redactor import sanitize
 logger = logging.getLogger(__name__)
 
 try:
-    from prometheus_client import Counter, Gauge, Histogram
+    from prometheus_client import Counter, Gauge, Histogram  # type: ignore[import-not-found]
 except ImportError:
     # prometheus_client is optional — metrics disabled if not installed
-    Counter = None  # type: ignore[assignment,misc]
-    Gauge = None  # type: ignore[assignment,misc]
-    Histogram = None  # type: ignore[assignment,misc]
+    Counter = None
+    Gauge = None
+    Histogram = None
 
 
 def _available() -> bool:
@@ -114,21 +114,21 @@ if _available():
     )
 else:
     # Stub objects when prometheus_client is not installed
-    roustabout_container_up = None  # type: ignore[assignment]
-    roustabout_container_health = None  # type: ignore[assignment]
-    roustabout_container_restarts_total = None  # type: ignore[assignment]
-    roustabout_container_cpu_percent = None  # type: ignore[assignment]
-    roustabout_container_memory_bytes = None  # type: ignore[assignment]
-    roustabout_container_memory_limit_bytes = None  # type: ignore[assignment]
-    roustabout_container_network_rx_bytes = None  # type: ignore[assignment]
-    roustabout_container_network_tx_bytes = None  # type: ignore[assignment]
-    roustabout_container_image_age_seconds = None  # type: ignore[assignment]
-    roustabout_mutations_total = None  # type: ignore[assignment]
-    roustabout_mutation_duration_seconds = None  # type: ignore[assignment]
-    roustabout_gate_rejections_total = None  # type: ignore[assignment]
-    roustabout_audit_log_entries_total = None  # type: ignore[assignment]
-    roustabout_exec_total = None  # type: ignore[assignment]
-    roustabout_drift_detected = None  # type: ignore[assignment]
+    roustabout_container_up = None
+    roustabout_container_health = None
+    roustabout_container_restarts_total = None
+    roustabout_container_cpu_percent = None
+    roustabout_container_memory_bytes = None
+    roustabout_container_memory_limit_bytes = None
+    roustabout_container_network_rx_bytes = None
+    roustabout_container_network_tx_bytes = None
+    roustabout_container_image_age_seconds = None
+    roustabout_mutations_total = None
+    roustabout_mutation_duration_seconds = None
+    roustabout_gate_rejections_total = None
+    roustabout_audit_log_entries_total = None
+    roustabout_exec_total = None
+    roustabout_drift_detected = None
 
 
 # --- Module state ---

@@ -175,7 +175,7 @@ def _resolve_container_name(project_name: str, service_name: str, spec: dict[str
     """Resolve the expected container name for a service."""
     name = spec.get("container_name")
     if name:
-        return name
+        return str(name)
     normalized = _normalize_project_name(project_name)
     return f"{normalized}-{service_name}-1"
 

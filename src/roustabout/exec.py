@@ -72,6 +72,8 @@ DENIED_BINARIES: frozenset[str] = frozenset({
     # Shell interpreters — prevent shell wrapper bypass
     "sh", "bash", "zsh", "dash", "ash", "fish",
     "python", "python3", "perl", "ruby", "node",
+    # Shell trampolines — invoke shells indirectly
+    "busybox", "env", "xargs", "script", "expect",
     # Namespace/container escape
     "mount", "umount", "nsenter", "unshare", "chroot",
     # Host-affecting
@@ -179,7 +181,10 @@ def _exec_with_timeout(
     if error[0]:
         raise error[0]
 
-    exit_code, (raw_stdout, raw_stderr) = result[0]
+    exit_code, output = result[0]
+    if output is None:
+        return False, exit_code, None, None
+    raw_stdout, raw_stderr = output
     return False, exit_code, raw_stdout, raw_stderr
 
 

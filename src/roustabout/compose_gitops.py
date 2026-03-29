@@ -161,12 +161,24 @@ def _find_git_root(path: Path) -> Path | None:
 # --- Drift detection ---
 
 
+def _normalize_project_name(name: str) -> str:
+    """Normalize project name to match Docker Compose v2 behavior.
+
+    Compose v2 lowercases and strips non-alphanumeric characters
+    (except hyphens) from the project name derived from the directory.
+    """
+    import re
+
+    return re.sub(r"[^a-z0-9-]", "", name.lower())
+
+
 def _resolve_container_name(project_name: str, service_name: str, spec: dict[str, Any]) -> str:
     """Resolve the expected container name for a service."""
     name = spec.get("container_name")
     if name:
         return name
-    return f"{project_name}-{service_name}-1"
+    normalized = _normalize_project_name(project_name)
+    return f"{normalized}-{service_name}-1"
 
 
 def detect_drift(
@@ -308,6 +320,38 @@ def _compare_service(spec: dict[str, Any], container: Any) -> list[Drift]:
                 field="network_mode",
                 compose_value=sanitize(spec_net),
                 running_value=sanitize(running_net),
+                severity="warning",
+            )
+        )
+
+    # Ports
+    spec_ports = sorted(str(p) for p in spec.get("ports", []))
+    running_bindings = attrs.get("NetworkSettings", {}).get("Ports", {}) or {}
+    running_ports = sorted(
+        f"{b.get('HostPort', '')}:{k.split('/')[0]}"
+        for k, binds in running_bindings.items()
+        if binds
+        for b in binds
+    )
+    if spec_ports and spec_ports != running_ports:
+        drifts.append(
+            Drift(
+                field="ports",
+                compose_value=sanitize(str(spec_ports)),
+                running_value=sanitize(str(running_ports)),
+                severity="warning",
+            )
+        )
+
+    # Volumes / bind mounts
+    spec_volumes = sorted(str(v) for v in spec.get("volumes", []))
+    running_binds = sorted(host_config.get("Binds") or [])
+    if spec_volumes and spec_volumes != running_binds:
+        drifts.append(
+            Drift(
+                field="volumes",
+                compose_value=sanitize(str(spec_volumes)),
+                running_value=sanitize(str(running_binds)),
                 severity="warning",
             )
         )

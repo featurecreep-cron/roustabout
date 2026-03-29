@@ -23,12 +23,28 @@ from roustabout.generator import generate
 from roustabout.models import DockerEnvironment, make_environment
 from roustabout.redactor import redact, resolve_patterns, sanitize, sanitize_environment
 from roustabout.renderer import render
-from roustabout.session import RateLimiter
+from roustabout.session import PermissionTier, RateLimiter
 
 RESPONSE_ENVELOPE = "[roustabout]"
 
 # Shared across all docker_manage calls so rate limiting persists
 _mcp_rate_limiter = RateLimiter()
+
+# MCP server tier — defaults to OPERATE. Set via config or env.
+_mcp_tier: PermissionTier = PermissionTier.OPERATE
+
+
+def _require_tier(required: PermissionTier) -> str | None:
+    """Check if MCP server tier meets the requirement.
+
+    Returns an error message if insufficient, None if OK.
+    """
+    if _mcp_tier < required:
+        return (
+            f"This operation requires {required.value} tier. "
+            f"MCP server is running at {_mcp_tier.value} tier."
+        )
+    return None
 
 mcp = FastMCP(
     "roustabout",
@@ -550,7 +566,7 @@ async def docker_net_check(
 
 
 @mcp.tool()
-async def docker_network_inspect(target: str) -> str:
+async def docker_network_inspect(container_name: str) -> str:
     """[OBSERVE] Get detailed network configuration for a container.
 
     Use when: you need to see networks, IP addresses, DNS aliases, published
@@ -558,11 +574,11 @@ async def docker_network_inspect(target: str) -> str:
     Returns: JSON with full network view.
 
     Args:
-        target: Container name to inspect.
+        container_name: Container name to inspect.
     """
     import json as _json
 
-    target = sanitize(target)[:128]
+    target = sanitize(container_name)[:128]
 
     try:
         cfg = _load_cfg()
@@ -631,18 +647,18 @@ async def docker_network_inspect(target: str) -> str:
 
 
 @mcp.tool()
-async def docker_ports(target: str) -> str:
+async def docker_ports(container_name: str) -> str:
     """[OBSERVE] List all exposed and published ports for a container.
 
     Use when: you need to see which ports are available and their host bindings.
     Returns: JSON array of port info.
 
     Args:
-        target: Container name.
+        container_name: Container name.
     """
     import json as _json
 
-    target = sanitize(target)[:128]
+    target = sanitize(container_name)[:128]
 
     try:
         cfg = _load_cfg()
@@ -690,6 +706,10 @@ async def docker_probe_dns(source: str, hostname: str) -> str:
         hostname: Hostname to resolve.
     """
     import json as _json
+
+    tier_error = _require_tier(PermissionTier.ELEVATE)
+    if tier_error:
+        return _envelope(f"Error: {tier_error}")
 
     source = sanitize(source)[:128]
     hostname = sanitize(hostname)[:256]
@@ -742,6 +762,10 @@ async def docker_probe_connectivity(
     """
     import json as _json
 
+    tier_error = _require_tier(PermissionTier.ELEVATE)
+    if tier_error:
+        return _envelope(f"Error: {tier_error}")
+
     source = sanitize(source)[:128]
     target_host = sanitize(target_host)[:256]
 
@@ -782,7 +806,7 @@ async def docker_probe_connectivity(
 
 @mcp.tool()
 async def docker_deep_health(
-    target: str | None = None, include_probes: bool = False
+    container_name: str | None = None, include_probes: bool = False
 ) -> str:
     """[OBSERVE] Run deep health checks on containers.
 
@@ -792,13 +816,17 @@ async def docker_deep_health(
     Returns: JSON with health results.
 
     Args:
-        target: Optional container name. If omitted, checks all containers.
+        container_name: Optional container name. If omitted, checks all containers.
         include_probes: Include service probes (ELEVATE tier).
     """
     import json as _json
 
-    if target:
-        target = sanitize(target)[:128]
+    if include_probes:
+        tier_error = _require_tier(PermissionTier.ELEVATE)
+        if tier_error:
+            return _envelope(f"Error: {tier_error}")
+
+    target = sanitize(container_name)[:128] if container_name else None
 
     try:
         cfg = _load_cfg()
@@ -927,7 +955,13 @@ async def docker_manage(
         if result.success:
             if result.result == "dry-run":
                 return f"[dry-run] Would {action} {container_name}"
-            return f"{action.capitalize()}ed {container_name}"
+            past = {
+                "start": "Started",
+                "stop": "Stopped",
+                "restart": "Restarted",
+                "recreate": "Recreated",
+            }.get(action, f"{action.capitalize()}ed")
+            return f"{past} {container_name}"
         return f"Failed: {result.error or result.gate_failed}"
 
     try:

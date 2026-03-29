@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from roustabout.api.auth import KeyInfo
+from roustabout.redactor import sanitize
 from roustabout.session import PermissionTier, RateLimiter, capabilities_for_tier
 
 router = APIRouter(prefix="/v1")
@@ -286,6 +287,7 @@ async def container_detail_route(name: str, request: Request) -> JSONResponse:
     """Get detail for a single container."""
     import anyio
 
+    name = sanitize(name)[:128]
     result = await anyio.to_thread.run_sync(lambda: _container_detail(name))
     if result is None:
         return JSONResponse(status_code=404, content={"error": f"container '{name}' not found"})
@@ -297,6 +299,7 @@ async def health_route(name: str, request: Request) -> JSONResponse:
     """Get health status for a specific container."""
     import anyio
 
+    name = sanitize(name)[:128]
     result = await anyio.to_thread.run_sync(lambda: _health(name))
     if result is None:
         return JSONResponse(status_code=404, content={"error": f"container '{name}' not found"})
@@ -314,6 +317,7 @@ async def logs_route(
     """Get recent logs for a specific container."""
     import anyio
 
+    name = sanitize(name)[:128]
     try:
         result = await anyio.to_thread.run_sync(lambda: _logs(name, tail, since=since, grep=grep))
         return JSONResponse(content=result)
@@ -386,6 +390,8 @@ async def container_network_route(name: str, request: Request) -> JSONResponse:
     """Get detailed network configuration for a container."""
     import anyio
 
+    name = sanitize(name)[:128]
+
     def _run() -> dict[str, Any]:
         from roustabout.connection import connect
         from roustabout.network_inspect import inspect_container_network
@@ -455,6 +461,8 @@ async def network_detail_route(name: str, request: Request) -> JSONResponse:
     """Get details about a Docker network."""
     import anyio
 
+    name = sanitize(name)[:128]
+
     def _run() -> dict[str, Any]:
         from roustabout.connection import connect
         from roustabout.network_inspect import inspect_network
@@ -499,6 +507,8 @@ async def container_ports_route(name: str, request: Request) -> JSONResponse:
     """Get port exposure details for a container."""
     import anyio
 
+    name = sanitize(name)[:128]
+
     def _run() -> list[dict[str, Any]]:
         from roustabout.connection import connect
         from roustabout.network_inspect import list_container_ports
@@ -536,6 +546,7 @@ async def probe_dns_route(name: str, request: Request) -> JSONResponse:
     """Resolve a hostname from inside a container. ELEVATE tier."""
     import anyio
 
+    name = sanitize(name)[:128]
     key_info: KeyInfo = request.state.key_info
     if not _has_tier(key_info.tier, "elevate"):
         return JSONResponse(
@@ -555,27 +566,15 @@ async def probe_dns_route(name: str, request: Request) -> JSONResponse:
     def _run() -> dict[str, Any]:
         from roustabout.connection import connect
         from roustabout.network_inspect import probe_dns
-        from roustabout.session import (
-            DockerSession,
-            PermissionTier,
-            RateLimiter,
-            Session,
-            capabilities_for_tier,
-        )
+        from roustabout.session import DockerSession
 
         cfg_local = _load_cfg_simple()
         client = connect(cfg_local)
-        docker_session = DockerSession(client=client, host=cfg_local or "localhost")
-        session = Session(
-            id="api-probe",
-            docker=docker_session,
-            tier=PermissionTier.ELEVATE,
-            capabilities=capabilities_for_tier(PermissionTier.ELEVATE),
-            rate_limiter=RateLimiter(),
-            created_at="",
+        docker_session = DockerSession(
+            client=client, host=cfg_local or "localhost",
         )
         try:
-            result = probe_dns(session.docker, name, hostname)
+            result = probe_dns(docker_session, name, hostname)
             return {
                 "source": result.source,
                 "query": result.query,
@@ -602,6 +601,7 @@ async def probe_connect_route(name: str, request: Request) -> JSONResponse:
     """Test TCP connectivity from a container. ELEVATE tier."""
     import anyio
 
+    name = sanitize(name)[:128]
     key_info: KeyInfo = request.state.key_info
     if not _has_tier(key_info.tier, "elevate"):
         return JSONResponse(
@@ -624,27 +624,17 @@ async def probe_connect_route(name: str, request: Request) -> JSONResponse:
     def _run() -> dict[str, Any]:
         from roustabout.connection import connect
         from roustabout.network_inspect import probe_connectivity
-        from roustabout.session import (
-            DockerSession,
-            PermissionTier,
-            RateLimiter,
-            Session,
-            capabilities_for_tier,
-        )
+        from roustabout.session import DockerSession
 
         cfg_local = _load_cfg_simple()
         client = connect(cfg_local)
-        docker_session = DockerSession(client=client, host=cfg_local or "localhost")
-        session = Session(
-            id="api-probe",
-            docker=docker_session,
-            tier=PermissionTier.ELEVATE,
-            capabilities=capabilities_for_tier(PermissionTier.ELEVATE),
-            rate_limiter=RateLimiter(),
-            created_at="",
+        docker_session = DockerSession(
+            client=client, host=cfg_local or "localhost",
         )
         try:
-            result = probe_connectivity(session.docker, name, target_host, int(port))
+            result = probe_connectivity(
+                docker_session, name, target_host, int(port),
+            )
             return {
                 "source": result.source,
                 "target": result.target,
@@ -714,6 +704,20 @@ async def deep_health_container_route(
     """Get deep health status for a specific container."""
     import anyio
 
+    name = sanitize(name)[:128]
+
+    if deep:
+        key_info: KeyInfo = request.state.key_info
+        if not _has_tier(key_info.tier, "elevate"):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "error": "deep health probes require elevate tier",
+                    "required_tier": "elevate",
+                    "your_tier": key_info.tier,
+                },
+            )
+
     def _run() -> dict[str, Any]:
         from roustabout.connection import connect
         from roustabout.deep_health import check_container_health
@@ -781,6 +785,9 @@ async def api_root(request: Request) -> JSONResponse:
 @router.post("/containers/{name}/{action}")
 async def container_mutation(name: str, action: str, request: Request) -> JSONResponse:
     """Execute a container mutation through the gateway."""
+    name = sanitize(name)[:128]
+    action = sanitize(action)[:32]
+
     if action not in _VALID_MUTATIONS:
         return JSONResponse(
             status_code=400,

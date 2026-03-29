@@ -93,8 +93,9 @@ def _validate_path(path: str, root: Path) -> Path:
     if not resolved.is_relative_to(root.resolve()):
         raise ValueError(f"Path {path!r} resolves outside root")
 
-    if resolved.name in _BLOCKED_NAMES:
-        raise ValueError(f"Path {path!r} matches blocked pattern")
+    for part in resolved.parts:
+        if part in _BLOCKED_NAMES:
+            raise ValueError(f"Path {path!r} matches blocked pattern")
 
     return resolved
 
@@ -280,7 +281,9 @@ def _write_staged(
     if diff:
         (staging_dir / "diff.patch").write_text(diff, encoding="utf-8")
 
-    apply_cmd = f"cp {artifact_path} {target}"
+    import shlex
+
+    apply_cmd = f"cp {shlex.quote(str(artifact_path))} {shlex.quote(str(target))}"
 
     return FileWriteResult(
         success=True, path=str(target), staged=True,

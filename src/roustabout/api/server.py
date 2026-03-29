@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 
@@ -22,6 +23,13 @@ def main() -> None:
     from roustabout.api.routes import set_rate_limiter
     from roustabout.config import load_config
     from roustabout.session import RateLimiter
+
+    # Audit log — structured output for all API requests
+    logging.basicConfig(
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        level=logging.WARNING,
+    )
+    logging.getLogger("roustabout.audit").setLevel(logging.INFO)
 
     config = load_config()
 

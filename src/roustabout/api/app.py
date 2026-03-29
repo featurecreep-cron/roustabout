@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from roustabout.api.auth import AuthConfig, AuthError, resolve_api_key
 from roustabout.api.routes import router
+
+audit_log = logging.getLogger("roustabout.audit")
 
 
 def create_app(auth_config: AuthConfig | None = None) -> FastAPI:
@@ -37,6 +41,11 @@ def create_app(auth_config: AuthConfig | None = None) -> FastAPI:
 
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
+            audit_log.warning(
+                "%s %s auth=missing status=401",
+                request.method,
+                request.url.path,
+            )
             return JSONResponse(
                 status_code=401,
                 content={"error": "missing or malformed Authorization header"},
@@ -46,13 +55,27 @@ def create_app(auth_config: AuthConfig | None = None) -> FastAPI:
         try:
             key_info = resolve_api_key(token, auth_config)
         except AuthError:
+            audit_log.warning(
+                "%s %s auth=invalid status=401",
+                request.method,
+                request.url.path,
+            )
             return JSONResponse(
                 status_code=401,
                 content={"error": "invalid API key"},
             )
 
         request.state.key_info = key_info
-        return await call_next(request)
+        response = await call_next(request)
+        audit_log.info(
+            "%s %s key=%s tier=%s status=%d",
+            request.method,
+            request.url.path,
+            key_info.label,
+            key_info.tier,
+            response.status_code,
+        )
+        return response
 
     @app.get("/health")
     async def health() -> dict[str, str]:

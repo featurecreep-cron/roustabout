@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from roustabout.cli.backend import Backend, get_backend
+from roustabout.cli.backend import get_backend
 
 
 class TestGetBackend:
@@ -97,7 +97,7 @@ class TestHTTPBackend:
         backend._client = mock_client
 
         backend.mutate("nginx", "restart")
-        mock_client.post.assert_called_once_with("/v1/containers/nginx/restart")
+        mock_client.post.assert_called_once_with("/v1/containers/nginx/restart", json=None)
 
     def test_401_raises_auth_error(self):
         from roustabout.cli.http import HTTPBackend
@@ -137,7 +137,7 @@ class TestHTTPBackend:
         mock_resp = MagicMock()
         mock_resp.is_success = False
         mock_resp.status_code = 429
-        mock_resp.json.return_value = {"error": "rate limit"}
+        mock_resp.json.return_value = {}
         mock_client.post.return_value = mock_resp
         backend._client = mock_client
 

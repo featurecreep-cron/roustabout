@@ -22,7 +22,6 @@ classifiers = [
     "Topic :: System :: Systems Administration",
 ]
 dependencies = [
-    "docker>=7.0",
     "click>=8.0",
     "ruamel.yaml>=0.18",
     "secretscreen>=0.1.0",
@@ -39,6 +38,7 @@ mcp = [
     "mcp[cli]>=1.0",
 ]
 server = [
+    "docker>=7.0",
     "fastapi>=0.100",
     "uvicorn>=0.20",
 ]
@@ -53,8 +53,7 @@ dev = [
 
 [project.scripts]
 roustabout = "roustabout.cli:main"
-roustabout-mcp = "roustabout.mcp_server:main"
-roustabout-mcp-proxy = "roustabout.mcp_proxy.server:main"
+roustabout-mcp = "roustabout.mcp_proxy.server:main"
 roustabout-server = "roustabout.api.server:main"
 
 [tool.setuptools.packages.find]
@@ -79,7 +78,7 @@ module = ["docker.*", "ruamel.*", "mcp.*", "tomli", "fastapi.*", "uvicorn.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["roustabout.mcp_server", "roustabout.mcp_proxy.server"]
+module = ["roustabout.mcp_proxy.server"]
 disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]

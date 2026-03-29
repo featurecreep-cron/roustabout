@@ -148,6 +148,138 @@ _TRANSPORT_LIBRARIES = frozenset(
 )
 
 
+def _is_guarded_import(tree: ast.AST, node: ast.AST) -> bool:
+    """Check if an import node is inside a guarded block.
+
+    Guarded imports are acceptable for optional dependencies:
+    - try: import X / except ImportError (handles missing package)
+    - if _HAS_DOCKER: import X (conditional on availability flag)
+    """
+    for parent in ast.walk(tree):
+        # try/except ImportError guard
+        if isinstance(parent, ast.Try):
+            for handler in parent.handlers:
+                if (
+                    handler.type
+                    and isinstance(handler.type, ast.Name)
+                    and handler.type.id == "ImportError"
+                ):
+                    for try_node in ast.walk(parent):
+                        if try_node is node:
+                            return True
+        # if _HAS_DOCKER / if _HAS_X guard
+        if isinstance(parent, ast.If):
+            test = parent.test
+            if isinstance(test, ast.Name) and test.id.startswith("_HAS_"):
+                for if_node in ast.walk(parent):
+                    if if_node is node:
+                        return True
+    return False
+
+
+class TestDockerIsolation:
+    """Rule 0: Only server-side modules may import docker.
+
+    The API server is the sole Docker gateway. CLI and MCP proxy are
+    HTTP clients only. If a non-server module imports docker, it can
+    bypass auth, tier enforcement, rate limiting, and audit logging.
+
+    Guarded imports (try/except ImportError) are allowed — they handle
+    the case where docker is not installed (transitional pattern during
+    the Rule 0 migration).
+    """
+
+    # Modules that are server-side only (run inside the roustabout container)
+    _SERVER_MODULES = _CORE_MODULES
+
+    def test_no_docker_in_cli(self):
+        """CLI package must not import docker — it's an HTTP client."""
+        violations = []
+        cli_dir = SRC / "cli"
+        if not cli_dir.exists():
+            return
+        for path in cli_dir.glob("*.py"):
+            if path.name == "__init__.py":
+                continue
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.startswith("docker") and not _is_guarded_import(tree, node):
+                            violations.append(f"cli/{path.name}:{node.lineno} imports {alias.name}")
+                elif isinstance(node, ast.ImportFrom):
+                    if (
+                        node.module
+                        and node.module.startswith("docker")
+                        and not _is_guarded_import(tree, node)
+                    ):
+                        violations.append(
+                            f"cli/{path.name}:{node.lineno} imports from {node.module}"
+                        )
+        assert not violations, (
+            "Rule 0 violation: CLI imports docker directly "
+            "(must use HTTP backend only):\n" + "\n".join(violations)
+        )
+
+    def test_no_docker_in_mcp_proxy(self):
+        """MCP proxy must not import docker — it's an HTTP client."""
+        violations = []
+        proxy_dir = SRC / "mcp_proxy"
+        if not proxy_dir.exists():
+            return
+        for path in proxy_dir.glob("*.py"):
+            if path.name == "__init__.py":
+                continue
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.startswith("docker"):
+                            violations.append(
+                                f"mcp_proxy/{path.name}:{node.lineno} imports {alias.name}"
+                            )
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module and node.module.startswith("docker"):
+                        violations.append(
+                            f"mcp_proxy/{path.name}:{node.lineno} imports from {node.module}"
+                        )
+        assert not violations, (
+            "Rule 0 violation: MCP proxy imports docker directly "
+            "(must use HTTP backend only):\n" + "\n".join(violations)
+        )
+
+    def test_no_roustabout_core_in_mcp_proxy(self):
+        """MCP proxy must not import roustabout core — it's a pure HTTP translator."""
+        violations = []
+        proxy_dir = SRC / "mcp_proxy"
+        if not proxy_dir.exists():
+            return
+        for path in proxy_dir.glob("*.py"):
+            if path.name == "__init__.py":
+                continue
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    if node.module.startswith("roustabout.") and not node.module.startswith(
+                        "roustabout.mcp_proxy"
+                    ):
+                        violations.append(
+                            f"mcp_proxy/{path.name}:{node.lineno} imports from {node.module}"
+                        )
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.startswith("roustabout.") and not alias.name.startswith(
+                            "roustabout.mcp_proxy"
+                        ):
+                            violations.append(
+                                f"mcp_proxy/{path.name}:{node.lineno} imports {alias.name}"
+                            )
+        assert not violations, (
+            "Rule 0 violation: MCP proxy imports roustabout core "
+            "(must be pure HTTP client):\n" + "\n".join(violations)
+        )
+
+
 class TestTransportIsolation:
     """Core modules must not import transport libraries.
 
@@ -203,7 +335,7 @@ class TestLayerViolation:
     """No upward layer imports.
 
     Layer hierarchy (top to bottom):
-    - Interface: cli.py, mcp_server.py
+    - Interface: cli/ (package), mcp_proxy/ (package), api/ (package)
     - Gateway: gateway.py, permissions.py, lockdown.py, mutations.py, state_db.py
     - Logic: collector.py, auditor.py, diff.py, redactor.py, generator.py,
              dr_plan.py, audit_renderer.py, notifications.py, session.py,
@@ -241,8 +373,6 @@ class TestLayerViolation:
         "state_db.py": 3,
         # Gateway consumers — import gateway to route operations
         "bulk_ops.py": 3,
-        # Interface = 4 (cli is now a package, not checked by _python_files)
-        "mcp_server.py": 4,
     }
 
     def test_no_upward_imports(self):

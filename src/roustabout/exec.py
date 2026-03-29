@@ -68,22 +68,49 @@ class DeniedCommand(Exception):
 
 # Denylist — blocked binaries and patterns
 
-DENIED_BINARIES: frozenset[str] = frozenset({
-    # Shell interpreters — prevent shell wrapper bypass
-    "sh", "bash", "zsh", "dash", "ash", "fish",
-    "python", "python3", "perl", "ruby", "node",
-    # Shell trampolines — invoke shells indirectly
-    "busybox", "env", "xargs", "script", "expect",
-    # Namespace/container escape
-    "mount", "umount", "nsenter", "unshare", "chroot",
-    # Host-affecting
-    "reboot", "shutdown", "modprobe", "insmod", "rmmod",
-    "iptables", "ip6tables", "nft", "tc",
-})
+DENIED_BINARIES: frozenset[str] = frozenset(
+    {
+        # Shell interpreters — prevent shell wrapper bypass
+        "sh",
+        "bash",
+        "zsh",
+        "dash",
+        "ash",
+        "fish",
+        "python",
+        "python3",
+        "perl",
+        "ruby",
+        "node",
+        # Shell trampolines — invoke shells indirectly
+        "busybox",
+        "env",
+        "xargs",
+        "script",
+        "expect",
+        # Namespace/container escape
+        "mount",
+        "umount",
+        "nsenter",
+        "unshare",
+        "chroot",
+        # Host-affecting
+        "reboot",
+        "shutdown",
+        "modprobe",
+        "insmod",
+        "rmmod",
+        "iptables",
+        "ip6tables",
+        "nft",
+        "tc",
+    }
+)
 
 DENIED_PATTERNS: tuple[str, ...] = (
     "/proc/sysrq-trigger",
-    "/dev/sd", "/dev/nvme",
+    "/dev/sd",
+    "/dev/nvme",
     "docker.sock",
 )
 
@@ -96,7 +123,8 @@ def _check_denylist(command: tuple[str, ...]) -> None:
     binary = command[0].rsplit("/", 1)[-1]
     if binary in DENIED_BINARIES:
         raise DeniedCommand(
-            command, f"binary {binary!r} is on the denylist",
+            command,
+            f"binary {binary!r} is on the denylist",
         )
 
     joined = " ".join(command)
@@ -118,7 +146,8 @@ def _check_allowlist(
 
     if not config or not config.allowed:
         raise DeniedCommand(
-            command, "no exec allowlist configured for this container",
+            command,
+            "no exec allowlist configured for this container",
         )
 
     joined = " ".join(command)
@@ -127,7 +156,8 @@ def _check_allowlist(
             return
 
     raise DeniedCommand(
-        command, "command does not match any allowed prefix",
+        command,
+        "command does not match any allowed prefix",
     )
 
 
@@ -168,7 +198,7 @@ def _exec_with_timeout(
     def _run() -> None:
         try:
             result[0] = container.exec_run(**exec_kwargs)
-        except Exception as e:  # noqa: broad-except — capture any docker API error for re-raise
+        except Exception as e:  # noqa: BLE001 — capture any docker API error for re-raise
             error[0] = e
 
     thread = threading.Thread(target=_run, daemon=True)
@@ -212,16 +242,25 @@ def execute(
         container = docker_session.client.containers.get(cmd.target)
     except docker.errors.NotFound:
         return ExecResult(
-            success=False, target=cmd.target, command=cmd.command,
-            exit_code=None, stdout="", stderr="",
-            truncated=False, error=f"Container {cmd.target!r} not found",
+            success=False,
+            target=cmd.target,
+            command=cmd.command,
+            exit_code=None,
+            stdout="",
+            stderr="",
+            truncated=False,
+            error=f"Container {cmd.target!r} not found",
         )
 
     # Container must be running
     if container.status != "running":
         return ExecResult(
-            success=False, target=cmd.target, command=cmd.command,
-            exit_code=None, stdout="", stderr="",
+            success=False,
+            target=cmd.target,
+            command=cmd.command,
+            exit_code=None,
+            stdout="",
+            stderr="",
             truncated=False,
             error=f"Container is {container.status}, not running",
         )
@@ -239,13 +278,19 @@ def execute(
             exec_kwargs["workdir"] = cmd.workdir
 
         timed_out, exit_code, raw_stdout, raw_stderr = _exec_with_timeout(
-            container, exec_kwargs, cmd.timeout,
+            container,
+            exec_kwargs,
+            cmd.timeout,
         )
 
         if timed_out:
             return ExecResult(
-                success=False, target=cmd.target, command=cmd.command,
-                exit_code=None, stdout="", stderr="",
+                success=False,
+                target=cmd.target,
+                command=cmd.command,
+                exit_code=None,
+                stdout="",
+                stderr="",
                 truncated=False,
                 error=f"Command timed out after {cmd.timeout}s",
                 timed_out=True,
@@ -253,15 +298,25 @@ def execute(
 
     except docker.errors.APIError as e:
         return ExecResult(
-            success=False, target=cmd.target, command=cmd.command,
-            exit_code=None, stdout="", stderr="",
-            truncated=False, error=sanitize(str(e)),
+            success=False,
+            target=cmd.target,
+            command=cmd.command,
+            exit_code=None,
+            stdout="",
+            stderr="",
+            truncated=False,
+            error=sanitize(str(e)),
         )
     except requests.exceptions.ConnectionError as e:
         return ExecResult(
-            success=False, target=cmd.target, command=cmd.command,
-            exit_code=None, stdout="", stderr="",
-            truncated=False, error=sanitize(str(e)),
+            success=False,
+            target=cmd.target,
+            command=cmd.command,
+            exit_code=None,
+            stdout="",
+            stderr="",
+            truncated=False,
+            error=sanitize(str(e)),
         )
 
     # Process output

@@ -526,9 +526,7 @@ class TestSuccessPath:
 
 class TestMutationCommandNewFields:
     def test_exec_command_field(self):
-        cmd = MutationCommand(
-            action="exec", target="app", exec_command=("ls", "-la")
-        )
+        cmd = MutationCommand(action="exec", target="app", exec_command=("ls", "-la"))
         assert cmd.exec_command == ("ls", "-la")
 
     def test_compose_path_field(self):
@@ -549,34 +547,49 @@ class TestMutationCommandNewFields:
 class TestGatewayResultNewFields:
     def test_friction_field(self):
         result = GatewayResult(
-            success=True, action="restart", target="nginx",
-            pre_state_hash="abc", post_state_hash="def",
-            result="success", friction="direct",
+            success=True,
+            action="restart",
+            target="nginx",
+            pre_state_hash="abc",
+            post_state_hash="def",
+            result="success",
+            friction="direct",
         )
         assert result.friction == "direct"
 
     def test_suggested_command_field(self):
         result = GatewayResult(
-            success=True, action="restart", target="nginx",
-            pre_state_hash="", post_state_hash=None,
-            result="directed", friction="directed",
+            success=True,
+            action="restart",
+            target="nginx",
+            pre_state_hash="",
+            post_state_hash=None,
+            result="directed",
+            friction="directed",
             suggested_command="docker restart nginx",
         )
         assert result.suggested_command == "docker restart nginx"
 
     def test_confirmation_id_field(self):
         result = GatewayResult(
-            success=False, action="update-image", target="nginx",
-            pre_state_hash="abc", post_state_hash=None,
-            result="pending-confirmation", friction="confirm",
+            success=False,
+            action="update-image",
+            target="nginx",
+            pre_state_hash="abc",
+            post_state_hash=None,
+            result="pending-confirmation",
+            friction="confirm",
             confirmation_id="some-uuid",
         )
         assert result.confirmation_id == "some-uuid"
 
     def test_new_fields_default_none(self):
         result = GatewayResult(
-            success=True, action="restart", target="nginx",
-            pre_state_hash="abc", post_state_hash="def",
+            success=True,
+            action="restart",
+            target="nginx",
+            pre_state_hash="abc",
+            post_state_hash="def",
             result="success",
         )
         assert result.friction is None
@@ -608,9 +621,14 @@ class TestConfirmationRequest:
     def test_frozen(self):
         cmd = MutationCommand(action="restart", target="nginx")
         req = ConfirmationRequest(
-            id="x", command=cmd, session_id="s",
-            semantic_diff=None, audit_findings=None,
-            created_at=0.0, expires_at=0.0, pre_state_hash="",
+            id="x",
+            command=cmd,
+            session_id="s",
+            semantic_diff=None,
+            audit_findings=None,
+            created_at=0.0,
+            expires_at=0.0,
+            pre_state_hash="",
         )
         with pytest.raises(AttributeError):
             req.id = "y"
@@ -654,7 +672,8 @@ class TestDirectedFriction:
         """DIRECTED for exec includes the exec command."""
         session = _make_session(PermissionTier.OBSERVE)
         cmd = _make_command(
-            action="exec", target="app",
+            action="exec",
+            target="app",
             exec_command=("ls", "-la"),
         )
 
@@ -736,7 +755,9 @@ class TestConfirmFriction:
         mock_info.name = "nginx"
 
         mock_mutation = MutationResult(
-            success=True, action="update-image", target="nginx",
+            success=True,
+            action="update-image",
+            target="nginx",
         )
 
         with patch("roustabout.gateway._inspect_target", return_value=mock_info):
@@ -776,14 +797,16 @@ class TestBuildSuggestedCommand:
 
     def test_exec_multi_args(self):
         cmd = MutationCommand(
-            action="exec", target="db",
+            action="exec",
+            target="db",
             exec_command=("pg_dump", "-U", "postgres"),
         )
         assert _build_suggested_command(cmd) == "docker exec db pg_dump -U postgres"
 
     def test_compose_apply(self):
         cmd = MutationCommand(
-            action="compose-apply", target="mystack",
+            action="compose-apply",
+            target="mystack",
             compose_path="/opt/stacks/compose.yml",
         )
         assert _build_suggested_command(cmd) == "docker compose -f /opt/stacks/compose.yml up -d"
@@ -811,7 +834,9 @@ class TestFrictionInResult:
         mock_info.name = "nginx"
 
         mock_mutation = MutationResult(
-            success=True, action="restart", target="nginx",
+            success=True,
+            action="restart",
+            target="nginx",
         )
 
         with patch("roustabout.gateway._inspect_target", return_value=mock_info):
@@ -856,7 +881,9 @@ class TestPreMutationBackup:
         mock_info.name = "nginx"
 
         mock_mutation = MutationResult(
-            success=True, action="restart", target="nginx",
+            success=True,
+            action="restart",
+            target="nginx",
         )
 
         with patch("roustabout.gateway._inspect_target", return_value=mock_info):
@@ -879,7 +906,8 @@ class TestComposeApplyRouting:
 
         session = _make_session(PermissionTier.ELEVATE)
         cmd = _make_command(
-            action="compose-apply", target="mystack",
+            action="compose-apply",
+            target="mystack",
             compose_path="/opt/stacks/compose.yml",
         )
 
@@ -911,7 +939,8 @@ class TestComposeApplyRouting:
         """compose-apply dry-run returns without executing."""
         session = _make_session(PermissionTier.ELEVATE)
         cmd = _make_command(
-            action="compose-apply", target="mystack",
+            action="compose-apply",
+            target="mystack",
             compose_path="/opt/stacks/compose.yml",
             dry_run=True,
         )

@@ -245,7 +245,7 @@ def check_environment_health(
                 client, name, profile=profile, docker_session=docker_session
             )
             results.append(result)
-        except Exception:  # noqa: broad-except — skip individual container failures
+        except Exception:  # noqa: BLE001 — skip individual container failures
             logger.warning("Failed deep health check for %s", name)
             results.append(
                 DeepHealthResult(

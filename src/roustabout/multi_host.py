@@ -109,7 +109,7 @@ def _create_client(config: HostConfig) -> docker.DockerClient:
 def _safe_close(client: docker.DockerClient) -> None:
     try:
         client.close()
-    except Exception:  # noqa: broad-except — best-effort close
+    except Exception:  # noqa: BLE001 — best-effort close
         pass
 
 
@@ -159,7 +159,7 @@ class HostPool:
                         entry.in_use = True
                         entry.last_used = time.monotonic()
                         return entry.client
-                    except Exception:  # noqa: broad-except — stale connection, reconnect
+                    except Exception:  # noqa: BLE001 — stale connection, reconnect
                         pool.remove(entry)
                         _safe_close(entry.client)
 
@@ -168,7 +168,7 @@ class HostPool:
                 try:
                     client = _create_client(config)
                     client.ping()
-                except Exception as e:  # noqa: broad-except — wrap as HostUnreachable
+                except Exception as e:  # noqa: BLE001 — wrap as HostUnreachable
                     raise HostUnreachable(host_name, config.url, str(e)) from e
                 entry = _PoolEntry(client=client, last_used=time.monotonic(), in_use=True)
                 pool.append(entry)
@@ -226,7 +226,7 @@ class HostPool:
                 )
             finally:
                 _safe_close(client)
-        except Exception as e:  # noqa: broad-except — connection or ping failure
+        except Exception as e:  # noqa: BLE001 — connection or ping failure
             latency = (time.monotonic() - start) * 1000
             return HostHealth(
                 name=host_name,

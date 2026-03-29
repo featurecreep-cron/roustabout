@@ -496,9 +496,7 @@ async def network_detail_route(name: str, request: Request) -> JSONResponse:
         return JSONResponse(content=data)
     except Exception as exc:
         if type(exc).__name__ == "NotFound":
-            return JSONResponse(
-                status_code=404, content={"error": f"network '{name}' not found"}
-            )
+            return JSONResponse(status_code=404, content={"error": f"network '{name}' not found"})
         raise
 
 
@@ -571,7 +569,8 @@ async def probe_dns_route(name: str, request: Request) -> JSONResponse:
         cfg_local = _load_cfg_simple()
         client = connect(cfg_local)
         docker_session = DockerSession(
-            client=client, host=cfg_local or "localhost",
+            client=client,
+            host=cfg_local or "localhost",
         )
         try:
             result = probe_dns(docker_session, name, hostname)
@@ -629,11 +628,15 @@ async def probe_connect_route(name: str, request: Request) -> JSONResponse:
         cfg_local = _load_cfg_simple()
         client = connect(cfg_local)
         docker_session = DockerSession(
-            client=client, host=cfg_local or "localhost",
+            client=client,
+            host=cfg_local or "localhost",
         )
         try:
             result = probe_connectivity(
-                docker_session, name, target_host, int(port),
+                docker_session,
+                name,
+                target_host,
+                int(port),
             )
             return {
                 "source": result.source,
@@ -730,7 +733,9 @@ async def deep_health_container_route(
             docker_session = DockerSession(client=client, host="localhost")
         try:
             result = check_container_health(
-                client, name, docker_session=docker_session,
+                client,
+                name,
+                docker_session=docker_session,
             )
             return {
                 "container_name": result.container_name,
@@ -765,21 +770,23 @@ async def api_root(request: Request) -> JSONResponse:
     if not isinstance(config, dict):
         config = {}
     info = get_api_info(request.app, config)
-    return JSONResponse(content={
-        "roustabout": info.version,
-        "api": info.api_version,
-        "hosts": info.host_count,
-        "capabilities": info.capabilities,
-        "routes": [
-            {
-                "path": r.path,
-                "method": r.method,
-                "summary": r.summary,
-                "tier": r.tier,
-            }
-            for r in info.routes
-        ],
-    })
+    return JSONResponse(
+        content={
+            "roustabout": info.version,
+            "api": info.api_version,
+            "hosts": info.host_count,
+            "capabilities": info.capabilities,
+            "routes": [
+                {
+                    "path": r.path,
+                    "method": r.method,
+                    "summary": r.summary,
+                    "tier": r.tier,
+                }
+                for r in info.routes
+            ],
+        }
+    )
 
 
 @router.post("/containers/{name}/{action}")

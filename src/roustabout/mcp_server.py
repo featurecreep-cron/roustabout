@@ -46,6 +46,7 @@ def _require_tier(required: PermissionTier) -> str | None:
         )
     return None
 
+
 mcp = FastMCP(
     "roustabout",
     instructions="Safe, read-only Docker environment visibility. Secrets are redacted.",
@@ -722,9 +723,7 @@ async def docker_probe_dns(source: str, hostname: str) -> str:
             from roustabout.session import DockerSession
 
             client = connect(cfg.docker_host)
-            docker_session = DockerSession(
-                client=client, host=cfg.docker_host or "localhost"
-            )
+            docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
             try:
                 result = probe_dns(docker_session, source, hostname)
                 return _json.dumps(
@@ -747,9 +746,7 @@ async def docker_probe_dns(source: str, hostname: str) -> str:
 
 
 @mcp.tool()
-async def docker_probe_connectivity(
-    source: str, target_host: str, port: int
-) -> str:
+async def docker_probe_connectivity(source: str, target_host: str, port: int) -> str:
     """[ELEVATE] Test TCP connectivity from a container to a host:port.
 
     Use when: you need to verify a container can reach a service.
@@ -777,13 +774,9 @@ async def docker_probe_connectivity(
             from roustabout.session import DockerSession
 
             client = connect(cfg.docker_host)
-            docker_session = DockerSession(
-                client=client, host=cfg.docker_host or "localhost"
-            )
+            docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
             try:
-                result = probe_connectivity(
-                    docker_session, source, target_host, port
-                )
+                result = probe_connectivity(docker_session, source, target_host, port)
                 return _json.dumps(
                     {
                         "source": result.source,
@@ -842,14 +835,10 @@ async def docker_deep_health(
             if include_probes:
                 from roustabout.session import DockerSession
 
-                docker_session = DockerSession(
-                    client=client, host=cfg.docker_host or "localhost"
-                )
+                docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
             try:
                 if target:
-                    result = check_container_health(
-                        client, target, docker_session=docker_session
-                    )
+                    result = check_container_health(client, target, docker_session=docker_session)
                     data = {
                         "container_name": result.container_name,
                         "profile": result.profile,
@@ -860,9 +849,7 @@ async def docker_deep_health(
                         "checks_performed": list(result.checks_performed),
                     }
                 else:
-                    health = check_environment_health(
-                        client, docker_session=docker_session
-                    )
+                    health = check_environment_health(client, docker_session=docker_session)
                     data = {
                         "total": health.total,
                         "healthy": health.healthy,

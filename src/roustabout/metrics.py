@@ -158,7 +158,7 @@ def update_container_metrics() -> None:
         host_name = host_cfg.name
         try:
             client = _host_pool.connect(host_name)
-        except Exception:  # noqa: broad-except — skip unreachable hosts
+        except Exception:  # noqa: BLE001 — skip unreachable hosts
             continue
 
         try:
@@ -195,7 +195,7 @@ def update_container_metrics() -> None:
                     roustabout_container_network_tx_bytes.labels(
                         container=name, host=host_name
                     ).set(s.network_tx_bytes)
-        except Exception:  # noqa: broad-except — skip host collection failures
+        except Exception:  # noqa: BLE001 — skip host collection failures
             logger.warning("Failed to collect metrics for host %s", host_name)
         finally:
             _host_pool.release(host_name, client)

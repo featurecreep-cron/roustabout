@@ -103,8 +103,15 @@ class TestActionCapabilityMapping:
         from roustabout.permissions import ACTION_CAPABILITY
 
         read_actions = [
-            "snapshot", "audit", "audit-compose", "diff", "generate",
-            "read-logs", "read-health", "dr-plan", "digest-age",
+            "snapshot",
+            "audit",
+            "audit-compose",
+            "diff",
+            "generate",
+            "read-logs",
+            "read-health",
+            "dr-plan",
+            "digest-age",
             "reverse-map-env",
         ]
         for action in read_actions:
@@ -114,8 +121,12 @@ class TestActionCapabilityMapping:
         from roustabout.permissions import ACTION_CAPABILITY
 
         mutation_actions = [
-            "start", "stop", "restart", "recreate",
-            "recreate-spec-change", "update-image",
+            "start",
+            "stop",
+            "restart",
+            "recreate",
+            "recreate-spec-change",
+            "update-image",
         ]
         for action in mutation_actions:
             assert action in ACTION_CAPABILITY, f"Missing mutation action: {action}"
@@ -124,9 +135,13 @@ class TestActionCapabilityMapping:
         from roustabout.permissions import ACTION_CAPABILITY
 
         new_actions = [
-            "exec", "file-read", "file-write",
-            "compose-apply", "prune",
-            "modify-secrets", "modify-tier-labels",
+            "exec",
+            "file-read",
+            "file-write",
+            "compose-apply",
+            "prune",
+            "modify-secrets",
+            "modify-tier-labels",
         ]
         for action in new_actions:
             assert action in ACTION_CAPABILITY, f"Missing action: {action}"
@@ -140,9 +155,17 @@ class TestCapabilityFriction:
         from roustabout.permissions import CAPABILITY_FRICTION, FrictionMechanism
 
         read_caps = [
-            "can_snapshot", "can_audit", "can_audit_compose", "can_diff",
-            "can_generate", "can_read_logs", "can_read_health", "can_dr_plan",
-            "can_digest_age", "can_reverse_map_env", "can_file_read",
+            "can_snapshot",
+            "can_audit",
+            "can_audit_compose",
+            "can_diff",
+            "can_generate",
+            "can_read_logs",
+            "can_read_health",
+            "can_dr_plan",
+            "can_digest_age",
+            "can_reverse_map_env",
+            "can_file_read",
         ]
         for cap in read_caps:
             for tier in PermissionTier:
@@ -291,8 +314,11 @@ class TestCheckFriction:
 
         session = _make_session(PermissionTier.OPERATE)
         container = make_container(
-            name="app", id="a1", status="running",
-            image="app:latest", image_id="sha256:a1",
+            name="app",
+            id="a1",
+            status="running",
+            image="app:latest",
+            image_id="sha256:a1",
         )
         result = check(session, "restart", target_info=container)
         assert result.target == "app"
@@ -355,8 +381,11 @@ class TestHardDeny:
 
         session = _make_session(PermissionTier.OPERATE)
         db = make_container(
-            name="mydb", id="db1", status="running",
-            image="postgres:16", image_id="sha256:db1",
+            name="mydb",
+            id="db1",
+            status="running",
+            image="postgres:16",
+            image_id="sha256:db1",
         )
         with pytest.raises(PermissionDenied):
             check(session, "restart", target_info=db)
@@ -367,8 +396,11 @@ class TestHardDeny:
 
         session = _make_session(PermissionTier.OBSERVE)
         db = make_container(
-            name="mydb", id="db1", status="running",
-            image="postgres:16", image_id="sha256:db1",
+            name="mydb",
+            id="db1",
+            status="running",
+            image="postgres:16",
+            image_id="sha256:db1",
         )
         result = check(session, "snapshot", target_info=db)
         assert result.friction == FrictionMechanism.DIRECT
@@ -378,8 +410,11 @@ class TestHardDeny:
 
         session = _make_session(PermissionTier.ELEVATE)
         db = make_container(
-            name="mydb", id="db1", status="running",
-            image="postgres:16", image_id="sha256:db1",
+            name="mydb",
+            id="db1",
+            status="running",
+            image="postgres:16",
+            image_id="sha256:db1",
         )
         result = check(session, "restart", target_info=db)
         assert result.friction is not None

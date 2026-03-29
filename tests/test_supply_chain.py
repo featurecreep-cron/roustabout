@@ -513,7 +513,6 @@ class TestPinComposeDigests:
         assert compose.read_text() == original
 
 
-
 # Round-trip integration test
 
 

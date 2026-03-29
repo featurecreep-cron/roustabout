@@ -103,7 +103,8 @@ class TestReadFile:
         root.mkdir()
         (root / "test.yml").write_text("version: '3'\n")
         config = FileOpsConfig(
-            root=root, read_root=root,
+            root=root,
+            read_root=root,
             staging_root=tmp_path / "staging",
         )
 
@@ -117,7 +118,8 @@ class TestReadFile:
         root = tmp_path / "apps"
         root.mkdir()
         config = FileOpsConfig(
-            root=root, read_root=root,
+            root=root,
+            read_root=root,
             staging_root=tmp_path / "staging",
         )
 
@@ -131,7 +133,8 @@ class TestReadFile:
         root = tmp_path / "apps"
         root.mkdir()
         config = FileOpsConfig(
-            root=root, read_root=root,
+            root=root,
+            read_root=root,
             staging_root=tmp_path / "staging",
         )
 
@@ -150,7 +153,8 @@ class TestReadFile:
         root.mkdir()
         (root / "big.txt").write_text("x" * (MAX_READ_BYTES + 1000))
         config = FileOpsConfig(
-            root=root, read_root=root,
+            root=root,
+            read_root=root,
             staging_root=tmp_path / "staging",
         )
 
@@ -164,11 +168,10 @@ class TestReadFile:
         root = tmp_path / "apps"
         root.mkdir()
         # ANSI escapes should be stripped by sanitize()
-        (root / "config.txt").write_text(
-            "line1\x1b[31mred\x1b[0m\n"
-        )
+        (root / "config.txt").write_text("line1\x1b[31mred\x1b[0m\n")
         config = FileOpsConfig(
-            root=root, read_root=root,
+            root=root,
+            read_root=root,
             staging_root=tmp_path / "staging",
         )
 
@@ -189,11 +192,14 @@ class TestWriteStaged:
         staging = tmp_path / "staging"
         staging.mkdir()
         config = FileOpsConfig(
-            root=root, read_root=root, staging_root=staging,
+            root=root,
+            read_root=root,
+            staging_root=staging,
         )
 
         result = write_file(
-            "compose.yml", "version: '3'\n",
+            "compose.yml",
+            "version: '3'\n",
             config=config,
             friction=FrictionMechanism.STAGE,
             session_id="test",
@@ -213,11 +219,14 @@ class TestWriteStaged:
         staging = tmp_path / "staging"
         staging.mkdir()
         config = FileOpsConfig(
-            root=root, read_root=root, staging_root=staging,
+            root=root,
+            read_root=root,
+            staging_root=staging,
         )
 
         result = write_file(
-            "compose.yml", "version: '3'\n",
+            "compose.yml",
+            "version: '3'\n",
             config=config,
             friction=FrictionMechanism.STAGE,
             session_id="test",
@@ -235,11 +244,14 @@ class TestWriteStaged:
         staging = tmp_path / "staging"
         staging.mkdir()
         config = FileOpsConfig(
-            root=root, read_root=root, staging_root=staging,
+            root=root,
+            read_root=root,
+            staging_root=staging,
         )
 
         write_file(
-            "app.yml", "content\n",
+            "app.yml",
+            "content\n",
             config=config,
             friction=FrictionMechanism.STAGE,
             session_id="sess-1",
@@ -265,11 +277,14 @@ class TestWriteDirect:
         staging = tmp_path / "staging"
         staging.mkdir()
         config = FileOpsConfig(
-            root=root, read_root=root, staging_root=staging,
+            root=root,
+            read_root=root,
+            staging_root=staging,
         )
 
         result = write_file(
-            "compose.yml", "version: '3'\n",
+            "compose.yml",
+            "version: '3'\n",
             config=config,
             friction=FrictionMechanism.DIRECT,
             session_id="test",
@@ -288,11 +303,14 @@ class TestWriteDirect:
         staging = tmp_path / "staging"
         staging.mkdir()
         config = FileOpsConfig(
-            root=root, read_root=root, staging_root=staging,
+            root=root,
+            read_root=root,
+            staging_root=staging,
         )
 
         result = write_file(
-            "compose.yml", "new content\n",
+            "compose.yml",
+            "new content\n",
             config=config,
             friction=FrictionMechanism.DIRECT,
             session_id="test",
@@ -310,11 +328,14 @@ class TestWriteDirect:
         staging = tmp_path / "staging"
         staging.mkdir()
         config = FileOpsConfig(
-            root=root, read_root=root, staging_root=staging,
+            root=root,
+            read_root=root,
+            staging_root=staging,
         )
 
         result = write_file(
-            "app.yml", "new\n",
+            "app.yml",
+            "new\n",
             config=config,
             friction=FrictionMechanism.DIRECT,
             session_id="test",
@@ -332,11 +353,14 @@ class TestWriteDirect:
         staging = tmp_path / "staging"
         staging.mkdir()
         config = FileOpsConfig(
-            root=root, read_root=root, staging_root=staging,
+            root=root,
+            read_root=root,
+            staging_root=staging,
         )
 
         result = write_file(
-            "stacks/media/compose.yml", "content\n",
+            "stacks/media/compose.yml",
+            "content\n",
             config=config,
             friction=FrictionMechanism.DIRECT,
             session_id="test",
@@ -353,11 +377,14 @@ class TestWriteDirect:
         staging = tmp_path / "staging"
         staging.mkdir()
         config = FileOpsConfig(
-            root=root, read_root=root, staging_root=staging,
+            root=root,
+            read_root=root,
+            staging_root=staging,
         )
 
         result = write_file(
-            "../../etc/crontab", "bad\n",
+            "../../etc/crontab",
+            "bad\n",
             config=config,
             friction=FrictionMechanism.DIRECT,
             session_id="test",
@@ -377,7 +404,9 @@ class TestListStaged:
         staging = tmp_path / "staging"
         staging.mkdir()
         config = FileOpsConfig(
-            root=tmp_path, read_root=tmp_path, staging_root=staging,
+            root=tmp_path,
+            read_root=tmp_path,
+            staging_root=staging,
         )
 
         result = list_staged(config=config)
@@ -391,11 +420,14 @@ class TestListStaged:
         staging = tmp_path / "staging"
         staging.mkdir()
         config = FileOpsConfig(
-            root=root, read_root=root, staging_root=staging,
+            root=root,
+            read_root=root,
+            staging_root=staging,
         )
 
         write_file(
-            "app.yml", "content\n",
+            "app.yml",
+            "content\n",
             config=config,
             friction=FrictionMechanism.STAGE,
             session_id="test",
@@ -417,16 +449,22 @@ class TestCleanExpired:
         op_dir = staging / "expired-op"
         op_dir.mkdir()
         (op_dir / "artifact").write_text("old\n")
-        (op_dir / "metadata.json").write_text(json.dumps({
-            "operation_id": "expired-op",
-            "target_path": "/apps/test.yml",
-            "session_id": "old",
-            "created_at": time.time() - 200000,
-            "expires_at": time.time() - 100000,
-        }))
+        (op_dir / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "operation_id": "expired-op",
+                    "target_path": "/apps/test.yml",
+                    "session_id": "old",
+                    "created_at": time.time() - 200000,
+                    "expires_at": time.time() - 100000,
+                }
+            )
+        )
 
         config = FileOpsConfig(
-            root=tmp_path, read_root=tmp_path, staging_root=staging,
+            root=tmp_path,
+            read_root=tmp_path,
+            staging_root=staging,
         )
 
         removed = clean_expired(config=config)
@@ -443,16 +481,22 @@ class TestCleanExpired:
         op_dir = staging / "fresh-op"
         op_dir.mkdir()
         (op_dir / "artifact").write_text("new\n")
-        (op_dir / "metadata.json").write_text(json.dumps({
-            "operation_id": "fresh-op",
-            "target_path": "/apps/test.yml",
-            "session_id": "new",
-            "created_at": time.time(),
-            "expires_at": time.time() + 100000,
-        }))
+        (op_dir / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "operation_id": "fresh-op",
+                    "target_path": "/apps/test.yml",
+                    "session_id": "new",
+                    "created_at": time.time(),
+                    "expires_at": time.time() + 100000,
+                }
+            )
+        )
 
         config = FileOpsConfig(
-            root=tmp_path, read_root=tmp_path, staging_root=staging,
+            root=tmp_path,
+            read_root=tmp_path,
+            staging_root=staging,
         )
 
         removed = clean_expired(config=config)

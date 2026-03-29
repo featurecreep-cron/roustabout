@@ -191,17 +191,14 @@ class TestApplyCompose:
 
     def test_successful_apply(self, tmp_path):
         compose_file = tmp_path / "compose.yml"
-        compose_file.write_text(
-            "services:\n  web:\n    image: nginx:latest\n"
-        )
+        compose_file.write_text("services:\n  web:\n    image: nginx:latest\n")
 
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "Creating web ... done\n"
         mock_result.stderr = ""
 
-        with patch("roustabout.compose_gitops.subprocess.run",
-                    return_value=mock_result):
+        with patch("roustabout.compose_gitops.subprocess.run", return_value=mock_result):
             result = apply_compose(compose_file)
 
         assert result.success is True
@@ -209,17 +206,14 @@ class TestApplyCompose:
 
     def test_failed_apply(self, tmp_path):
         compose_file = tmp_path / "compose.yml"
-        compose_file.write_text(
-            "services:\n  web:\n    image: nginx:latest\n"
-        )
+        compose_file.write_text("services:\n  web:\n    image: nginx:latest\n")
 
         mock_result = MagicMock()
         mock_result.returncode = 1
         mock_result.stdout = ""
         mock_result.stderr = "Error: something failed\n"
 
-        with patch("roustabout.compose_gitops.subprocess.run",
-                    return_value=mock_result):
+        with patch("roustabout.compose_gitops.subprocess.run", return_value=mock_result):
             result = apply_compose(compose_file)
 
         assert result.success is False
@@ -229,14 +223,13 @@ class TestApplyCompose:
         import subprocess
 
         compose_file = tmp_path / "compose.yml"
-        compose_file.write_text(
-            "services:\n  web:\n    image: nginx:latest\n"
-        )
+        compose_file.write_text("services:\n  web:\n    image: nginx:latest\n")
 
         with patch(
             "roustabout.compose_gitops.subprocess.run",
             side_effect=subprocess.TimeoutExpired(
-                cmd="docker compose", timeout=120,
+                cmd="docker compose",
+                timeout=120,
             ),
         ):
             result = apply_compose(compose_file)
@@ -246,9 +239,7 @@ class TestApplyCompose:
 
     def test_docker_not_found(self, tmp_path):
         compose_file = tmp_path / "compose.yml"
-        compose_file.write_text(
-            "services:\n  web:\n    image: nginx:latest\n"
-        )
+        compose_file.write_text("services:\n  web:\n    image: nginx:latest\n")
 
         with patch(
             "roustabout.compose_gitops.subprocess.run",
@@ -261,17 +252,14 @@ class TestApplyCompose:
 
     def test_output_sanitized(self, tmp_path):
         compose_file = tmp_path / "compose.yml"
-        compose_file.write_text(
-            "services:\n  web:\n    image: nginx:latest\n"
-        )
+        compose_file.write_text("services:\n  web:\n    image: nginx:latest\n")
 
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "done\x1b[31m\n"
         mock_result.stderr = ""
 
-        with patch("roustabout.compose_gitops.subprocess.run",
-                    return_value=mock_result):
+        with patch("roustabout.compose_gitops.subprocess.run", return_value=mock_result):
             result = apply_compose(compose_file)
 
         assert "\x1b" not in result.output

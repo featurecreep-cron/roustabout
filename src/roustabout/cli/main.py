@@ -13,21 +13,50 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 import click
-import docker
 
-from roustabout.audit_renderer import render_findings
-from roustabout.auditor import audit as run_audit
 from roustabout.cli.backend import get_backend
-from roustabout.collector import collect
-from roustabout.config import Config, load_config
-from roustabout.connection import connect
-from roustabout.generator import generate as run_generate
-from roustabout.json_output import environment_to_json, findings_to_json
-from roustabout.models import filter_by_project
-from roustabout.redactor import redact as redact_env
-from roustabout.redactor import resolve_patterns
-from roustabout.renderer import render
-from roustabout.state import FindingState, load_state, set_finding_state
+
+# Core imports are lazy — docker SDK is a server-only dependency.
+# These are imported inside functions that need them. Commands that
+# use direct Docker access will fail gracefully if docker is not installed,
+# pointing users to the API server.
+# TODO(rule-0): Convert remaining direct-Docker commands to use HTTPBackend.
+#   This is a multi-session refactor tracked in docs/roustabout/RULE-ZERO.md.
+
+try:
+    import docker as _docker_module
+
+    _HAS_DOCKER = True
+except ImportError:
+    _HAS_DOCKER = False
+
+
+def _require_docker() -> None:
+    """Raise ClickException if docker SDK is not installed."""
+    if not _HAS_DOCKER:
+        raise click.ClickException(
+            "This command requires direct Docker access but the docker SDK is not installed.\n"
+            "Either install roustabout[server] or use --url to connect to a roustabout server."
+        )
+
+
+# Core imports — guarded by _HAS_DOCKER so CLI can load without docker SDK.
+# Commands that need these hit _require_docker() via _connect() at runtime.
+# TODO(rule-0): Remove once all commands use HTTPBackend exclusively.
+if _HAS_DOCKER:
+    from roustabout.audit_renderer import render_findings
+    from roustabout.auditor import audit as run_audit
+    from roustabout.collector import collect
+    from roustabout.config import Config, load_config
+    from roustabout.connection import connect
+    from roustabout.generator import generate as run_generate
+    from roustabout.json_output import environment_to_json, findings_to_json
+    from roustabout.models import filter_by_project
+    from roustabout.redactor import redact as redact_env
+    from roustabout.redactor import resolve_patterns
+    from roustabout.renderer import render
+    from roustabout.state import FindingState, load_state, set_finding_state
+
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -78,15 +107,19 @@ def _run_remote(
         click.echo(text)
 
 
-def _connect(docker_host: str | None) -> docker.DockerClient:
-    """Connect to Docker, raising ClickException on failure."""
+def _connect(docker_host: str | None) -> Any:
+    """Connect to Docker, raising ClickException on failure.
+
+    TODO(rule-0): Remove once all commands use HTTPBackend.
+    """
+    _require_docker()
     try:
         return connect(docker_host)
     except Exception as exc:
         raise click.ClickException(f"Cannot connect to Docker: {exc}")
 
 
-def _load_cfg(config_path: str | None, **overrides: Any) -> Config:
+def _load_cfg(config_path: str | None, **overrides: Any) -> Any:
     """Load config and apply overrides."""
     try:
         cfg = load_config(Path(config_path) if config_path else None)
@@ -121,14 +154,12 @@ def _state_path_option() -> Callable[[F], F]:
 def main(url: str | None, api_key: str | None) -> None:
     """Roustabout — structured markdown documentation of Docker environments.
 
-    Local mode (default): connects directly to the Docker socket.
-
-    Remote mode: pass --url to connect to a roustabout server.
+    Connects to a roustabout API server. The API server is the sole
+    Docker gateway — CLI does not access Docker directly.
 
     \b
     Examples:
-      roustabout snapshot                          # local Docker
-      roustabout --url http://server:8077 snapshot # remote server
+      roustabout --url http://server:8077 snapshot
       ROUSTABOUT_URL=http://server:8077 roustabout snapshot
     """
     # Load URL/key from config file if not provided via flags or env
@@ -696,14 +727,10 @@ def _run_mutation(
     config_path: str | None,
     docker_host: str | None,
 ) -> None:
-    """Execute a mutation through the backend (remote) or gateway (local)."""
+    """Execute a mutation through the API server."""
     try:
         backend = get_backend(command_is_mutation=True)
     except RuntimeError as exc:
-        if "No roustabout server found" in str(exc):
-            # No server available — fall back to direct gateway
-            _run_mutation_direct(action, container_name, dry_run, config_path, docker_host)
-            return
         raise click.ClickException(str(exc))
 
     try:
@@ -719,54 +746,6 @@ def _run_mutation(
     else:
         error = result.get("error", result.get("gate_failed", "unknown error"))
         raise click.ClickException(f"{action} failed: {error}")
-
-
-def _run_mutation_direct(
-    action: str,
-    container_name: str,
-    dry_run: bool,
-    config_path: str | None,
-    docker_host: str | None,
-) -> None:
-    """Execute a mutation via direct gateway call (local Docker only)."""
-    from roustabout.gateway import MutationCommand
-    from roustabout.gateway import execute as gw_execute
-    from roustabout.session import (
-        DockerSession,
-        PermissionTier,
-        RateLimiter,
-        Session,
-        capabilities_for_tier,
-    )
-
-    cfg = _load_cfg(config_path, docker_host=docker_host)
-    client = _connect(cfg.docker_host)
-
-    docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
-    session = Session(
-        id="cli",
-        docker=docker_session,
-        tier=PermissionTier.OPERATE,
-        capabilities=capabilities_for_tier(PermissionTier.OPERATE),
-        rate_limiter=RateLimiter(),
-        created_at="",
-    )
-
-    cmd = MutationCommand(
-        action=action,
-        target=container_name,
-        dry_run=dry_run,
-    )
-
-    result = gw_execute(cmd, session=session)
-
-    if result.success:
-        if result.result == "dry-run":
-            click.echo(f"[dry-run] Would {action} {container_name}")
-        else:
-            click.echo(f"{action.capitalize()}ed {container_name}")
-    else:
-        raise click.ClickException(f"{action} failed: {result.error or result.gate_failed}")
 
 
 @main.command("diff")

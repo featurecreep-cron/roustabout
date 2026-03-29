@@ -1,9 +1,7 @@
-"""Backend protocol and factory for CLI dual-mode operation.
+"""Backend protocol and factory for CLI operation.
 
-Selection logic:
-  1. ROUSTABOUT_URL set → HTTPBackend for everything
-  2. Mutation command → HTTPBackend (auto-discover socket or error)
-  3. Read command → DirectBackend (local Docker, no server)
+All CLI commands go through the REST API via HTTPBackend.
+No direct Docker access — the API server is the sole chokepoint.
 """
 
 from __future__ import annotations
@@ -34,30 +32,27 @@ class Backend(Protocol):
 _UNIX_SOCKET_PATH = "/var/run/roustabout.sock"
 
 
-def get_backend(command_is_mutation: bool) -> Backend:
-    """Select the appropriate backend based on environment and command type."""
+def get_backend(command_is_mutation: bool = False) -> Backend:  # noqa: ARG001
+    """Return HTTPBackend. The API server is the sole Docker gateway.
+
+    Raises RuntimeError if no server URL is configured or discoverable.
+    """
+    from roustabout.cli.http import HTTPBackend
+
     url = os.environ.get("ROUSTABOUT_URL")
 
     if url:
-        from roustabout.cli.http import HTTPBackend
-
         api_key = os.environ.get("ROUSTABOUT_API_KEY")
         return HTTPBackend(base_url=url, api_key=api_key)
 
-    if command_is_mutation:
-        from roustabout.cli.http import HTTPBackend
-
-        # Auto-discover unix socket
-        if os.path.exists(_UNIX_SOCKET_PATH):
-            return HTTPBackend(
-                base_url=f"http+unix://{_UNIX_SOCKET_PATH}",
-                api_key=os.environ.get("ROUSTABOUT_API_KEY"),
-            )
-
-        raise RuntimeError(
-            "No roustabout server found. Set ROUSTABOUT_URL or ensure the server is running."
+    # Auto-discover unix socket
+    if os.path.exists(_UNIX_SOCKET_PATH):
+        return HTTPBackend(
+            base_url=f"http+unix://{_UNIX_SOCKET_PATH}",
+            api_key=os.environ.get("ROUSTABOUT_API_KEY"),
         )
 
-    from roustabout.cli.direct import DirectBackend
-
-    return DirectBackend()
+    raise RuntimeError(
+        "No roustabout server found. Set ROUSTABOUT_URL or ensure the server is running.\n"
+        "The CLI requires a running roustabout API server — it does not access Docker directly."
+    )

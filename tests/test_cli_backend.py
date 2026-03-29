@@ -1,4 +1,4 @@
-"""Tests for CLI dual-mode backend selection and implementations."""
+"""Tests for CLI backend selection and HTTP backend."""
 
 from __future__ import annotations
 
@@ -8,61 +8,37 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from roustabout.cli.backend import Backend, get_backend
-from roustabout.cli.direct import DirectBackend
-
-
-class TestBackendProtocol:
-    """Verify Backend protocol compliance."""
-
-    def test_direct_backend_is_backend(self):
-        assert isinstance(DirectBackend(), Backend)
-
-    def test_direct_backend_rejects_mutate(self):
-        backend = DirectBackend()
-        with pytest.raises(RuntimeError, match="cannot execute mutations"):
-            backend.mutate("nginx", "restart")
-
-    def test_direct_backend_rejects_capabilities(self):
-        backend = DirectBackend()
-        with pytest.raises(RuntimeError, match="no auth context"):
-            backend.capabilities()
 
 
 class TestGetBackend:
-    """Backend selection based on environment and command type."""
+    """Backend selection — always returns HTTPBackend."""
 
-    def test_read_without_url_returns_direct(self):
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("ROUSTABOUT_URL", None)
-            backend = get_backend(command_is_mutation=False)
-        assert isinstance(backend, DirectBackend)
-
-    def test_mutation_without_url_or_socket_raises(self):
+    def test_without_url_or_socket_raises(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ROUSTABOUT_URL", None)
             with patch("roustabout.cli.backend.os.path.exists", return_value=False):
                 with pytest.raises(RuntimeError, match="No roustabout server found"):
-                    get_backend(command_is_mutation=True)
+                    get_backend()
 
-    def test_url_set_returns_http_for_reads(self):
+    def test_url_set_returns_http(self):
         with patch.dict(os.environ, {"ROUSTABOUT_URL": "http://localhost:8077"}):
-            backend = get_backend(command_is_mutation=False)
+            backend = get_backend()
         from roustabout.cli.http import HTTPBackend
 
         assert isinstance(backend, HTTPBackend)
 
-    def test_url_set_returns_http_for_mutations(self):
+    def test_url_set_for_mutations_returns_http(self):
         with patch.dict(os.environ, {"ROUSTABOUT_URL": "http://localhost:8077"}):
             backend = get_backend(command_is_mutation=True)
         from roustabout.cli.http import HTTPBackend
 
         assert isinstance(backend, HTTPBackend)
 
-    def test_mutation_with_socket_returns_http(self):
+    def test_socket_found_returns_http(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ROUSTABOUT_URL", None)
             with patch("roustabout.cli.backend.os.path.exists", return_value=True):
-                backend = get_backend(command_is_mutation=True)
+                backend = get_backend()
         from roustabout.cli.http import HTTPBackend
 
         assert isinstance(backend, HTTPBackend)
@@ -75,11 +51,19 @@ class TestGetBackend:
                 "ROUSTABOUT_API_KEY": "sk-test-123",
             },
         ):
-            backend = get_backend(command_is_mutation=False)
+            backend = get_backend()
         from roustabout.cli.http import HTTPBackend
 
         assert isinstance(backend, HTTPBackend)
         assert "Authorization" in backend._client.headers
+
+    def test_read_without_url_or_socket_raises(self):
+        """Reads also require server — no direct Docker access."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ROUSTABOUT_URL", None)
+            with patch("roustabout.cli.backend.os.path.exists", return_value=False):
+                with pytest.raises(RuntimeError, match="does not access Docker directly"):
+                    get_backend(command_is_mutation=False)
 
 
 class TestHTTPBackend:

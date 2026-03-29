@@ -2,6 +2,101 @@
 
 <!-- version list -->
 
+## v0.11.0 (2026-03-29)
+
+### Bug Fixes
+
+- Add type annotations to supply_chain helper functions
+  ([`d679354`](https://github.com/featurecreep-cron/roustabout/commit/d67935492f46f966ef4f42ecb9aac0b68cf68dd9))
+
+- Address expert review findings across all surfaces
+  ([`29ac829`](https://github.com/featurecreep-cron/roustabout/commit/29ac829bf23543a1bb51f105366276bd4b52da4e))
+
+- Detect URI credentials and prevent YAML line wrapping (#22, #23)
+  ([`c9176e2`](https://github.com/featurecreep-cron/roustabout/commit/c9176e22e9057f5e1e905b98fb39053db460178a))
+
+- Narrow OAUTH pattern to reduce secret extraction false positives
+  ([`99f5564`](https://github.com/featurecreep-cron/roustabout/commit/99f55649a02c37ee8af93d627f5ec7610c54b04e))
+
+- Pass format parameter in remote mode snapshot/audit
+  ([#18](https://github.com/featurecreep-cron/roustabout/pull/18),
+  [`15a9242`](https://github.com/featurecreep-cron/roustabout/commit/15a924225a9741fea61c073c281f966e4779ef27))
+
+- Remove unused imports in test files (ruff F401)
+  ([`093a11b`](https://github.com/featurecreep-cron/roustabout/commit/093a11b291d19fa97872ed3fd90dafb4eb831112))
+
+- Resolve lint errors — import DockerEnvironment, shorten comment line
+  ([`226be0a`](https://github.com/featurecreep-cron/roustabout/commit/226be0ab8935fae1ac852099a27a86fda9c3ae4e))
+
+- Resolve mypy type errors in cli, mcp_server, discovery, traefik
+  ([`bc9afda`](https://github.com/featurecreep-cron/roustabout/commit/bc9afda4ab4185f29dee8345a5a045299e35cf20))
+
+- Resolve pre-existing lint errors in test files
+  ([`6c0b095`](https://github.com/featurecreep-cron/roustabout/commit/6c0b0955f3edbef8a36f40a31595cff0465fed05))
+
+- Resolve pre-existing ruff lint and format errors across codebase
+  ([`01b9eab`](https://github.com/featurecreep-cron/roustabout/commit/01b9eabf00109749a4c304ef7a1041a5cd7cd40b))
+
+- Resolve remaining mypy errors in collector, compose_gitops, exec, metrics, manager
+  ([`3df32f0`](https://github.com/featurecreep-cron/roustabout/commit/3df32f0da941a4315884ebe645ab14cc340cee5d))
+
+### Chores
+
+- **ci**: Remove obsolete publish.yml
+  ([`681b63d`](https://github.com/featurecreep-cron/roustabout/commit/681b63d17ad0071eaea5d4e87f5549c320d8c0b0))
+
+- **deps**: Bump actions/setup-python from 5 to 6 in the actions group
+  ([`eec1072`](https://github.com/featurecreep-cron/roustabout/commit/eec107224fe666f3b5ed586c05cab9a1e7eadead))
+
+- **deps**: Bump python from 3.13-slim to 3.14-slim
+  ([`926c0f1`](https://github.com/featurecreep-cron/roustabout/commit/926c0f1359821e0456f78ace33b4723fdf4a9149))
+
+- **deps**: Bump the actions group with 3 updates
+  ([`4db4fcc`](https://github.com/featurecreep-cron/roustabout/commit/4db4fcc8727aa1d90484135b910b857f076ecaf5))
+
+### Features
+
+- Add --services to generate CLI and migrate command
+  ([`7b117a3`](https://github.com/featurecreep-cron/roustabout/commit/7b117a36e9edad4328ca1ee865e6a81c40644d46))
+
+- Implement friction model across gateway, exec, file_ops, compose_apply
+  ([`31f2b73`](https://github.com/featurecreep-cron/roustabout/commit/31f2b73148b49ff31b76de41cfe919a4984bd48f))
+
+- Implement friction-based permission model (LLD-005)
+  ([`2b89143`](https://github.com/featurecreep-cron/roustabout/commit/2b891430e907a8c662d17ea9c8bb8a6c5fb0c514))
+
+- Implement LLD-035, LLD-036, LLD-037 — stack splitting, secret-safe pipeline, DockStarter import
+  ([`596004b`](https://github.com/featurecreep-cron/roustabout/commit/596004bfe334b9412f91dd238155083a660648bd))
+
+- Implement Phase 3 modules (LLD-025 through LLD-033)
+  ([`fd1fdda`](https://github.com/featurecreep-cron/roustabout/commit/fd1fdda300151af44c0f9fe836fe2f335ca381e8))
+
+- Implement supply chain migration assistant (LLD-034)
+  ([`da17a74`](https://github.com/featurecreep-cron/roustabout/commit/da17a74ec9c571c7e163b39379a411b22e7b4e22))
+
+- Wire network inspection, deep health, and API discovery to surfaces
+  ([`c4ce80b`](https://github.com/featurecreep-cron/roustabout/commit/c4ce80b2b165719481c8db9fb7ada68974030caa))
+
+### Refactoring
+
+- Add container filter to collect(), clean up test imports
+  ([`a0c5386`](https://github.com/featurecreep-cron/roustabout/commit/a0c5386c2cf2915947ad328d00cf34469912e8a3))
+
+- Generalize dockstarter_env to env_splitter
+  ([`af05698`](https://github.com/featurecreep-cron/roustabout/commit/af05698d24ac9c4cfa6a867b6ece07cac2551c30))
+
+- Merge net_check into network_inspect
+  ([`3392f6c`](https://github.com/featurecreep-cron/roustabout/commit/3392f6c33d4fa17262d59d40703b4d1b41fa6a55))
+
+- Replace stack splitting with service filter on generate()
+  ([`2723149`](https://github.com/featurecreep-cron/roustabout/commit/2723149ce7e89122928586ebe96cb5cc25080495))
+
+### Testing
+
+- Add UAT plan for supply chain migration (LLD-034)
+  ([`4c05ec1`](https://github.com/featurecreep-cron/roustabout/commit/4c05ec14d3fbfe55f563e3561341941771a3cfc9))
+
+
 ## v0.10.1 (2026-03-21)
 
 ### Bug Fixes

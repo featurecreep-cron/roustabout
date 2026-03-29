@@ -1092,7 +1092,13 @@ async def exec_route(name: str, request: Request) -> JSONResponse:
 
     def _run() -> dict[str, Any]:
         from roustabout.connection import connect
-        from roustabout.exec import DeniedCommand, ExecCommand, execute
+        from roustabout.exec import (
+            DeniedCommand,
+            ExecCommand,
+            execute,
+            load_exec_config,
+        )
+        from roustabout.permissions import FrictionMechanism
         from roustabout.session import DockerSession
 
         cfg = _load_cfg_simple()
@@ -1106,7 +1112,14 @@ async def exec_route(name: str, request: Request) -> JSONResponse:
                 workdir=workdir,
                 timeout=timeout,
             )
-            result = execute(docker_session, cmd)
+            # Use allowlist when configured, denylist as fallback
+            exec_config = load_exec_config(name)
+            friction = (
+                FrictionMechanism.ALLOWLIST
+                if exec_config and exec_config.allowed
+                else FrictionMechanism.DENYLIST
+            )
+            result = execute(docker_session, cmd, friction=friction)
             return {
                 "success": result.success,
                 "target": result.target,
@@ -1170,14 +1183,14 @@ async def file_read_route(request: Request) -> JSONResponse:
     if not path:
         return JSONResponse(status_code=400, content={"error": "path is required"})
 
-    read_root = body.get("read_root", "/")
-
     def _run() -> dict[str, Any]:
         from pathlib import Path
 
+        from roustabout.config import load_config
         from roustabout.file_ops import FileOpsConfig, read_file
 
-        root = Path(read_root).resolve()
+        cfg = load_config()
+        root = Path(cfg.file_root).resolve()
         config = FileOpsConfig(
             root=root,
             read_root=root,
@@ -1223,17 +1236,18 @@ async def file_write_route(request: Request) -> JSONResponse:
             status_code=400, content={"error": "path and content are required"}
         )
 
-    write_root = body.get("write_root", "/")
     direct = body.get("direct", False)
     session_id = body.get("session_id", "api")
 
     def _run() -> dict[str, Any]:
         from pathlib import Path
 
+        from roustabout.config import load_config
         from roustabout.file_ops import FileOpsConfig, write_file
         from roustabout.permissions import FrictionMechanism
 
-        root = Path(write_root).resolve()
+        cfg = load_config()
+        root = Path(cfg.file_root).resolve()
         config = FileOpsConfig(
             root=root,
             read_root=root,

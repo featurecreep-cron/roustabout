@@ -471,21 +471,22 @@ class TestFileReadCommand:
     def test_file_read_basic(self, runner, mock_backend):
         mock_backend.file_read.return_value = {
             "success": True,
-            "path": "/etc/hosts",
-            "content": "127.0.0.1 localhost",
-            "size": 19,
+            "path": "/opt/stacks/compose.yml",
+            "content": "services:\n  app:\n    image: nginx",
+            "size": 35,
             "truncated": False,
         }
-        result = runner.invoke(main, ["file-read", "/etc/hosts"])
+        result = runner.invoke(main, ["file-read", "compose.yml"])
         assert result.exit_code == 0
-        assert "127.0.0.1" in result.output
+        assert "services:" in result.output
+        mock_backend.file_read.assert_called_once_with("compose.yml")
 
     def test_file_read_error(self, runner, mock_backend):
         mock_backend.file_read.return_value = {
             "success": False,
             "error": "path outside read root",
         }
-        result = runner.invoke(main, ["file-read", "/etc/shadow"])
+        result = runner.invoke(main, ["file-read", "../../../etc/shadow"])
         assert result.exit_code != 0
         assert "outside" in result.output
 

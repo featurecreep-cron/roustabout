@@ -54,13 +54,12 @@ class Backend(Protocol):
         workdir: str | None = None,
         timeout: int = 30,
     ) -> dict[str, Any]: ...
-    def file_read(self, path: str, *, read_root: str = "/") -> dict[str, Any]: ...
+    def file_read(self, path: str) -> dict[str, Any]: ...
     def file_write(
         self,
         path: str,
         content: str,
         *,
-        write_root: str = "/",
         direct: bool = False,
         session_id: str = "cli",
     ) -> dict[str, Any]: ...

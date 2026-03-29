@@ -56,8 +56,8 @@ class HTTPBackend:
         self._check_response(resp)
         return resp.text
 
-    def _post(self, path: str) -> dict[str, Any]:
-        resp = self._client.post(path)
+    def _post(self, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
+        resp = self._client.post(path, json=json)
         self._check_response(resp)
         return resp.json()  # type: ignore[no-any-return]
 
@@ -121,3 +121,57 @@ class HTTPBackend:
 
     def capabilities(self) -> dict[str, Any]:
         return self._get("/v1/capabilities")
+
+    def generate(
+        self,
+        *,
+        project: str | None = None,
+        include_stopped: bool = False,
+        services: str | None = None,
+    ) -> str:
+        params: dict[str, str | int] = {}
+        if project:
+            params["project"] = project
+        if include_stopped:
+            params["include_stopped"] = "true"
+        if services:
+            params["services"] = services
+        return self._get_text("/v1/generate", **params)
+
+    def deep_health(self, name: str | None = None) -> dict[str, Any]:
+        if name:
+            return self._get(f"/v1/deep-health/{name}")
+        return self._get("/v1/deep-health")
+
+    def net_check(
+        self, source: str | None = None, target: str | None = None
+    ) -> dict[str, Any]:
+        params: dict[str, str | int] = {}
+        if source:
+            params["source"] = source
+        if target:
+            params["target"] = target
+        return self._get("/v1/net-check", **params)
+
+    def container_network(self, name: str) -> dict[str, Any]:
+        return self._get(f"/v1/containers/{name}/network")
+
+    def inspect_network(self, name: str) -> dict[str, Any]:
+        return self._get(f"/v1/networks/{name}")
+
+    def ports(self, name: str) -> dict[str, Any]:
+        return self._get(f"/v1/containers/{name}/ports")
+
+    def probe_dns(self, container: str, hostname: str) -> dict[str, Any]:
+        return self._post(
+            f"/v1/containers/{container}/probe/dns",
+            json={"hostname": hostname},
+        )
+
+    def probe_connect(
+        self, container: str, target_host: str, port: int
+    ) -> dict[str, Any]:
+        return self._post(
+            f"/v1/containers/{container}/probe/connect",
+            json={"target_host": target_host, "port": port},
+        )

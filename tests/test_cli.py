@@ -1,4 +1,7 @@
-"""Tests for the CLI entry point."""
+"""Tests for the CLI entry point.
+
+All commands go through HTTPBackend — tests mock get_backend().
+"""
 
 from unittest.mock import MagicMock, patch
 
@@ -14,112 +17,57 @@ def runner():
 
 
 @pytest.fixture
-def mock_docker_env(sample_environment):
-    """Patch connection.connect + collect to return sample_environment."""
-    mock_client = MagicMock()
-
-    with (
-        patch("roustabout.cli.main.connect", return_value=mock_client) as mock_connect,
-        patch("roustabout.cli.main.collect", return_value=sample_environment) as mock_collect,
-    ):
-        yield {
-            "client": mock_client,
-            "connect": mock_connect,
-            "collect": mock_collect,
-        }
+def mock_backend():
+    """Provide a MagicMock HTTPBackend via get_backend."""
+    backend = MagicMock()
+    with patch("roustabout.cli.main.get_backend", return_value=backend):
+        yield backend
 
 
 class TestSnapshotCommand:
-    def test_snapshot_outputs_markdown(self, runner, mock_docker_env):
+    def test_snapshot_outputs_json(self, runner, mock_backend):
+        mock_backend.snapshot.return_value = {"containers": [{"name": "nginx"}]}
         result = runner.invoke(main, ["snapshot"])
         assert result.exit_code == 0
+        mock_backend.snapshot.assert_called_once_with(fmt="markdown")
+
+    def test_snapshot_json_format(self, runner, mock_backend):
+        mock_backend.snapshot.return_value = {"containers": [{"name": "nginx"}]}
+        result = runner.invoke(main, ["snapshot", "--format", "json"])
+        assert result.exit_code == 0
+        mock_backend.snapshot.assert_called_once_with(fmt="json")
+        assert "nginx" in result.output
+
+    def test_snapshot_markdown_format(self, runner, mock_backend):
+        mock_backend.snapshot.return_value = "# Docker Environment\n\n## nginx"
+        result = runner.invoke(main, ["snapshot", "--format", "markdown"])
+        assert result.exit_code == 0
         assert "# Docker Environment" in result.output
-        assert "nginx-proxy" in result.output
 
-    def test_snapshot_with_show_env(self, runner, mock_docker_env):
-        result = runner.invoke(main, ["snapshot", "--show-env"])
-        assert result.exit_code == 0
-        assert "Environment" in result.output
-
-    def test_snapshot_with_no_labels(self, runner, mock_docker_env):
-        result = runner.invoke(main, ["snapshot", "--no-labels"])
-        assert result.exit_code == 0
-        assert "#### Labels" not in result.output
-
-    def test_snapshot_with_output_file(self, runner, mock_docker_env, tmp_path):
+    def test_snapshot_with_output_file(self, runner, mock_backend, tmp_path):
+        mock_backend.snapshot.return_value = "# Docker Environment"
         out_file = tmp_path / "output.md"
         result = runner.invoke(main, ["snapshot", "--output", str(out_file)])
         assert result.exit_code == 0
         assert out_file.exists()
-        content = out_file.read_text()
-        assert "# Docker Environment" in content
-        assert f"Snapshot written to {out_file}" in result.output
+        assert "# Docker Environment" in out_file.read_text()
 
-    def test_snapshot_with_config_file(self, runner, mock_docker_env, tmp_path):
-        config_file = tmp_path / "custom.toml"
-        config_file.write_text("show_env = true\n")
-        result = runner.invoke(main, ["snapshot", "--config", str(config_file)])
-        assert result.exit_code == 0
-        assert "Environment" in result.output
-
-    def test_snapshot_with_docker_host(self, runner, mock_docker_env):
-        result = runner.invoke(main, ["snapshot", "--docker-host", "tcp://myhost:2375"])
-        assert result.exit_code == 0
-        mock_docker_env["connect"].assert_called_once_with("tcp://myhost:2375")
-
-    def test_snapshot_default_no_docker_host(self, runner, mock_docker_env):
+    def test_snapshot_backend_error(self, runner, mock_backend):
+        mock_backend.snapshot.side_effect = RuntimeError("Server unavailable")
         result = runner.invoke(main, ["snapshot"])
-        assert result.exit_code == 0
-        mock_docker_env["connect"].assert_called_once_with(None)
-
-    def test_snapshot_redacts_secrets(self, runner, mock_docker_env):
-        result = runner.invoke(main, ["snapshot", "--show-env"])
-        assert result.exit_code == 0
-        assert "hunter2" not in result.output
-        assert "[REDACTED]" in result.output
+        assert result.exit_code != 0
+        assert "Server unavailable" in result.output
 
 
 class TestSnapshotErrors:
-    def test_docker_connection_failure(self, runner):
+    def test_no_server_available(self, runner):
         with patch(
-            "roustabout.cli.main.connect",
-            side_effect=Exception("Connection refused"),
+            "roustabout.cli.main.get_backend",
+            side_effect=RuntimeError("No roustabout server found"),
         ):
             result = runner.invoke(main, ["snapshot"])
             assert result.exit_code != 0
-            assert "Cannot connect to Docker" in result.output
-
-    def test_missing_config_file(self, runner):
-        result = runner.invoke(main, ["snapshot", "--config", "/nonexistent/config.toml"])
-        assert result.exit_code != 0
-
-    def test_invalid_config_file(self, runner, tmp_path):
-        bad_config = tmp_path / "bad.toml"
-        bad_config.write_text('show_env = "not a bool"\n')
-        result = runner.invoke(main, ["snapshot", "--config", str(bad_config)])
-        assert result.exit_code != 0
-        assert "show_env must be a boolean" in result.output
-
-
-class TestCLIFlags:
-    def test_cli_flags_override_config(self, runner, mock_docker_env, tmp_path):
-        config_file = tmp_path / "config.toml"
-        config_file.write_text("show_env = false\nshow_labels = true\n")
-        result = runner.invoke(
-            main, ["snapshot", "--config", str(config_file), "--show-env", "--no-labels"]
-        )
-        assert result.exit_code == 0
-        assert "Environment" in result.output
-        assert "#### Labels" not in result.output
-
-    def test_config_redact_patterns_extend_defaults(self, runner, mock_docker_env, tmp_path):
-        """Custom patterns extend defaults, not replace them."""
-        config_file = tmp_path / "config.toml"
-        config_file.write_text('redact_patterns = ["custom_field"]\nshow_env = true\n')
-        result = runner.invoke(main, ["snapshot", "--config", str(config_file)])
-        assert result.exit_code == 0
-        # Default patterns still apply (SECRET_KEY should be redacted)
-        assert "[REDACTED]" in result.output
+            assert "No roustabout server found" in result.output
 
 
 class TestVersionFlag:
@@ -140,238 +88,383 @@ class TestHelpText:
     def test_snapshot_help(self, runner):
         result = runner.invoke(main, ["snapshot", "--help"])
         assert result.exit_code == 0
-        assert "--show-env" in result.output
-        assert "--no-labels" in result.output
         assert "--output" in result.output
-        assert "--config" in result.output
-        assert "--docker-host" in result.output
+        assert "--format" in result.output
 
     def test_audit_help(self, runner):
         result = runner.invoke(main, ["audit", "--help"])
         assert result.exit_code == 0
         assert "--output" in result.output
-        assert "--docker-host" in result.output
 
 
 class TestAuditCommand:
-    def test_audit_outputs_findings(self, runner, mock_docker_env):
+    def test_audit_outputs_markdown(self, runner, mock_backend):
+        mock_backend.audit.return_value = "# Security Audit\n\n## Findings"
         result = runner.invoke(main, ["audit"])
         assert result.exit_code == 0
         assert "# Security Audit" in result.output
 
-    def test_audit_with_output_file(self, runner, mock_docker_env, tmp_path):
+    def test_audit_json_format(self, runner, mock_backend):
+        mock_backend.audit.return_value = {"findings": []}
+        result = runner.invoke(main, ["audit", "--format", "json"])
+        assert result.exit_code == 0
+        assert "findings" in result.output
+
+    def test_audit_with_output_file(self, runner, mock_backend, tmp_path):
+        mock_backend.audit.return_value = "# Security Audit"
         out_file = tmp_path / "audit.md"
         result = runner.invoke(main, ["audit", "--output", str(out_file)])
         assert result.exit_code == 0
         assert out_file.exists()
-        assert "Audit written to" in result.output
 
-    def test_audit_docker_failure(self, runner):
-        with patch(
-            "roustabout.cli.main.connect",
-            side_effect=Exception("Connection refused"),
-        ):
-            result = runner.invoke(main, ["audit"])
-            assert result.exit_code != 0
-            assert "Cannot connect to Docker" in result.output
+    def test_audit_backend_error(self, runner, mock_backend):
+        mock_backend.audit.side_effect = RuntimeError("Connection refused")
+        result = runner.invoke(main, ["audit"])
+        assert result.exit_code != 0
 
 
 class TestGenerateCommand:
-    def test_generate_outputs_yaml(self, runner, mock_docker_env):
+    def test_generate_outputs_yaml(self, runner, mock_backend):
+        mock_backend.generate.return_value = "services:\n  nginx:\n    image: nginx:latest"
         result = runner.invoke(main, ["generate"])
         assert result.exit_code == 0
         assert "services:" in result.output
-        assert "nginx" in result.output
 
-    def test_generate_with_output_file(self, runner, mock_docker_env, tmp_path):
+    def test_generate_with_output_file(self, runner, mock_backend, tmp_path):
+        mock_backend.generate.return_value = "services:\n  nginx:\n    image: nginx:latest"
         out_file = tmp_path / "compose.yml"
         result = runner.invoke(main, ["generate", "--output", str(out_file)])
         assert result.exit_code == 0
         assert out_file.exists()
         assert "services:" in out_file.read_text()
-        assert "Compose file written to" in result.output
 
-    def test_generate_default_redacts_secrets(self, runner, mock_docker_env):
-        result = runner.invoke(main, ["generate"])
+    def test_generate_with_options(self, runner, mock_backend):
+        mock_backend.generate.return_value = "services:\n  nginx:\n    image: nginx"
+        result = runner.invoke(
+            main, ["generate", "--project", "mystack", "--include-stopped", "--services", "a,b"]
+        )
         assert result.exit_code == 0
-        assert "hunter2" not in result.output
-        assert "[REDACTED]" in result.output
-
-    def test_generate_no_redact_includes_secrets(self, runner, mock_docker_env):
-        result = runner.invoke(main, ["generate", "--no-redact"])
-        assert result.exit_code == 0
-        assert "hunter2" in result.output
-
-    def test_generate_docker_failure(self, runner):
-        with patch(
-            "roustabout.cli.main.connect",
-            side_effect=Exception("Connection refused"),
-        ):
-            result = runner.invoke(main, ["generate"])
-            assert result.exit_code != 0
-            assert "Cannot connect to Docker" in result.output
+        mock_backend.generate.assert_called_once_with(
+            project="mystack", include_stopped=True, services="a,b"
+        )
 
     def test_generate_help(self, runner):
         result = runner.invoke(main, ["generate", "--help"])
         assert result.exit_code == 0
-        assert "--redact" in result.output
         assert "--include-stopped" in result.output
 
 
-class TestRemoteMode:
-    """When ROUSTABOUT_URL is set, commands route through HTTPBackend."""
-
-    def test_snapshot_uses_backend_when_url_set(self, runner):
-        mock_backend = MagicMock()
-        mock_backend.snapshot.return_value = {"containers": [{"name": "nginx"}]}
-
-        with patch.dict("os.environ", {"ROUSTABOUT_URL": "http://localhost:8077"}):
-            with patch("roustabout.cli.main.get_backend", return_value=mock_backend) as mock_get:
-                result = runner.invoke(main, ["snapshot"])
-
-        assert result.exit_code == 0
-        mock_get.assert_called_once_with(command_is_mutation=False)
-        mock_backend.snapshot.assert_called_once()
-        assert "nginx" in result.output
-
-    def test_audit_uses_backend_when_url_set(self, runner):
-        mock_backend = MagicMock()
-        mock_backend.audit.return_value = {"findings": []}
-
-        with patch.dict("os.environ", {"ROUSTABOUT_URL": "http://localhost:8077"}):
-            with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
-                result = runner.invoke(main, ["audit"])
-
-        assert result.exit_code == 0
-        mock_backend.audit.assert_called_once()
-
-    def test_logs_uses_backend_when_url_set(self, runner):
-        mock_backend = MagicMock()
-        mock_backend.logs.return_value = {"container": "nginx", "lines": "log line 1"}
-
-        with patch.dict("os.environ", {"ROUSTABOUT_URL": "http://localhost:8077"}):
-            with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
-                result = runner.invoke(main, ["logs", "nginx", "--tail", "50"])
-
-        assert result.exit_code == 0
-        mock_backend.logs.assert_called_once_with(name="nginx", tail=50, since=None, grep=None)
-        assert "log line 1" in result.output
-
-    def test_health_uses_backend_when_url_set(self, runner):
-        mock_backend = MagicMock()
-        mock_backend.health.return_value = {"entries": [{"name": "nginx", "health": "healthy"}]}
-
-        with patch.dict("os.environ", {"ROUSTABOUT_URL": "http://localhost:8077"}):
-            with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
-                result = runner.invoke(main, ["health"])
-
-        assert result.exit_code == 0
-        mock_backend.health.assert_called_once_with(name=None)
-
-    def test_dr_plan_uses_backend_when_url_set(self, runner):
-        mock_backend = MagicMock()
+class TestDrPlanCommand:
+    def test_dr_plan_outputs_text(self, runner, mock_backend):
         mock_backend.dr_plan.return_value = {"plan": "# Recovery Plan\nStep 1..."}
-
-        with patch.dict("os.environ", {"ROUSTABOUT_URL": "http://localhost:8077"}):
-            with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
-                result = runner.invoke(main, ["dr-plan"])
-
+        result = runner.invoke(main, ["dr-plan"])
         assert result.exit_code == 0
         assert "# Recovery Plan" in result.output
 
-    def test_snapshot_without_url_uses_direct(self, runner, mock_docker_env):
-        """Without ROUSTABOUT_URL, snapshot uses direct core calls."""
-        with patch.dict("os.environ", {}, clear=False):
-            import os
-
-            os.environ.pop("ROUSTABOUT_URL", None)
-            result = runner.invoke(main, ["snapshot"])
-
+    def test_dr_plan_with_output_file(self, runner, mock_backend, tmp_path):
+        mock_backend.dr_plan.return_value = {"plan": "# Recovery Plan"}
+        out_file = tmp_path / "dr.md"
+        result = runner.invoke(main, ["dr-plan", "--output", str(out_file)])
         assert result.exit_code == 0
-        # Direct mode produces markdown
-        assert "# Docker Environment" in result.output
-
-    def test_remote_backend_error_shows_message(self, runner):
-        mock_backend = MagicMock()
-        mock_backend.snapshot.side_effect = RuntimeError("Server unavailable: connection refused")
-
-        with patch.dict("os.environ", {"ROUSTABOUT_URL": "http://localhost:8077"}):
-            with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
-                result = runner.invoke(main, ["snapshot"])
-
-        assert result.exit_code != 0
-        assert "Server unavailable" in result.output
+        assert out_file.exists()
 
 
-class TestMutationBackend:
-    """Mutation commands route through backend when available."""
-
-    def test_mutation_uses_backend(self, runner):
-        mock_backend = MagicMock()
-        mock_backend.mutate.return_value = {
-            "result": "success",
-            "container": "nginx",
-            "action": "restart",
+class TestHealthCommand:
+    def test_health_basic(self, runner, mock_backend):
+        mock_backend.health.return_value = {
+            "entries": [{"name": "nginx", "health": "healthy"}]
         }
+        result = runner.invoke(main, ["health"])
+        assert result.exit_code == 0
+        mock_backend.health.assert_called_once_with(name=None)
 
-        with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
-            result = runner.invoke(main, ["restart", "nginx"])
+    def test_health_with_container(self, runner, mock_backend):
+        mock_backend.health.return_value = {
+            "entries": [{"name": "nginx", "health": "healthy"}]
+        }
+        result = runner.invoke(main, ["health", "--container", "nginx"])
+        assert result.exit_code == 0
+        mock_backend.health.assert_called_once_with(name="nginx")
 
+    def test_health_deep(self, runner, mock_backend):
+        mock_backend.deep_health.return_value = {
+            "results": [
+                {
+                    "container_name": "nginx",
+                    "profile": "web",
+                    "docker_health": "healthy",
+                    "port_open": True,
+                    "service_healthy": True,
+                    "overall": "healthy",
+                    "checks_performed": ["docker", "port", "http"],
+                }
+            ]
+        }
+        result = runner.invoke(main, ["health", "--deep"])
+        assert result.exit_code == 0
+        assert "nginx" in result.output
+        assert "healthy" in result.output
+        mock_backend.deep_health.assert_called_once_with(name=None)
+
+    def test_health_deep_json(self, runner, mock_backend):
+        mock_backend.deep_health.return_value = {
+            "results": [{"container_name": "nginx", "overall": "healthy", "profile": "web"}]
+        }
+        result = runner.invoke(main, ["health", "--deep", "--json"])
+        assert result.exit_code == 0
+        assert "nginx" in result.output
+
+
+class TestLogsCommand:
+    def test_logs_basic(self, runner, mock_backend):
+        mock_backend.logs.return_value = {"container": "nginx", "lines": "log line 1\nlog line 2"}
+        result = runner.invoke(main, ["logs", "nginx"])
+        assert result.exit_code == 0
+        mock_backend.logs.assert_called_once_with(name="nginx", tail=100, since=None, grep=None)
+        assert "log line 1" in result.output
+
+    def test_logs_with_options(self, runner, mock_backend):
+        mock_backend.logs.return_value = {"lines": "error log"}
+        result = runner.invoke(
+            main, ["logs", "nginx", "--tail", "50", "--since", "1h", "--grep", "error"]
+        )
+        assert result.exit_code == 0
+        mock_backend.logs.assert_called_once_with(
+            name="nginx", tail=50, since="1h", grep="error"
+        )
+
+
+class TestMutationCommands:
+    def test_restart_uses_backend(self, runner, mock_backend):
+        mock_backend.mutate.return_value = {"result": "success"}
+        result = runner.invoke(main, ["restart", "nginx"])
         assert result.exit_code == 0
         mock_backend.mutate.assert_called_once_with("nginx", "restart", dry_run=False)
         assert "Restarted nginx" in result.output
 
-    def test_mutation_dry_run_via_backend(self, runner):
-        mock_backend = MagicMock()
+    def test_stop_command(self, runner, mock_backend):
+        mock_backend.mutate.return_value = {"result": "success"}
+        result = runner.invoke(main, ["stop", "nginx"])
+        assert result.exit_code == 0
+        mock_backend.mutate.assert_called_once_with("nginx", "stop", dry_run=False)
+
+    def test_start_command(self, runner, mock_backend):
+        mock_backend.mutate.return_value = {"result": "success"}
+        result = runner.invoke(main, ["start", "nginx"])
+        assert result.exit_code == 0
+
+    def test_recreate_command(self, runner, mock_backend):
+        mock_backend.mutate.return_value = {"result": "success"}
+        result = runner.invoke(main, ["recreate", "nginx"])
+        assert result.exit_code == 0
+
+    def test_mutation_dry_run(self, runner, mock_backend):
         mock_backend.mutate.return_value = {"result": "dry-run"}
-
-        with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
-            result = runner.invoke(main, ["stop", "nginx", "--dry-run"])
-
+        result = runner.invoke(main, ["stop", "nginx", "--dry-run"])
         assert result.exit_code == 0
         assert "[dry-run]" in result.output
 
-    def test_mutation_backend_error_shows_message(self, runner):
-        mock_backend = MagicMock()
+    def test_mutation_backend_error(self, runner, mock_backend):
         mock_backend.mutate.side_effect = RuntimeError("Permission denied: insufficient tier")
-
-        with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
-            result = runner.invoke(main, ["restart", "nginx"])
-
+        result = runner.invoke(main, ["restart", "nginx"])
         assert result.exit_code != 0
         assert "Permission denied" in result.output
 
     def test_mutation_errors_when_no_server(self, runner):
-        """When get_backend raises (no server), mutation fails — no direct fallback."""
         with patch(
             "roustabout.cli.main.get_backend",
             side_effect=RuntimeError("No roustabout server found"),
         ):
             result = runner.invoke(main, ["restart", "nginx"])
-
         assert result.exit_code != 0
         assert "No roustabout server found" in result.output
 
-    def test_mutation_gateway_failure_shows_error(self, runner):
-        mock_backend = MagicMock()
-        mock_backend.mutate.return_value = {
-            "result": "denied",
-            "error": "container not found",
-        }
-
-        with patch("roustabout.cli.main.get_backend", return_value=mock_backend):
-            result = runner.invoke(main, ["restart", "ghost"])
-
+    def test_mutation_gateway_failure(self, runner, mock_backend):
+        mock_backend.mutate.return_value = {"result": "denied", "error": "container not found"}
+        result = runner.invoke(main, ["restart", "ghost"])
         assert result.exit_code != 0
         assert "container not found" in result.output
 
-    def test_mutation_non_server_error_does_not_fallback(self, runner):
-        """RuntimeError other than 'no server' should surface, not fall back."""
-        with patch(
-            "roustabout.cli.main.get_backend",
-            side_effect=RuntimeError("httpx not installed"),
-        ):
-            result = runner.invoke(main, ["restart", "nginx"])
 
+class TestNetCheckCommand:
+    def test_net_check_all_pairs(self, runner, mock_backend):
+        mock_backend.net_check.return_value = {
+            "connectivity": [
+                {"source": "app", "target": "db", "reachable": True, "reason": "shared network"}
+            ]
+        }
+        result = runner.invoke(main, ["net-check"])
+        assert result.exit_code == 0
+        assert "app" in result.output
+        assert "db" in result.output
+        mock_backend.net_check.assert_called_once_with(source=None, target=None)
+
+    def test_net_check_specific_pair(self, runner, mock_backend):
+        mock_backend.net_check.return_value = {
+            "connectivity": [
+                {"source": "app", "target": "db", "reachable": True, "reason": "shared network"}
+            ]
+        }
+        result = runner.invoke(main, ["net-check", "app", "db"])
+        assert result.exit_code == 0
+        mock_backend.net_check.assert_called_once_with(source="app", target="db")
+
+    def test_net_check_json(self, runner, mock_backend):
+        mock_backend.net_check.return_value = {
+            "connectivity": [
+                {"source": "app", "target": "db", "reachable": True, "reason": "shared"}
+            ]
+        }
+        result = runner.invoke(main, ["net-check", "--json"])
+        assert result.exit_code == 0
+        assert "reachable" in result.output
+
+    def test_net_check_one_arg_fails(self, runner, mock_backend):
+        result = runner.invoke(main, ["net-check", "app"])
         assert result.exit_code != 0
-        assert "httpx not installed" in result.output
+        assert "both SOURCE and TARGET" in result.output
+
+
+class TestNetworkCommand:
+    def test_network_inspect(self, runner, mock_backend):
+        mock_backend.inspect_network.return_value = {
+            "name": "bridge",
+            "driver": "bridge",
+            "subnet": "172.17.0.0/16",
+            "gateway": "172.17.0.1",
+            "internal": False,
+            "containers": [{"container_name": "nginx", "ipv4_address": "172.17.0.2"}],
+        }
+        result = runner.invoke(main, ["network", "--inspect-network", "bridge"])
+        assert result.exit_code == 0
+        assert "bridge" in result.output
+        assert "172.17.0.0/16" in result.output
+
+    def test_network_container_view(self, runner, mock_backend):
+        mock_backend.container_network.return_value = {
+            "container_name": "nginx",
+            "network_mode": "bridge",
+            "networks": [{"name": "bridge", "ip_address": "172.17.0.2", "aliases": []}],
+            "published_ports": [],
+            "dns_servers": [],
+            "network_details": [],
+        }
+        result = runner.invoke(main, ["network", "nginx"])
+        assert result.exit_code == 0
+        assert "nginx" in result.output
+
+    def test_network_probe_dns(self, runner, mock_backend):
+        mock_backend.probe_dns.return_value = {
+            "source": "app",
+            "query": "db",
+            "resolved": True,
+            "addresses": ["172.17.0.3"],
+            "error": None,
+        }
+        result = runner.invoke(main, ["network", "app", "--probe-dns", "db"])
+        assert result.exit_code == 0
+        assert "172.17.0.3" in result.output
+
+    def test_network_probe_connect(self, runner, mock_backend):
+        mock_backend.probe_connect.return_value = {
+            "source": "app",
+            "target": "db",
+            "port": 5432,
+            "reachable": True,
+            "error": None,
+        }
+        result = runner.invoke(main, ["network", "app", "--probe-connect", "db:5432"])
+        assert result.exit_code == 0
+        assert "reachable" in result.output
+
+    def test_network_no_container_no_network(self, runner, mock_backend):
+        result = runner.invoke(main, ["network"])
+        assert result.exit_code != 0
+        assert "container name" in result.output
+
+
+class TestPortsCommand:
+    def test_ports_basic(self, runner, mock_backend):
+        mock_backend.ports.return_value = {
+            "ports": [
+                {
+                    "container_port": 80,
+                    "protocol": "tcp",
+                    "host_ip": "0.0.0.0",
+                    "host_port": 8080,
+                    "exposed": True,
+                    "published": True,
+                }
+            ]
+        }
+        result = runner.invoke(main, ["ports", "nginx"])
+        assert result.exit_code == 0
+        assert "80/tcp" in result.output
+
+    def test_ports_json(self, runner, mock_backend):
+        mock_backend.ports.return_value = {
+            "ports": [
+                {
+                    "container_port": 80,
+                    "protocol": "tcp",
+                    "host_ip": "0.0.0.0",
+                    "host_port": 8080,
+                    "exposed": True,
+                    "published": True,
+                }
+            ]
+        }
+        result = runner.invoke(main, ["ports", "nginx", "--json"])
+        assert result.exit_code == 0
+        assert "container_port" in result.output
+
+
+class TestPendingApiCommands:
+    """Commands that need API endpoints should fail with clear messages."""
+
+    def test_stats_errors(self, runner):
+        result = runner.invoke(main, ["stats"])
+        assert result.exit_code != 0
+        assert "not yet implemented" in result.output
+
+    def test_exec_errors(self, runner):
+        result = runner.invoke(main, ["exec", "nginx", "--", "ls"])
+        assert result.exit_code != 0
+        assert "not yet implemented" in result.output
+
+    def test_file_read_errors(self, runner):
+        result = runner.invoke(main, ["file-read", "/etc/hosts"])
+        assert result.exit_code != 0
+        assert "not yet implemented" in result.output
+
+    def test_file_write_errors(self, runner, tmp_path):
+        content = tmp_path / "content.txt"
+        content.write_text("hello")
+        result = runner.invoke(main, ["file-write", "/etc/hosts", str(content)])
+        assert result.exit_code != 0
+        assert "not yet implemented" in result.output
+
+    def test_migrate_errors(self, runner):
+        result = runner.invoke(main, ["migrate", "-o", "/tmp/out"])
+        assert result.exit_code != 0
+        assert "not yet wired" in result.output
+
+
+class TestConnectionManagement:
+    def test_connect_help(self, runner):
+        result = runner.invoke(main, ["connect", "--help"])
+        assert result.exit_code == 0
+        assert "Save a server connection" in result.output
+
+    def test_disconnect_no_config(self, runner, tmp_path):
+        with patch("roustabout.cli.main._CONNECTION_CONFIG", tmp_path / "nonexistent.toml"):
+            result = runner.invoke(main, ["disconnect"])
+        assert result.exit_code == 0
+        assert "No saved connection" in result.output
+
+
+class TestDiffCommand:
+    def test_diff_help(self, runner):
+        result = runner.invoke(main, ["diff", "--help"])
+        assert result.exit_code == 0
+        assert "Compare two JSON snapshots" in result.output

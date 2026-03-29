@@ -255,3 +255,33 @@ class TestContainerErrorHandling:
         assert env.containers[0].name == "good"
         assert len(env.warnings) == 1
         assert "bad" in env.warnings[0]
+
+
+class TestContainerFilter:
+    def test_filter_by_name(self):
+        a = _make_minimal_container(name="/alpha")
+        b = _make_minimal_container(name="/bravo")
+        c = _make_minimal_container(name="/charlie")
+        client = _make_client(a, b, c)
+        env = collect(client, containers=["alpha", "charlie"])
+        names = [c.name for c in env.containers]
+        assert names == ["alpha", "charlie"]
+
+    def test_none_collects_all(self):
+        a = _make_minimal_container(name="/alpha")
+        b = _make_minimal_container(name="/bravo")
+        client = _make_client(a, b)
+        env = collect(client, containers=None)
+        assert len(env.containers) == 2
+
+    def test_empty_list_collects_none(self):
+        a = _make_minimal_container(name="/alpha")
+        client = _make_client(a)
+        env = collect(client, containers=[])
+        assert len(env.containers) == 0
+
+    def test_nonexistent_name_ignored(self):
+        a = _make_minimal_container(name="/alpha")
+        client = _make_client(a)
+        env = collect(client, containers=["nonexistent"])
+        assert len(env.containers) == 0

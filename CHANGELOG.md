@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.10.1 (2026-03-21)
+
+### Bug Fixes
+
+- **ci**: Merge publish into release workflow (GITHUB_TOKEN can't trigger other workflows)
+  ([`409bdc0`](https://github.com/featurecreep-cron/roustabout/commit/409bdc05ca2884065d543b3e8013969bb63b0e3c))
+
+
 ## v0.10.0 (2026-03-21)
 
 ### Bug Fixes

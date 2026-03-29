@@ -208,11 +208,9 @@ CAPABILITY_FRICTION: dict[str, dict[PermissionTier, FrictionMechanism]] = {
 
 # Read operations — deny list doesn't apply to these
 _READ_CAPABILITIES = frozenset(
-    cap for cap in CAPABILITY_FRICTION
-    if all(
-        CAPABILITY_FRICTION[cap][t] == FrictionMechanism.DIRECT
-        for t in PermissionTier
-    )
+    cap
+    for cap in CAPABILITY_FRICTION
+    if all(CAPABILITY_FRICTION[cap][t] == FrictionMechanism.DIRECT for t in PermissionTier)
 )
 
 
@@ -256,10 +254,7 @@ def check(
         _check_container_override(session, target_info, action, capability)
 
     # Hard deny: modify-tier-labels always requires ELEVATE
-    if (
-        capability == "can_modify_tier_labels"
-        and session.tier < PermissionTier.ELEVATE
-    ):
+    if capability == "can_modify_tier_labels" and session.tier < PermissionTier.ELEVATE:
         raise PermissionDenied(
             required_capability=capability,
             required_tier=PermissionTier.ELEVATE,
@@ -302,12 +297,14 @@ def list_capabilities(session: Session) -> list[dict[str, str | bool]]:
     result = []
     for action, capability in ACTION_CAPABILITY.items():
         friction = resolve_friction(capability, session.tier)
-        result.append({
-            "capability": capability,
-            "action": action,
-            "friction": friction.value,
-            "available": True,
-        })
+        result.append(
+            {
+                "capability": capability,
+                "action": action,
+                "friction": friction.value,
+                "available": True,
+            }
+        )
     return result
 
 

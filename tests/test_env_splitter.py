@@ -87,7 +87,7 @@ class TestParseEnv:
 
     def test_handles_export_quotes_comments(self, tmp_path):
         env_file = tmp_path / ".env"
-        env_file.write_text('# comment\nexport FOO="bar"\n\nBAZ=\'qux\'\n')
+        env_file.write_text("# comment\nexport FOO=\"bar\"\n\nBAZ='qux'\n")
         result = parse_env(env_file)
         vals = {v.key: v.value for v in result.unmapped_vars}
         assert vals["FOO"] == "bar"

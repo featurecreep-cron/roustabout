@@ -90,7 +90,7 @@ def get_rotation_status(
         try:
             metadata = secret_broker.get_metadata(policy.secret_name)
             last_rotated = metadata.last_updated if metadata else None
-        except Exception:  # noqa: broad-except — treat metadata errors as unknown age
+        except Exception:  # noqa: BLE001 — treat metadata errors as unknown age
             last_rotated = None
 
         if last_rotated:
@@ -149,7 +149,7 @@ def rotate_secret(
     # 1. Backup current value
     try:
         old_value = secret_broker.get_value(policy.secret_name)
-    except Exception as e:  # noqa: broad-except — any broker error aborts rotation
+    except Exception as e:  # noqa: BLE001 — any broker error aborts rotation
         return RotationResult(
             success=False,
             secret_name=policy.secret_name,
@@ -163,7 +163,7 @@ def rotate_secret(
     # 2. Generate new value
     try:
         new_value = secret_broker.generate(policy.secret_name)
-    except Exception as e:  # noqa: broad-except — any broker error aborts rotation
+    except Exception as e:  # noqa: BLE001 — any broker error aborts rotation
         return RotationResult(
             success=False,
             secret_name=policy.secret_name,
@@ -180,12 +180,12 @@ def rotate_secret(
         try:
             secret_broker.inject(policy.secret_name, container_name, new_value)
             updated.append(container_name)
-        except Exception as e:  # noqa: broad-except — injection failure triggers rollback
+        except Exception as e:  # noqa: BLE001 — injection failure triggers rollback
             # Rollback injected containers
             for rollback_name in updated:
                 try:
                     secret_broker.inject(policy.secret_name, rollback_name, old_value)
-                except Exception:  # noqa: broad-except — best-effort rollback
+                except Exception:  # noqa: BLE001 — best-effort rollback
                     pass
             return RotationResult(
                 success=False,
@@ -221,7 +221,7 @@ def rotate_secret(
             for rollback_name in policy.consumers:
                 try:
                     secret_broker.inject(policy.secret_name, rollback_name, old_value)
-                except Exception:  # noqa: broad-except — best-effort rollback
+                except Exception:  # noqa: BLE001 — best-effort rollback
                     rollback_ok = False
 
             for restart_name in restarted:
@@ -252,7 +252,7 @@ def rotate_secret(
     # 5. Record rotation
     try:
         secret_broker.record_rotation(policy.secret_name)
-    except Exception:  # noqa: broad-except — recording failure is non-fatal
+    except Exception:  # noqa: BLE001 — recording failure is non-fatal
         logger.warning("Failed to record rotation for %s", policy.secret_name)
 
     return RotationResult(

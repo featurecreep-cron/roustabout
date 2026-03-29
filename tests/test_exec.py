@@ -35,8 +35,11 @@ class TestExecCommand:
         from roustabout.exec import ExecCommand
 
         cmd = ExecCommand(
-            target="db", command=("pg_isready",),
-            user="postgres", workdir="/tmp", timeout=60,
+            target="db",
+            command=("pg_isready",),
+            user="postgres",
+            workdir="/tmp",
+            timeout=60,
         )
         assert cmd.user == "postgres"
         assert cmd.workdir == "/tmp"
@@ -48,8 +51,12 @@ class TestExecResult:
         from roustabout.exec import ExecResult
 
         result = ExecResult(
-            success=True, target="app", command=("ls",),
-            exit_code=0, stdout="file.txt\n", stderr="",
+            success=True,
+            target="app",
+            command=("ls",),
+            exit_code=0,
+            stdout="file.txt\n",
+            stderr="",
             truncated=False,
         )
         assert result.success is True
@@ -59,9 +66,15 @@ class TestExecResult:
         from roustabout.exec import ExecResult
 
         result = ExecResult(
-            success=False, target="app", command=("bad",),
-            exit_code=None, stdout="", stderr="",
-            truncated=False, error="not found", timed_out=True,
+            success=False,
+            target="app",
+            command=("bad",),
+            exit_code=None,
+            stdout="",
+            stderr="",
+            truncated=False,
+            error="not found",
+            timed_out=True,
         )
         assert result.timed_out is True
         assert result.exit_code is None
@@ -70,8 +83,13 @@ class TestExecResult:
         from roustabout.exec import ExecResult
 
         result = ExecResult(
-            success=True, target="app", command=("ls",),
-            exit_code=0, stdout="", stderr="", truncated=False,
+            success=True,
+            target="app",
+            command=("ls",),
+            exit_code=0,
+            stdout="",
+            stderr="",
+            truncated=False,
         )
         with pytest.raises(AttributeError):
             result.success = False
@@ -104,8 +122,19 @@ class TestDenylist:
     def test_denied_shell_interpreters(self):
         from roustabout.exec import DeniedCommand, _check_denylist
 
-        for shell in ("sh", "bash", "zsh", "dash", "ash", "fish",
-                      "python", "python3", "perl", "ruby", "node"):
+        for shell in (
+            "sh",
+            "bash",
+            "zsh",
+            "dash",
+            "ash",
+            "fish",
+            "python",
+            "python3",
+            "perl",
+            "ruby",
+            "node",
+        ):
             with pytest.raises(DeniedCommand, match="denylist"):
                 _check_denylist((shell,))
 
@@ -144,9 +173,14 @@ class TestDenylist:
     def test_normal_commands_pass(self):
         from roustabout.exec import _check_denylist
 
-        for cmd in [("ls", "-la"), ("cat", "/etc/hosts"),
-                    ("getent", "hosts", "tandoor"), ("ps", "aux"),
-                    ("pg_isready",), ("nginx", "-t")]:
+        for cmd in [
+            ("ls", "-la"),
+            ("cat", "/etc/hosts"),
+            ("getent", "hosts", "tandoor"),
+            ("ps", "aux"),
+            ("pg_isready",),
+            ("nginx", "-t"),
+        ]:
             _check_denylist(cmd)  # should not raise
 
     def test_empty_command_denied(self):
@@ -300,7 +334,8 @@ class TestExecute:
         mock_container.status = "running"
         # ANSI escape in output
         mock_container.exec_run.return_value = (
-            0, (b"\x1b[31mred\x1b[0m\n", b""),
+            0,
+            (b"\x1b[31mred\x1b[0m\n", b""),
         )
         ds = DockerSession(client=MagicMock(), host="localhost")
         ds.client.containers.get.return_value = mock_container
@@ -333,7 +368,8 @@ class TestExecute:
         mock_container = MagicMock()
         mock_container.status = "running"
         mock_container.exec_run.return_value = (
-            0, (b"\xff\xfe binary\n", b""),
+            0,
+            (b"\xff\xfe binary\n", b""),
         )
         ds = DockerSession(client=MagicMock(), host="localhost")
         ds.client.containers.get.return_value = mock_container
@@ -368,9 +404,7 @@ class TestExecute:
 
         mock_container = MagicMock()
         mock_container.status = "running"
-        mock_container.exec_run.side_effect = (
-            requests.exceptions.ConnectionError("lost")
-        )
+        mock_container.exec_run.side_effect = requests.exceptions.ConnectionError("lost")
         ds = DockerSession(client=MagicMock(), host="localhost")
         ds.client.containers.get.return_value = mock_container
         cmd = ExecCommand(target="app", command=("ls",))
@@ -417,8 +451,10 @@ class TestExecute:
         ds.client.containers.get.return_value = mock_container
 
         cmd = ExecCommand(
-            target="app", command=("whoami",),
-            user="root", workdir="/tmp",
+            target="app",
+            command=("whoami",),
+            user="root",
+            workdir="/tmp",
         )
         execute(ds, cmd)
 

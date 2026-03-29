@@ -117,14 +117,22 @@ def read_file(
         resolved = _validate_path(path, config.read_root)
     except ValueError as e:
         return FileReadResult(
-            success=False, path=path, content=None,
-            size=0, truncated=False, error=str(e),
+            success=False,
+            path=path,
+            content=None,
+            size=0,
+            truncated=False,
+            error=str(e),
         )
 
     if not resolved.exists():
         return FileReadResult(
-            success=False, path=str(resolved), content=None,
-            size=0, truncated=False, error="File not found",
+            success=False,
+            path=str(resolved),
+            content=None,
+            size=0,
+            truncated=False,
+            error="File not found",
         )
 
     size = resolved.stat().st_size
@@ -135,8 +143,11 @@ def read_file(
     content = sanitize(text)
 
     return FileReadResult(
-        success=True, path=str(resolved),
-        content=content, size=size, truncated=truncated,
+        success=True,
+        path=str(resolved),
+        content=content,
+        size=size,
+        truncated=truncated,
     )
 
 
@@ -155,7 +166,10 @@ def write_file(
     """
     if friction == FrictionMechanism.STAGE:
         return _write_staged(
-            path, content, config=config, session_id=session_id,
+            path,
+            content,
+            config=config,
+            session_id=session_id,
         )
     elif friction == FrictionMechanism.DIRECT:
         return _write_direct(path, content, config=config)
@@ -177,15 +191,17 @@ def list_staged(*, config: FileOpsConfig) -> list[StagedArtifact]:
             continue
         metadata = json.loads(metadata_path.read_text())
         diff = _read_diff(entry)
-        artifacts.append(StagedArtifact(
-            id=metadata["operation_id"],
-            target_path=metadata["target_path"],
-            staging_path=str(entry / "artifact"),
-            diff=diff,
-            created_at=metadata["created_at"],
-            expires_at=metadata["expires_at"],
-            session_id=metadata["session_id"],
-        ))
+        artifacts.append(
+            StagedArtifact(
+                id=metadata["operation_id"],
+                target_path=metadata["target_path"],
+                staging_path=str(entry / "artifact"),
+                diff=diff,
+                created_at=metadata["created_at"],
+                expires_at=metadata["expires_at"],
+                session_id=metadata["session_id"],
+            )
+        )
 
     return sorted(artifacts, key=lambda a: a.created_at)
 
@@ -253,9 +269,14 @@ def _write_staged(
         target = _validate_path(path, config.root)
     except ValueError as e:
         return FileWriteResult(
-            success=False, path=path, staged=True,
-            staging_path=None, backup_path=None,
-            diff=None, apply_command=None, error=str(e),
+            success=False,
+            path=path,
+            staged=True,
+            staging_path=None,
+            backup_path=None,
+            diff=None,
+            apply_command=None,
+            error=str(e),
         )
 
     op_id = str(uuid.uuid4())
@@ -275,7 +296,8 @@ def _write_staged(
         "expires_at": time.time() + config.ttl_hours * 3600,
     }
     (staging_dir / "metadata.json").write_text(
-        json.dumps(metadata, indent=2), encoding="utf-8",
+        json.dumps(metadata, indent=2),
+        encoding="utf-8",
     )
 
     if diff:
@@ -286,9 +308,13 @@ def _write_staged(
     apply_cmd = f"cp {shlex.quote(str(artifact_path))} {shlex.quote(str(target))}"
 
     return FileWriteResult(
-        success=True, path=str(target), staged=True,
-        staging_path=str(artifact_path), backup_path=None,
-        diff=diff, apply_command=apply_cmd,
+        success=True,
+        path=str(target),
+        staged=True,
+        staging_path=str(artifact_path),
+        backup_path=None,
+        diff=diff,
+        apply_command=apply_cmd,
     )
 
 
@@ -303,9 +329,14 @@ def _write_direct(
         target = _validate_path(path, config.root)
     except ValueError as e:
         return FileWriteResult(
-            success=False, path=path, staged=False,
-            staging_path=None, backup_path=None,
-            diff=None, apply_command=None, error=str(e),
+            success=False,
+            path=path,
+            staged=False,
+            staging_path=None,
+            backup_path=None,
+            diff=None,
+            apply_command=None,
+            error=str(e),
         )
 
     # Backup existing file
@@ -328,13 +359,17 @@ def _write_direct(
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
         os.rename(tmp_path, target)
-    except Exception:  # noqa: broad-except — cleanup temp file on any write failure
+    except Exception:  # noqa: BLE001 — cleanup temp file on any write failure
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
         raise
 
     return FileWriteResult(
-        success=True, path=str(target), staged=False,
-        staging_path=None, backup_path=backup_path,
-        diff=diff, apply_command=None,
+        success=True,
+        path=str(target),
+        staged=False,
+        staging_path=None,
+        backup_path=backup_path,
+        diff=diff,
+        apply_command=None,
     )

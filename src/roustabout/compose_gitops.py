@@ -101,7 +101,6 @@ class SemanticDiff:
     changes: tuple[ComposeChange, ...]
 
 
-
 # --- Project discovery ---
 
 
@@ -118,7 +117,7 @@ def discover_projects(search_dir: Path) -> tuple[ComposeProject, ...]:
         try:
             with open(compose_path) as f:
                 content = _yaml.load(f)
-        except Exception:  # noqa: broad-except — skip unparseable compose files
+        except Exception:  # noqa: BLE001 — skip unparseable compose files
             logger.warning("Failed to parse %s", compose_path)
             continue
 
@@ -153,7 +152,7 @@ def _find_git_root(path: Path) -> Path | None:
         )
         if result.returncode == 0:
             return Path(result.stdout.strip())
-    except Exception:  # noqa: broad-except — git may not be available
+    except Exception:  # noqa: BLE001 — git may not be available
         pass
     return None
 
@@ -497,7 +496,7 @@ def apply_compose(compose_path: Path) -> ComposeApplyResult:
         with open(path) as f:
             content = _yaml.load(f)
         services = tuple(sorted(content.get("services", {}).keys()))
-    except Exception:  # noqa: broad-except — report parse failures
+    except Exception:  # noqa: BLE001 — report parse failures
         services = ()
 
     try:

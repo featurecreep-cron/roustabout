@@ -494,18 +494,23 @@ def health_cmd(
             results = list(env_health.results)
 
         if as_json:
-            click.echo(_json.dumps([
-                {
-                    "container_name": r.container_name,
-                    "profile": r.profile,
-                    "docker_health": r.docker_health,
-                    "port_open": r.port_open,
-                    "service_healthy": r.service_healthy,
-                    "overall": r.overall,
-                    "checks_performed": list(r.checks_performed),
-                }
-                for r in results
-            ], indent=2))
+            click.echo(
+                _json.dumps(
+                    [
+                        {
+                            "container_name": r.container_name,
+                            "profile": r.profile,
+                            "docker_health": r.docker_health,
+                            "port_open": r.port_open,
+                            "service_healthy": r.service_healthy,
+                            "overall": r.overall,
+                            "checks_performed": list(r.checks_performed),
+                        }
+                        for r in results
+                    ],
+                    indent=2,
+                )
+            )
         else:
             for r in results:
                 icon = {"healthy": "✓", "degraded": "~", "unhealthy": "✗"}.get(r.overall, "?")
@@ -1025,16 +1030,23 @@ def net_check_cmd(
 @click.argument("container", required=False, default=None)
 @click.option("--inspect-network", "network_name", default=None, help="Inspect a Docker network.")
 @click.option(
-    "--probe-dns", "probe_dns_host", default=None,
+    "--probe-dns",
+    "probe_dns_host",
+    default=None,
     help="Resolve hostname from inside container (requires --container).",
 )
 @click.option(
-    "--probe-connect", "probe_connect_target", default=None,
+    "--probe-connect",
+    "probe_connect_target",
+    default=None,
     help="Test TCP connectivity: HOST:PORT (requires --container).",
 )
 @click.option(
-    "--config", "config_path", type=click.Path(exists=True),
-    default=None, help="Path to config file.",
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON.")
@@ -1064,15 +1076,22 @@ def network_cmd(
 
         detail = inspect_network(client, network_name)
         if as_json:
-            click.echo(_json.dumps({
-                "name": detail.name, "driver": detail.driver,
-                "subnet": detail.subnet, "gateway": detail.gateway,
-                "internal": detail.internal,
-                "containers": [
-                    {"name": m.container_name, "ipv4": m.ipv4_address}
-                    for m in detail.containers
-                ],
-            }, indent=2))
+            click.echo(
+                _json.dumps(
+                    {
+                        "name": detail.name,
+                        "driver": detail.driver,
+                        "subnet": detail.subnet,
+                        "gateway": detail.gateway,
+                        "internal": detail.internal,
+                        "containers": [
+                            {"name": m.container_name, "ipv4": m.ipv4_address}
+                            for m in detail.containers
+                        ],
+                    },
+                    indent=2,
+                )
+            )
         else:
             click.echo(f"Network: {detail.name} ({detail.driver})")
             if detail.subnet:
@@ -1083,9 +1102,7 @@ def network_cmd(
         return
 
     if not container:
-        raise click.ClickException(
-            "Provide a container name, or use --inspect-network."
-        )
+        raise click.ClickException("Provide a container name, or use --inspect-network.")
 
     if probe_dns_host:
         from roustabout.network_inspect import probe_dns
@@ -1094,12 +1111,18 @@ def network_cmd(
         docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
         result = probe_dns(docker_session, container, probe_dns_host)
         if as_json:
-            click.echo(_json.dumps({
-                "source": result.source, "query": result.query,
-                "resolved": result.resolved,
-                "addresses": list(result.addresses),
-                "error": result.error,
-            }, indent=2))
+            click.echo(
+                _json.dumps(
+                    {
+                        "source": result.source,
+                        "query": result.query,
+                        "resolved": result.resolved,
+                        "addresses": list(result.addresses),
+                        "error": result.error,
+                    },
+                    indent=2,
+                )
+            )
         elif result.resolved:
             click.echo(f"✓ {result.query} → {', '.join(result.addresses)}")
         else:
@@ -1122,11 +1145,18 @@ def network_cmd(
         docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
         result = probe_connectivity(docker_session, container, target_host, port)
         if as_json:
-            click.echo(_json.dumps({
-                "source": result.source, "target": result.target,
-                "port": result.port, "reachable": result.reachable,
-                "error": result.error,
-            }, indent=2))
+            click.echo(
+                _json.dumps(
+                    {
+                        "source": result.source,
+                        "target": result.target,
+                        "port": result.port,
+                        "reachable": result.reachable,
+                        "error": result.error,
+                    },
+                    indent=2,
+                )
+            )
         elif result.reachable:
             click.echo(f"✓ {result.source} → {result.target}:{result.port} reachable")
         else:
@@ -1138,21 +1168,28 @@ def network_cmd(
 
     view = inspect_container_network(client, container)
     if as_json:
-        click.echo(_json.dumps({
-            "container_name": view.container_name,
-            "network_mode": view.network_mode,
-            "networks": [
-                {"name": n.name, "ip_address": n.ip_address, "aliases": list(n.aliases)}
-                for n in view.networks
-            ],
-            "published_ports": [
+        click.echo(
+            _json.dumps(
                 {
-                    "container_port": p.container_port, "protocol": p.protocol,
-                    "host_ip": p.host_ip, "host_port": p.host_port,
-                }
-                for p in view.published_ports
-            ],
-        }, indent=2))
+                    "container_name": view.container_name,
+                    "network_mode": view.network_mode,
+                    "networks": [
+                        {"name": n.name, "ip_address": n.ip_address, "aliases": list(n.aliases)}
+                        for n in view.networks
+                    ],
+                    "published_ports": [
+                        {
+                            "container_port": p.container_port,
+                            "protocol": p.protocol,
+                            "host_ip": p.host_ip,
+                            "host_port": p.host_port,
+                        }
+                        for p in view.published_ports
+                    ],
+                },
+                indent=2,
+            )
+        )
     else:
         click.echo(f"Network View: {view.container_name}")
         if view.network_mode:
@@ -1184,8 +1221,11 @@ def network_cmd(
 @main.command("ports")
 @click.argument("container")
 @click.option(
-    "--config", "config_path", type=click.Path(exists=True),
-    default=None, help="Path to config file.",
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON.")
@@ -1203,14 +1243,22 @@ def ports_cmd(
     ports = list_container_ports(client, container)
 
     if as_json:
-        click.echo(_json.dumps([
-            {
-                "container_port": p.container_port, "protocol": p.protocol,
-                "host_ip": p.host_ip, "host_port": p.host_port,
-                "exposed": p.exposed, "published": p.published,
-            }
-            for p in ports
-        ], indent=2))
+        click.echo(
+            _json.dumps(
+                [
+                    {
+                        "container_port": p.container_port,
+                        "protocol": p.protocol,
+                        "host_ip": p.host_ip,
+                        "host_port": p.host_port,
+                        "exposed": p.exposed,
+                        "published": p.published,
+                    }
+                    for p in ports
+                ],
+                indent=2,
+            )
+        )
     else:
         if not ports:
             click.echo("No ports exposed or published.")
@@ -1226,12 +1274,18 @@ def ports_cmd(
 
 @main.command("migrate")
 @click.option(
-    "--output-dir", "-o", required=True, type=click.Path(),
+    "--output-dir",
+    "-o",
+    required=True,
+    type=click.Path(),
     help="Directory for compose and .env files.",
 )
 @click.option(
-    "--config", "config_path", type=click.Path(exists=True),
-    default=None, help="Path to config file.",
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file.",
 )
 @click.option("--docker-host", default=None, help="Docker host URL.")
 @click.option("--services", default=None, help="Comma-separated service names to include.")

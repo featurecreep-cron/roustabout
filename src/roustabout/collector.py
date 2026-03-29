@@ -49,8 +49,7 @@ def collect(
     if containers is not None:
         wanted = set(containers)
         raw_containers = [
-            c for c in raw_containers
-            if getattr(c, "name", "").lstrip("/") in wanted
+            c for c in raw_containers if getattr(c, "name", "").lstrip("/") in wanted
         ]
 
     containers: list[ContainerInfo] = []

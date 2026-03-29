@@ -166,7 +166,6 @@ class DigestInfo:
     pin_reference: str
 
 
-
 @dataclass(frozen=True)
 class PinResult:
     """Result of pinning images in a compose file to digests."""
@@ -752,7 +751,6 @@ def pin_compose_digests(
         compose_content=compose_content,
         skipped_reasons=tuple(skipped_reasons),
     )
-
 
 
 # --- Secret-safe generate-to-extract pipeline (LLD-036) ---

@@ -1232,9 +1232,7 @@ async def file_write_route(request: Request) -> JSONResponse:
     path = body.get("path")
     content = body.get("content")
     if not path or content is None:
-        return JSONResponse(
-            status_code=400, content={"error": "path and content are required"}
-        )
+        return JSONResponse(status_code=400, content={"error": "path and content are required"})
 
     direct = body.get("direct", False)
     session_id = body.get("session_id", "api")
@@ -1254,9 +1252,7 @@ async def file_write_route(request: Request) -> JSONResponse:
             staging_root=root / ".roustabout-staging",
         )
         friction = FrictionMechanism.DIRECT if direct else FrictionMechanism.STAGE
-        result = write_file(
-            path, content, config=config, friction=friction, session_id=session_id
-        )
+        result = write_file(path, content, config=config, friction=friction, session_id=session_id)
         return {
             "success": result.success,
             "path": result.path,

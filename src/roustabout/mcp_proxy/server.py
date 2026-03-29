@@ -122,9 +122,7 @@ def create_mcp_server(api_url: str, api_key: str) -> FastMCP:
         return await _post(f"/v1/containers/{source}/probe/dns", hostname=hostname)
 
     @mcp.tool()
-    async def docker_probe_connectivity(
-        source: str, target_host: str, port: int
-    ) -> str:
+    async def docker_probe_connectivity(source: str, target_host: str, port: int) -> str:
         """Test TCP connectivity from inside a container. Requires elevate tier."""
         return await _post(
             f"/v1/containers/{source}/probe/connect",

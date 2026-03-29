@@ -12,7 +12,6 @@ import pytest
 from roustabout.models import make_container
 from roustabout.session import PermissionTier
 
-
 # Fixtures
 
 
@@ -171,23 +170,26 @@ class TestCapabilityFriction:
     def test_exec_friction_ladder(self):
         from roustabout.permissions import CAPABILITY_FRICTION, FrictionMechanism
 
-        assert CAPABILITY_FRICTION["can_exec"][PermissionTier.OBSERVE] == FrictionMechanism.DIRECTED
-        assert CAPABILITY_FRICTION["can_exec"][PermissionTier.OPERATE] == FrictionMechanism.ALLOWLIST
-        assert CAPABILITY_FRICTION["can_exec"][PermissionTier.ELEVATE] == FrictionMechanism.DENYLIST
+        ce = CAPABILITY_FRICTION["can_exec"]
+        assert ce[PermissionTier.OBSERVE] == FrictionMechanism.DIRECTED
+        assert ce[PermissionTier.OPERATE] == FrictionMechanism.ALLOWLIST
+        assert ce[PermissionTier.ELEVATE] == FrictionMechanism.DENYLIST
 
     def test_file_write_friction_ladder(self):
         from roustabout.permissions import CAPABILITY_FRICTION, FrictionMechanism
 
-        assert CAPABILITY_FRICTION["can_file_write"][PermissionTier.OBSERVE] == FrictionMechanism.DIRECTED
-        assert CAPABILITY_FRICTION["can_file_write"][PermissionTier.OPERATE] == FrictionMechanism.STAGE
-        assert CAPABILITY_FRICTION["can_file_write"][PermissionTier.ELEVATE] == FrictionMechanism.DIRECT
+        fw = CAPABILITY_FRICTION["can_file_write"]
+        assert fw[PermissionTier.OBSERVE] == FrictionMechanism.DIRECTED
+        assert fw[PermissionTier.OPERATE] == FrictionMechanism.STAGE
+        assert fw[PermissionTier.ELEVATE] == FrictionMechanism.DIRECT
 
     def test_compose_apply_friction_ladder(self):
         from roustabout.permissions import CAPABILITY_FRICTION, FrictionMechanism
 
-        assert CAPABILITY_FRICTION["can_compose_apply"][PermissionTier.OBSERVE] == FrictionMechanism.DIRECTED
-        assert CAPABILITY_FRICTION["can_compose_apply"][PermissionTier.OPERATE] == FrictionMechanism.CONFIRM
-        assert CAPABILITY_FRICTION["can_compose_apply"][PermissionTier.ELEVATE] == FrictionMechanism.DIRECT
+        ca = CAPABILITY_FRICTION["can_compose_apply"]
+        assert ca[PermissionTier.OBSERVE] == FrictionMechanism.DIRECTED
+        assert ca[PermissionTier.OPERATE] == FrictionMechanism.CONFIRM
+        assert ca[PermissionTier.ELEVATE] == FrictionMechanism.DIRECT
 
 
 # resolve_friction
@@ -203,7 +205,8 @@ class TestResolveFriction:
     def test_unknown_capability_returns_directed(self):
         from roustabout.permissions import FrictionMechanism, resolve_friction
 
-        assert resolve_friction("can_nonexistent", PermissionTier.ELEVATE) == FrictionMechanism.DIRECTED
+        result = resolve_friction("can_nonexistent", PermissionTier.ELEVATE)
+        assert result == FrictionMechanism.DIRECTED
 
 
 # check() — friction-based

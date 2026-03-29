@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -74,7 +75,7 @@ class TraefikAdapter:
         )
 
 
-def _matches_container(router: dict, container_name: str) -> bool:
+def _matches_container(router: dict[str, Any], container_name: str) -> bool:
     """Check if a Traefik router likely belongs to a container."""
     service = router.get("service", "").lower()
     return container_name.lower() in service

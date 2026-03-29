@@ -837,6 +837,7 @@ async def docker_deep_health(
 
                 docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
             try:
+                data: dict[str, object]
                 if target:
                     result = check_container_health(client, target, docker_session=docker_session)
                     data = {

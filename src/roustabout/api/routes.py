@@ -31,6 +31,16 @@ def _has_tier(key_tier: str, required: str) -> bool:
     return _TIER_ORDER.get(key_tier, -1) >= _TIER_ORDER.get(required, 99)
 
 
+def _load_cfg_simple() -> str | None:
+    """Load docker host from config. Returns host string or None."""
+    try:
+        from roustabout.config import load_config
+
+        return load_config().docker_host
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # Read helpers — ephemeral Docker client per request, no gateway
 
 
@@ -369,6 +379,403 @@ async def net_check_route(
 
     data = await anyio.to_thread.run_sync(_run)
     return JSONResponse(content={"connectivity": data})
+
+
+@router.get("/containers/{name}/network")
+async def container_network_route(name: str, request: Request) -> JSONResponse:
+    """Get detailed network configuration for a container."""
+    import anyio
+
+    def _run() -> dict[str, Any]:
+        from roustabout.connection import connect
+        from roustabout.network_inspect import inspect_container_network
+
+        client = connect()
+        try:
+            view = inspect_container_network(client, name)
+            return {
+                "container_name": view.container_name,
+                "network_mode": view.network_mode,
+                "networks": [
+                    {"name": n.name, "ip_address": n.ip_address, "aliases": list(n.aliases)}
+                    for n in view.networks
+                ],
+                "published_ports": [
+                    {
+                        "container_port": p.container_port,
+                        "protocol": p.protocol,
+                        "host_ip": p.host_ip,
+                        "host_port": p.host_port,
+                        "exposed": p.exposed,
+                        "published": p.published,
+                    }
+                    for p in view.published_ports
+                ],
+                "dns_servers": list(view.dns_servers),
+                "dns_search": list(view.dns_search),
+                "extra_hosts": list(view.extra_hosts),
+                "network_details": [
+                    {
+                        "name": d.name,
+                        "id": d.id,
+                        "driver": d.driver,
+                        "scope": d.scope,
+                        "subnet": d.subnet,
+                        "gateway": d.gateway,
+                        "internal": d.internal,
+                        "containers": [
+                            {
+                                "container_name": m.container_name,
+                                "container_id": m.container_id,
+                                "ipv4_address": m.ipv4_address,
+                                "ipv6_address": m.ipv6_address,
+                            }
+                            for m in d.containers
+                        ],
+                    }
+                    for d in view.network_details
+                ],
+            }
+        finally:
+            client.close()
+
+    try:
+        data = await anyio.to_thread.run_sync(_run)
+        return JSONResponse(content=data)
+    except Exception as exc:
+        if type(exc).__name__ == "NotFound":
+            return JSONResponse(
+                status_code=404, content={"error": f"container '{name}' not found"}
+            )
+        raise
+
+
+@router.get("/networks/{name}")
+async def network_detail_route(name: str, request: Request) -> JSONResponse:
+    """Get details about a Docker network."""
+    import anyio
+
+    def _run() -> dict[str, Any]:
+        from roustabout.connection import connect
+        from roustabout.network_inspect import inspect_network
+
+        client = connect()
+        try:
+            detail = inspect_network(client, name)
+            return {
+                "name": detail.name,
+                "id": detail.id,
+                "driver": detail.driver,
+                "scope": detail.scope,
+                "subnet": detail.subnet,
+                "gateway": detail.gateway,
+                "internal": detail.internal,
+                "containers": [
+                    {
+                        "container_name": m.container_name,
+                        "container_id": m.container_id,
+                        "ipv4_address": m.ipv4_address,
+                        "ipv6_address": m.ipv6_address,
+                    }
+                    for m in detail.containers
+                ],
+            }
+        finally:
+            client.close()
+
+    try:
+        data = await anyio.to_thread.run_sync(_run)
+        return JSONResponse(content=data)
+    except Exception as exc:
+        if type(exc).__name__ == "NotFound":
+            return JSONResponse(
+                status_code=404, content={"error": f"network '{name}' not found"}
+            )
+        raise
+
+
+@router.get("/containers/{name}/ports")
+async def container_ports_route(name: str, request: Request) -> JSONResponse:
+    """Get port exposure details for a container."""
+    import anyio
+
+    def _run() -> list[dict[str, Any]]:
+        from roustabout.connection import connect
+        from roustabout.network_inspect import list_container_ports
+
+        client = connect()
+        try:
+            ports = list_container_ports(client, name)
+            return [
+                {
+                    "container_port": p.container_port,
+                    "protocol": p.protocol,
+                    "host_ip": p.host_ip,
+                    "host_port": p.host_port,
+                    "exposed": p.exposed,
+                    "published": p.published,
+                }
+                for p in ports
+            ]
+        finally:
+            client.close()
+
+    try:
+        data = await anyio.to_thread.run_sync(_run)
+        return JSONResponse(content={"ports": data})
+    except Exception as exc:
+        if type(exc).__name__ == "NotFound":
+            return JSONResponse(
+                status_code=404, content={"error": f"container '{name}' not found"}
+            )
+        raise
+
+
+@router.post("/containers/{name}/probe/dns")
+async def probe_dns_route(name: str, request: Request) -> JSONResponse:
+    """Resolve a hostname from inside a container. ELEVATE tier."""
+    import anyio
+
+    key_info: KeyInfo = request.state.key_info
+    if not _has_tier(key_info.tier, "elevate"):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "insufficient permissions",
+                "required_tier": "elevate",
+                "your_tier": key_info.tier,
+            },
+        )
+
+    body = await request.json()
+    hostname = body.get("hostname")
+    if not hostname:
+        return JSONResponse(status_code=400, content={"error": "hostname is required"})
+
+    def _run() -> dict[str, Any]:
+        from roustabout.connection import connect
+        from roustabout.network_inspect import probe_dns
+        from roustabout.session import (
+            DockerSession,
+            PermissionTier,
+            RateLimiter,
+            Session,
+            capabilities_for_tier,
+        )
+
+        cfg_local = _load_cfg_simple()
+        client = connect(cfg_local)
+        docker_session = DockerSession(client=client, host=cfg_local or "localhost")
+        session = Session(
+            id="api-probe",
+            docker=docker_session,
+            tier=PermissionTier.ELEVATE,
+            capabilities=capabilities_for_tier(PermissionTier.ELEVATE),
+            rate_limiter=RateLimiter(),
+            created_at="",
+        )
+        try:
+            result = probe_dns(session.docker, name, hostname)
+            return {
+                "source": result.source,
+                "query": result.query,
+                "resolved": result.resolved,
+                "addresses": list(result.addresses),
+                "error": result.error,
+            }
+        finally:
+            client.close()
+
+    try:
+        data = await anyio.to_thread.run_sync(_run)
+        return JSONResponse(content=data)
+    except Exception as exc:
+        if type(exc).__name__ == "NotFound":
+            return JSONResponse(
+                status_code=404, content={"error": f"container '{name}' not found"}
+            )
+        raise
+
+
+@router.post("/containers/{name}/probe/connect")
+async def probe_connect_route(name: str, request: Request) -> JSONResponse:
+    """Test TCP connectivity from a container. ELEVATE tier."""
+    import anyio
+
+    key_info: KeyInfo = request.state.key_info
+    if not _has_tier(key_info.tier, "elevate"):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "insufficient permissions",
+                "required_tier": "elevate",
+                "your_tier": key_info.tier,
+            },
+        )
+
+    body = await request.json()
+    target_host = body.get("target_host")
+    port = body.get("port")
+    if not target_host or port is None:
+        return JSONResponse(
+            status_code=400, content={"error": "target_host and port are required"}
+        )
+
+    def _run() -> dict[str, Any]:
+        from roustabout.connection import connect
+        from roustabout.network_inspect import probe_connectivity
+        from roustabout.session import (
+            DockerSession,
+            PermissionTier,
+            RateLimiter,
+            Session,
+            capabilities_for_tier,
+        )
+
+        cfg_local = _load_cfg_simple()
+        client = connect(cfg_local)
+        docker_session = DockerSession(client=client, host=cfg_local or "localhost")
+        session = Session(
+            id="api-probe",
+            docker=docker_session,
+            tier=PermissionTier.ELEVATE,
+            capabilities=capabilities_for_tier(PermissionTier.ELEVATE),
+            rate_limiter=RateLimiter(),
+            created_at="",
+        )
+        try:
+            result = probe_connectivity(session.docker, name, target_host, int(port))
+            return {
+                "source": result.source,
+                "target": result.target,
+                "port": result.port,
+                "reachable": result.reachable,
+                "latency_ms": result.latency_ms,
+                "error": result.error,
+            }
+        finally:
+            client.close()
+
+    try:
+        data = await anyio.to_thread.run_sync(_run)
+        return JSONResponse(content=data)
+    except Exception as exc:
+        if type(exc).__name__ == "NotFound":
+            return JSONResponse(
+                status_code=404, content={"error": f"container '{name}' not found"}
+            )
+        raise
+
+
+@router.get("/deep-health")
+async def deep_health_route(request: Request) -> JSONResponse:
+    """Get deep health status for all containers."""
+    import anyio
+
+    def _run() -> dict[str, Any]:
+        from roustabout.connection import connect
+        from roustabout.deep_health import check_environment_health
+
+        client = connect()
+        try:
+            health = check_environment_health(client)
+            return {
+                "total": health.total,
+                "healthy": health.healthy,
+                "degraded": health.degraded,
+                "unhealthy": health.unhealthy,
+                "unknown": health.unknown,
+                "results": [
+                    {
+                        "container_name": r.container_name,
+                        "profile": r.profile,
+                        "docker_health": r.docker_health,
+                        "port_open": r.port_open,
+                        "service_healthy": r.service_healthy,
+                        "overall": r.overall,
+                        "checks_performed": list(r.checks_performed),
+                    }
+                    for r in health.results
+                ],
+            }
+        finally:
+            client.close()
+
+    data = await anyio.to_thread.run_sync(_run)
+    return JSONResponse(content=data)
+
+
+@router.get("/deep-health/{name}")
+async def deep_health_container_route(
+    name: str,
+    request: Request,
+    deep: bool = False,
+) -> JSONResponse:
+    """Get deep health status for a specific container."""
+    import anyio
+
+    def _run() -> dict[str, Any]:
+        from roustabout.connection import connect
+        from roustabout.deep_health import check_container_health
+
+        client = connect()
+        docker_session = None
+        if deep:
+            from roustabout.session import DockerSession
+
+            docker_session = DockerSession(client=client, host="localhost")
+        try:
+            result = check_container_health(
+                client, name, docker_session=docker_session,
+            )
+            return {
+                "container_name": result.container_name,
+                "profile": result.profile,
+                "docker_health": result.docker_health,
+                "port_open": result.port_open,
+                "service_healthy": result.service_healthy,
+                "service_output": result.service_output,
+                "overall": result.overall,
+                "checks_performed": list(result.checks_performed),
+            }
+        finally:
+            client.close()
+
+    try:
+        data = await anyio.to_thread.run_sync(_run)
+        return JSONResponse(content=data)
+    except Exception as exc:
+        if type(exc).__name__ == "NotFound":
+            return JSONResponse(
+                status_code=404, content={"error": f"container '{name}' not found"}
+            )
+        raise
+
+
+@router.get("/", tags=["discovery"])
+async def api_root(request: Request) -> JSONResponse:
+    """API discovery endpoint. Lists all available routes with tier requirements."""
+    from roustabout.api.discovery import get_api_info
+
+    config = getattr(request.app.state, "config", {})
+    if not isinstance(config, dict):
+        config = {}
+    info = get_api_info(request.app, config)
+    return JSONResponse(content={
+        "roustabout": info.version,
+        "api": info.api_version,
+        "hosts": info.host_count,
+        "capabilities": info.capabilities,
+        "routes": [
+            {
+                "path": r.path,
+                "method": r.method,
+                "summary": r.summary,
+                "tier": r.tier,
+            }
+            for r in info.routes
+        ],
+    })
 
 
 @router.post("/containers/{name}/{action}")

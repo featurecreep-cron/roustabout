@@ -53,7 +53,7 @@ def _get_route_tier(route: APIRoute) -> str:
     """
     for tag in getattr(route, "tags", []):
         if tag in _TIER_TAGS:
-            return tag
+            return str(tag)
 
     if "discovery" in getattr(route, "tags", []):
         return "none"
@@ -94,7 +94,7 @@ def get_api_info(app: FastAPI, config: dict[str, Any]) -> APIInfo:
                         method=method,
                         summary=route.summary or (route.name or "").replace("_", " "),
                         tier=tier,
-                        tags=tuple(route.tags or []),
+                        tags=tuple(str(t) for t in (route.tags or [])),
                     )
                 )
 

@@ -1143,24 +1143,24 @@ def network_cmd(
         from roustabout.session import DockerSession
 
         docker_session = DockerSession(client=client, host=cfg.docker_host or "localhost")
-        result = probe_connectivity(docker_session, container, target_host, port)
+        conn = probe_connectivity(docker_session, container, target_host, port)
         if as_json:
             click.echo(
                 _json.dumps(
                     {
-                        "source": result.source,
-                        "target": result.target,
-                        "port": result.port,
-                        "reachable": result.reachable,
-                        "error": result.error,
+                        "source": conn.source,
+                        "target": conn.target,
+                        "port": conn.port,
+                        "reachable": conn.reachable,
+                        "error": conn.error,
                     },
                     indent=2,
                 )
             )
-        elif result.reachable:
-            click.echo(f"✓ {result.source} → {result.target}:{result.port} reachable")
+        elif conn.reachable:
+            click.echo(f"✓ {conn.source} → {conn.target}:{conn.port} reachable")
         else:
-            click.echo(f"✗ {result.source} → {result.target}:{result.port}: {result.error}")
+            click.echo(f"✗ {conn.source} → {conn.target}:{conn.port}: {conn.error}")
         return
 
     # Default: full network view

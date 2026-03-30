@@ -895,11 +895,18 @@ def file_write_cmd(
 @click.option("--services", default=None, help="Comma-separated service names to include.")
 @click.option("--include-stopped", is_flag=True, default=False, help="Include stopped containers.")
 @click.option("--dry-run", is_flag=True, default=False, help="Preview without writing files.")
+@click.option(
+    "--source-env",
+    default=None,
+    type=click.Path(),
+    help="Source .env file for reverse-mapping variable names.",
+)
 def migrate(
     output_dir: str,
     services: str | None,
     include_stopped: bool,
     dry_run: bool,
+    source_env: str | None,
 ) -> None:
     """Generate compose file with secrets extracted to .env."""
     backend = _backend()
@@ -909,12 +916,16 @@ def migrate(
             services=services,
             include_stopped=include_stopped,
             dry_run=dry_run,
+            source_env=source_env,
         )
     except RuntimeError as exc:
         raise click.ClickException(str(exc))
 
     click.echo(f"Services: {', '.join(result.get('services', []))}")
     click.echo(f"Secrets extracted: {result.get('secrets_extracted', 0)}")
+    reverse_mapped = result.get("reverse_mapped", 0)
+    if reverse_mapped:
+        click.echo(f"Reverse-mapped: {reverse_mapped}")
     click.echo(f"Compose: {result.get('compose_path', '')}")
     click.echo(f"Env file: {result.get('env_file_path', '')}")
     for w in result.get("warnings", []):

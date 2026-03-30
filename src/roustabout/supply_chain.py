@@ -444,7 +444,7 @@ def extract_secrets(
         if isinstance(env, dict):
             _extract_from_dict(svc_name, env, extracted, modified_services)
         elif isinstance(env, list):
-            new_list = _extract_from_list(svc_name, env, extracted, modified_services)
+            new_list, _ = _extract_from_list(svc_name, env, extracted, modified_services)
             svc_spec["environment"] = new_list
 
     if not dry_run and extracted:
@@ -494,23 +494,91 @@ def _is_extractable_secret(key: str, value: Any) -> bool:
     return False
 
 
+def _build_reverse_env_map(env_path: Path) -> tuple[dict[str, str], set[str]]:
+    """Parse a .env file and build a value->varname reverse map.
+
+    Returns (reverse_map, ambiguous_values) where reverse_map contains
+    {value: varname} for unambiguous mappings and ambiguous_values is
+    the set of values that appear in multiple variables.
+    """
+    value_to_vars: dict[str, list[str]] = {}
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        # Strip surrounding quotes
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+            value = value[1:-1]
+        value_to_vars.setdefault(value, []).append(key)
+
+    reverse_map: dict[str, str] = {}
+    ambiguous: set[str] = set()
+    for value, vars_ in value_to_vars.items():
+        if len(vars_) == 1:
+            reverse_map[value] = vars_[0]
+        else:
+            ambiguous.add(value)
+    return reverse_map, ambiguous
+
+
+def _resolve_var_name(
+    service: str,
+    key: str,
+    value: str,
+    reverse_map: dict[str, str] | None,
+    ambiguous: set[str] | None,
+    warnings: list[str] | None,
+) -> tuple[str, bool]:
+    """Determine the .env variable name for an extracted secret.
+
+    Returns (var_name, was_reverse_mapped).
+    """
+    if reverse_map is not None and value in reverse_map:
+        return reverse_map[value], True
+    if ambiguous is not None and warnings is not None and value in ambiguous:
+        warnings.append(
+            f"Ambiguous reverse mapping for {service}/{key}: multiple source vars share same value"
+        )
+    return f"{service.upper()}_{key}", False
+
+
 def _extract_from_dict(
     service: str,
     env: dict[str, str],
     extracted: dict[str, str],
     modified: set[str],
-) -> None:
-    """Extract secrets from dict-style environment, replacing values in place."""
+    *,
+    reverse_map: dict[str, str] | None = None,
+    ambiguous: set[str] | None = None,
+    warnings: list[str] | None = None,
+) -> int:
+    """Extract secrets from dict-style environment, replacing values in place.
+
+    Returns count of reverse-mapped variables.
+    """
+    mapped = 0
     for key in list(env.keys()):
         value = env[key]
         if not _is_extractable_secret(key, value):
             continue
 
         str_value = str(value) if value is not None else ""
-        var_name = f"{service.upper()}_{key}"
+        var_name, was_mapped = _resolve_var_name(
+            service, key, str_value, reverse_map, ambiguous, warnings
+        )
+        if was_mapped:
+            mapped += 1
         extracted[var_name] = str_value
         env[key] = f"${{{var_name}}}"
         modified.add(service)
+    return mapped
 
 
 def _extract_from_list(
@@ -518,9 +586,17 @@ def _extract_from_list(
     env: list[str],
     extracted: dict[str, str],
     modified: set[str],
-) -> list[str]:
-    """Extract secrets from list-style environment, returning new list."""
+    *,
+    reverse_map: dict[str, str] | None = None,
+    ambiguous: set[str] | None = None,
+    warnings: list[str] | None = None,
+) -> tuple[list[str], int]:
+    """Extract secrets from list-style environment, returning new list.
+
+    Returns (new_list, reverse_mapped_count).
+    """
     new_list = []
+    mapped = 0
     for item in env:
         item_str = str(item)
         if "=" not in item_str:
@@ -532,12 +608,16 @@ def _extract_from_list(
             new_list.append(item)
             continue
 
-        var_name = f"{service.upper()}_{key}"
+        var_name, was_mapped = _resolve_var_name(
+            service, key, value, reverse_map, ambiguous, warnings
+        )
+        if was_mapped:
+            mapped += 1
         extracted[var_name] = value
         new_list.append(f"{key}=${{{var_name}}}")
         modified.add(service)
 
-    return new_list
+    return new_list, mapped
 
 
 def _update_gitignore(directory: Path, env_filename: str) -> None:
@@ -767,6 +847,7 @@ class MigrationResult:
     services: tuple[str, ...]
     warnings: tuple[str, ...]
     dry_run: bool
+    reverse_mapped: int = 0
 
 
 def generate_and_extract(
@@ -776,15 +857,26 @@ def generate_and_extract(
     services: list[str] | None = None,
     include_stopped: bool = False,
     dry_run: bool = False,
+    source_env: Path | None = None,
 ) -> MigrationResult:
     """Atomic generate + secret extraction pipeline.
 
     Runs entirely on the host — no secret values cross the API boundary.
     Returns MigrationResult with metadata only, never secret values.
+
+    If source_env is provided, resolved secret values are reverse-mapped
+    to their original variable names from the source .env file where the
+    mapping is unambiguous. Ambiguous or unmapped values fall back to
+    {SERVICE}_{KEY} naming.
     """
     from roustabout.generator import generate
 
     output_dir = _validate_output_dir(output_dir)
+
+    reverse_map: dict[str, str] | None = None
+    ambiguous: set[str] | None = None
+    if source_env is not None:
+        reverse_map, ambiguous = _build_reverse_env_map(source_env)
 
     compose_yaml = generate(env, include_stopped=include_stopped, services=services)
 
@@ -801,6 +893,7 @@ def generate_and_extract(
     extracted: dict[str, str] = {}
     env_files_consumed = 0
     svc_names: list[str] = []
+    total_reverse_mapped = 0
 
     if isinstance(content, dict) and "services" in content:
         svc_section = content["services"]
@@ -847,29 +940,28 @@ def generate_and_extract(
             env_block = svc_spec.get("environment")
             if env_block is None:
                 continue
+            modified: set[str] = set()
             if isinstance(env_block, dict):
-                for key in list(env_block.keys()):
-                    value = env_block[key]
-                    if not _is_extractable_secret(key, value):
-                        continue
-                    str_value = str(value) if value is not None else ""
-                    var_name = f"{svc_name.upper()}_{key}"
-                    extracted[var_name] = str_value
-                    env_block[key] = f"${{{var_name}}}"
+                total_reverse_mapped += _extract_from_dict(
+                    svc_name,
+                    env_block,
+                    extracted,
+                    modified,
+                    reverse_map=reverse_map,
+                    ambiguous=ambiguous,
+                    warnings=all_warnings,
+                )
             elif isinstance(env_block, list):
-                new_list = []
-                for item in env_block:
-                    item_str = str(item)
-                    if "=" not in item_str:
-                        new_list.append(item)
-                        continue
-                    key, value = item_str.split("=", 1)
-                    if not _is_extractable_secret(key, value):
-                        new_list.append(item)
-                        continue
-                    var_name = f"{svc_name.upper()}_{key}"
-                    extracted[var_name] = value
-                    new_list.append(f"{key}=${{{var_name}}}")
+                new_list, mapped = _extract_from_list(
+                    svc_name,
+                    env_block,
+                    extracted,
+                    modified,
+                    reverse_map=reverse_map,
+                    ambiguous=ambiguous,
+                    warnings=all_warnings,
+                )
+                total_reverse_mapped += mapped
                 svc_spec["environment"] = new_list
     else:
         all_warnings.append("No services found in generated output")
@@ -907,6 +999,7 @@ def generate_and_extract(
         services=tuple(sorted(svc_names)),
         warnings=tuple(all_warnings),
         dry_run=dry_run,
+        reverse_mapped=total_reverse_mapped,
     )
 
 

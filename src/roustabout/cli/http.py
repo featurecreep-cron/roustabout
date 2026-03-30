@@ -221,6 +221,7 @@ class HTTPBackend:
         services: str | None = None,
         include_stopped: bool = False,
         dry_run: bool = True,
+        source_env: str | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "output_dir": output_dir,
@@ -229,6 +230,8 @@ class HTTPBackend:
         }
         if services:
             body["services"] = services.split(",")
+        if source_env:
+            body["source_env"] = source_env
         return self._post("/v1/supply-chain/migrate", json=body)
 
     def predeploy(

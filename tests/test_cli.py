@@ -565,7 +565,7 @@ class TestMigrateCommand:
         assert "nginx" in result.output
         assert "dry run" in result.output
         mock_backend.migrate.assert_called_once_with(
-            "/out", services=None, include_stopped=False, dry_run=False
+            "/out", services=None, include_stopped=False, dry_run=False, source_env=None
         )
 
     def test_migrate_with_options(self, runner, mock_backend):
@@ -581,6 +581,27 @@ class TestMigrateCommand:
             main, ["migrate", "-o", "/out", "--services", "app", "--include-stopped"]
         )
         assert result.exit_code == 0
+
+    def test_migrate_with_source_env(self, runner, mock_backend):
+        mock_backend.migrate.return_value = {
+            "services": ["db"],
+            "secrets_extracted": 1,
+            "reverse_mapped": 1,
+            "compose_path": "/out/compose.yml",
+            "env_file_path": "/out/.env",
+            "dry_run": False,
+            "warnings": [],
+        }
+        result = runner.invoke(main, ["migrate", "-o", "/out", "--source-env", "/path/.env"])
+        assert result.exit_code == 0
+        assert "Reverse-mapped: 1" in result.output
+        mock_backend.migrate.assert_called_once_with(
+            "/out",
+            services=None,
+            include_stopped=False,
+            dry_run=False,
+            source_env="/path/.env",
+        )
 
 
 class TestConnectionManagement:

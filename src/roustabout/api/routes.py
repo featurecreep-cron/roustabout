@@ -890,10 +890,19 @@ def _migrate_handler(body: dict[str, Any]) -> dict[str, Any]:
     from pathlib import Path
 
     from roustabout.collector import collect
+    from roustabout.config import load_config
     from roustabout.connection import connect
     from roustabout.supply_chain import generate_and_extract
 
     svc_list = body.get("services")
+
+    source_env: Path | None = None
+    if body.get("source_env"):
+        cfg = load_config()
+        file_root = Path(cfg.file_root)
+        source_env = (file_root / body["source_env"]).resolve()
+        if not str(source_env).startswith(str(file_root.resolve())):
+            return {"error": f"source_env outside file root: {body['source_env']}"}
 
     client = connect()
     try:
@@ -904,6 +913,7 @@ def _migrate_handler(body: dict[str, Any]) -> dict[str, Any]:
             services=svc_list,
             include_stopped=body.get("include_stopped", False),
             dry_run=body.get("dry_run", True),
+            source_env=source_env,
         )
         return {
             "compose_path": result.compose_path,
@@ -913,6 +923,7 @@ def _migrate_handler(body: dict[str, Any]) -> dict[str, Any]:
             "services": list(result.services),
             "warnings": list(result.warnings),
             "dry_run": result.dry_run,
+            "reverse_mapped": result.reverse_mapped,
         }
     finally:
         client.close()

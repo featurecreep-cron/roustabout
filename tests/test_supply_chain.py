@@ -6,6 +6,7 @@ from roustabout.models import make_container, make_environment
 from roustabout.supply_chain import (
     ComposeAudit,
     DigestInfo,
+    _build_reverse_env_map,
     _parse_image,
     _validate_output_dir,
     audit_compose,
@@ -740,3 +741,221 @@ class TestValidateOutputDir:
     def test_resolves_normal_path(self, tmp_path):
         result = _validate_output_dir(tmp_path / "stacks")
         assert ".." not in str(result)
+
+
+# --- Reverse env mapping (#27) ---
+
+
+class TestBuildReverseEnvMap:
+    def test_unique_values(self, tmp_path):
+        env_file = tmp_path / ".env"
+        env_file.write_text("DB_PASS=hunter2\nAPI_KEY=abc123\n")
+        reverse_map, ambiguous = _build_reverse_env_map(env_file)
+        assert reverse_map["hunter2"] == "DB_PASS"
+        assert reverse_map["abc123"] == "API_KEY"
+        assert len(ambiguous) == 0
+
+    def test_ambiguous_values(self, tmp_path):
+        env_file = tmp_path / ".env"
+        env_file.write_text("VAR_A=same\nVAR_B=same\n")
+        reverse_map, ambiguous = _build_reverse_env_map(env_file)
+        assert "same" not in reverse_map
+        assert "same" in ambiguous
+
+    def test_empty_values_ambiguous(self, tmp_path):
+        env_file = tmp_path / ".env"
+        env_file.write_text("EMPTY_A=\nEMPTY_B=\n")
+        reverse_map, ambiguous = _build_reverse_env_map(env_file)
+        assert "" not in reverse_map
+        assert "" in ambiguous
+
+    def test_comments_and_blanks_skipped(self, tmp_path):
+        env_file = tmp_path / ".env"
+        env_file.write_text("# comment\n\nKEY=value\n")
+        reverse_map, ambiguous = _build_reverse_env_map(env_file)
+        assert reverse_map["value"] == "KEY"
+        assert len(reverse_map) == 1
+
+    def test_quoted_values_stripped(self, tmp_path):
+        env_file = tmp_path / ".env"
+        env_file.write_text("QUOTED=\"hello world\"\nSINGLE='foo bar'\n")
+        reverse_map, ambiguous = _build_reverse_env_map(env_file)
+        assert reverse_map["hello world"] == "QUOTED"
+        assert reverse_map["foo bar"] == "SINGLE"
+
+    def test_export_prefix_handled(self, tmp_path):
+        env_file = tmp_path / ".env"
+        env_file.write_text("export MY_VAR=exported_value\n")
+        reverse_map, ambiguous = _build_reverse_env_map(env_file)
+        assert reverse_map["exported_value"] == "MY_VAR"
+
+    def test_file_not_found(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            _build_reverse_env_map(tmp_path / "nonexistent.env")
+
+
+class TestReverseMapIntegration:
+    """Test that generate_and_extract uses source_env for naming."""
+
+    def test_basic_reverse_map(self, tmp_path):
+        """Secret uses original var name from source .env."""
+        source_env = tmp_path / "source.env"
+        source_env.write_text("DB_PASS=hunter2\n")
+
+        env = _make_env(
+            _make_container(
+                name="db",
+                compose_project="data",
+                compose_service="db",
+                env=[("POSTGRES_PASSWORD", "hunter2"), ("PGDATA", "/var/lib/pg")],
+            ),
+        )
+        output = tmp_path / "output"
+        result = generate_and_extract(env, output, source_env=source_env)
+        assert result.secrets_extracted == 1
+        assert result.reverse_mapped >= 1
+
+        env_content = (output / ".env").read_text()
+        assert "DB_PASS=hunter2" in env_content
+
+        compose_content = (output / "docker-compose.yml").read_text()
+        assert "${DB_PASS}" in compose_content
+
+    def test_ambiguous_falls_back(self, tmp_path):
+        """Ambiguous values fall back to SERVICE_KEY naming."""
+        source_env = tmp_path / "source.env"
+        source_env.write_text("PASS_A=hunter2\nPASS_B=hunter2\n")
+
+        env = _make_env(
+            _make_container(
+                name="db",
+                compose_project="data",
+                compose_service="db",
+                env=[("POSTGRES_PASSWORD", "hunter2")],
+            ),
+        )
+        output = tmp_path / "output"
+        result = generate_and_extract(env, output, source_env=source_env)
+        assert result.secrets_extracted == 1
+        assert result.reverse_mapped == 0
+
+        compose_content = (output / "docker-compose.yml").read_text()
+        assert "${DB_POSTGRES_PASSWORD}" in compose_content
+
+    def test_unmapped_value_falls_back(self, tmp_path):
+        """Value not in source .env falls back to SERVICE_KEY naming."""
+        source_env = tmp_path / "source.env"
+        source_env.write_text("UNRELATED=other\n")
+
+        env = _make_env(
+            _make_container(
+                name="db",
+                compose_project="data",
+                compose_service="db",
+                env=[("POSTGRES_PASSWORD", "hunter2")],
+            ),
+        )
+        output = tmp_path / "output"
+        result = generate_and_extract(env, output, source_env=source_env)
+        assert result.reverse_mapped == 0
+
+        compose_content = (output / "docker-compose.yml").read_text()
+        assert "${DB_POSTGRES_PASSWORD}" in compose_content
+
+    def test_no_source_env_unchanged(self, tmp_path):
+        """Without source_env, behavior is unchanged."""
+        env = _make_env(
+            _make_container(
+                name="db",
+                compose_project="data",
+                compose_service="db",
+                env=[("POSTGRES_PASSWORD", "hunter2")],
+            ),
+        )
+        output = tmp_path / "output"
+        result = generate_and_extract(env, output)
+        assert result.reverse_mapped == 0
+
+        compose_content = (output / "docker-compose.yml").read_text()
+        assert "${DB_POSTGRES_PASSWORD}" in compose_content
+
+    def test_shared_across_services(self, tmp_path):
+        """Same source var value used by multiple services maps correctly."""
+        source_env = tmp_path / "source.env"
+        source_env.write_text("SHARED_SECRET=shared123\n")
+
+        env = _make_env(
+            _make_container(
+                name="app",
+                compose_project="stack",
+                compose_service="app",
+                env=[("SECRET_TOKEN", "shared123")],
+            ),
+            _make_container(
+                name="worker",
+                compose_project="stack",
+                compose_service="worker",
+                env=[("SECRET_TOKEN", "shared123")],
+            ),
+        )
+        output = tmp_path / "output"
+        result = generate_and_extract(env, output, source_env=source_env)
+        assert result.reverse_mapped >= 1
+
+        compose_content = (output / "docker-compose.yml").read_text()
+        assert "${SHARED_SECRET}" in compose_content
+
+    def test_mixed_mapped_and_unmapped(self, tmp_path):
+        """Some secrets reverse-mapped, others fall back."""
+        source_env = tmp_path / "source.env"
+        source_env.write_text("MY_DB_PASS=hunter2\n")
+
+        env = _make_env(
+            _make_container(
+                name="db",
+                compose_project="data",
+                compose_service="db",
+                env=[
+                    ("POSTGRES_PASSWORD", "hunter2"),
+                    ("POSTGRES_INITDB_ARGS", "secret_init"),
+                ],
+            ),
+        )
+        output = tmp_path / "output"
+        result = generate_and_extract(env, output, source_env=source_env)
+        assert result.secrets_extracted == 1
+        assert result.reverse_mapped == 1
+
+        compose_content = (output / "docker-compose.yml").read_text()
+        assert "${MY_DB_PASS}" in compose_content
+
+    def test_reverse_map_count_in_result(self, tmp_path):
+        """MigrationResult.reverse_mapped count is accurate."""
+        source_env = tmp_path / "source.env"
+        source_env.write_text("PASS1=secret1\nPASS2=secret2\n")
+
+        env = _make_env(
+            _make_container(
+                name="app",
+                compose_project="stack",
+                compose_service="app",
+                env=[("SECRET_TOKEN", "secret1"), ("API_KEY", "secret2")],
+            ),
+        )
+        output = tmp_path / "output"
+        result = generate_and_extract(env, output, source_env=source_env)
+        assert result.reverse_mapped == 2
+
+    def test_source_env_file_not_found(self, tmp_path):
+        """FileNotFoundError when source_env doesn't exist."""
+        env = _make_env(
+            _make_container(
+                name="db",
+                compose_project="data",
+                compose_service="db",
+                env=[("POSTGRES_PASSWORD", "hunter2")],
+            ),
+        )
+        output = tmp_path / "output"
+        with pytest.raises(FileNotFoundError):
+            generate_and_extract(env, output, source_env=tmp_path / "nonexistent.env")

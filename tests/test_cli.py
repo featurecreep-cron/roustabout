@@ -596,6 +596,61 @@ class TestConnectionManagement:
         assert "No saved connection" in result.output
 
 
+class TestPredeployCommand:
+    def test_predeploy_passed(self, runner, mock_backend):
+        mock_backend.predeploy.return_value = {
+            "passed": True,
+            "findings": [],
+            "digest_results": [
+                {
+                    "service": "web",
+                    "image": "nginx:1.25",
+                    "digest": "sha256:abc",
+                    "age_hours": 48.5,
+                    "meets_cooldown": True,
+                }
+            ],
+        }
+        result = runner.invoke(main, ["predeploy", "compose.yml"])
+        assert result.exit_code == 0
+        assert "Passed: yes" in result.output
+        mock_backend.predeploy.assert_called_once_with("compose.yml", cooldown_hours=24.0)
+
+    def test_predeploy_failed(self, runner, mock_backend):
+        mock_backend.predeploy.return_value = {
+            "passed": False,
+            "findings": [
+                {
+                    "severity": "critical",
+                    "category": "privileged",
+                    "service": "app",
+                    "explanation": "Privileged mode",
+                }
+            ],
+            "digest_results": [],
+        }
+        result = runner.invoke(main, ["predeploy", "compose.yml"])
+        assert result.exit_code == 0
+        assert "Passed: NO" in result.output
+        assert "Privileged mode" in result.output
+
+    def test_predeploy_custom_cooldown(self, runner, mock_backend):
+        mock_backend.predeploy.return_value = {
+            "passed": True,
+            "findings": [],
+            "digest_results": [],
+        }
+        result = runner.invoke(main, ["predeploy", "compose.yml", "--cooldown", "48"])
+        assert result.exit_code == 0
+        mock_backend.predeploy.assert_called_once_with("compose.yml", cooldown_hours=48.0)
+
+    def test_predeploy_error(self, runner, mock_backend):
+        mock_backend.predeploy.return_value = {"error": "file not found: missing.yml"}
+        result = runner.invoke(main, ["predeploy", "missing.yml"])
+        assert result.exit_code != 0
+        assert "file not found" in result.output
+
+
 class TestDiffCommand:
     def test_diff_help(self, runner):
         result = runner.invoke(main, ["diff", "--help"])

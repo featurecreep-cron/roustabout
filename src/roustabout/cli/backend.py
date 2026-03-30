@@ -70,6 +70,12 @@ class Backend(Protocol):
         include_stopped: bool = False,
         dry_run: bool = True,
     ) -> dict[str, Any]: ...
+    def predeploy(
+        self,
+        compose_path: str,
+        *,
+        cooldown_hours: float = 24.0,
+    ) -> dict[str, Any]: ...
 
 
 _UNIX_SOCKET_PATH = "/var/run/roustabout.sock"

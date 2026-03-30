@@ -922,6 +922,38 @@ def migrate(
         click.echo("(dry run — no files written)")
 
 
+@main.command("predeploy")
+@click.argument("compose_path")
+@click.option("--cooldown", default=24.0, type=float, help="Minimum digest age in hours.")
+def predeploy(compose_path: str, cooldown: float) -> None:
+    """Audit a compose file before deployment."""
+    backend = _backend()
+    try:
+        result = backend.predeploy(compose_path, cooldown_hours=cooldown)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+
+    if "error" in result:
+        raise click.ClickException(result["error"])
+
+    passed = result.get("passed", False)
+    click.echo(f"Passed: {'yes' if passed else 'NO'}")
+
+    findings = result.get("findings", [])
+    if findings:
+        click.echo(f"\nFindings ({len(findings)}):")
+        for f in findings:
+            click.echo(f"  [{f['severity']}] {f['service']}: {f['explanation']}")
+
+    digests = result.get("digest_results", [])
+    if digests:
+        click.echo(f"\nDigest checks ({len(digests)}):")
+        for d in digests:
+            status = "ok" if d["meets_cooldown"] else "FAIL"
+            age = f"{d['age_hours']:.1f}h" if d["age_hours"] is not None else "unknown"
+            click.echo(f"  [{status}] {d['service']}: {d['image']} (age: {age})")
+
+
 @main.command("version")
 def version_cmd() -> None:
     """Show roustabout version."""

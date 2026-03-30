@@ -1307,3 +1307,84 @@ async def stats_route(
 
     data = await anyio.to_thread.run_sync(_run)
     return JSONResponse(content={"stats": data})
+
+
+# --- Pre-deploy audit (LLD-039) ---
+
+
+@router.post("/predeploy/audit")
+async def predeploy_audit_route(request: Request) -> JSONResponse:
+    """Audit a compose file before deployment."""
+    import anyio
+
+    key_info: KeyInfo = request.state.key_info
+    if not _has_tier(key_info.tier, "elevate"):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "predeploy audit requires elevate tier",
+                "your_tier": key_info.tier,
+            },
+        )
+
+    body = await request.json()
+    compose_path = body.get("compose_path", "")
+    cooldown_hours = float(body.get("cooldown_hours", 24.0))
+
+    if not compose_path:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "compose_path is required"},
+        )
+
+    def _run() -> dict[str, Any]:
+        from pathlib import Path
+
+        from roustabout.config import load_config
+        from roustabout.digest_tracker import audit_predeploy
+        from roustabout.state_db import open_db
+
+        cfg = load_config()
+        file_root = Path(cfg.file_root)
+        full_path = (file_root / compose_path).resolve()
+        if not str(full_path).startswith(str(file_root.resolve())):
+            return {"error": f"path outside file root: {compose_path}"}
+
+        if not full_path.exists():
+            return {"error": f"file not found: {compose_path}"}
+
+        db = open_db()
+        report = audit_predeploy(
+            full_path,
+            db,
+            cooldown_hours=cooldown_hours,
+        )
+        return {
+            "passed": report.passed,
+            "findings": [
+                {
+                    "severity": f.severity,
+                    "category": f.category,
+                    "service": f.service,
+                    "explanation": f.explanation,
+                    "detail": f.detail,
+                }
+                for f in report.findings
+            ],
+            "digest_results": [
+                {
+                    "service": r.service,
+                    "image": r.image,
+                    "digest": r.digest,
+                    "first_seen": r.first_seen.isoformat() if r.first_seen else None,
+                    "age_hours": r.age_hours,
+                    "meets_cooldown": r.meets_cooldown,
+                }
+                for r in report.digest_results
+            ],
+        }
+
+    data = await anyio.to_thread.run_sync(_run)
+    if "error" in data:
+        return JSONResponse(status_code=400, content=data)
+    return JSONResponse(content=data)

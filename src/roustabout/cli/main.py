@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json as _json
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -58,7 +59,7 @@ def _output_result(text: str, output: str | None) -> None:
         click.echo(text)
 
 
-def _state_path_option():  # noqa: ANN202
+def _state_path_option() -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     return click.option(
         "--state-file",
         type=click.Path(),

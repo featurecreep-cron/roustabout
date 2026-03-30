@@ -28,7 +28,7 @@ GENESIS = "roustabout-genesis"
 SEPARATOR = "\x1f"  # ASCII Unit Separator
 RECORD_SEPARATOR = "\x1e"  # ASCII Record Separator
 
-LATEST_VERSION = 1
+LATEST_VERSION = 2
 
 _MIGRATIONS: list[tuple[int, list[str]]] = [
     (
@@ -68,6 +68,21 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
             host TEXT NOT NULL DEFAULT 'localhost',
             last_activity TEXT NOT NULL
         )""",
+        ],
+    ),
+    (
+        2,
+        [
+            """CREATE TABLE digests (
+            image TEXT NOT NULL,
+            digest TEXT NOT NULL,
+            host TEXT NOT NULL DEFAULT 'localhost',
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            source TEXT NOT NULL,
+            PRIMARY KEY (image, digest, host)
+        )""",
+            "CREATE INDEX idx_digests_image ON digests (image, host)",
         ],
     ),
 ]
@@ -852,3 +867,119 @@ def log_audit_complete(
         result="success",
         detail={"findings": findings_summary},
     )
+
+
+# Digest tracking
+
+
+@dataclass(frozen=True)
+class DigestRow:
+    image: str
+    digest: str
+    host: str
+    first_seen: str
+    last_seen: str
+    source: str
+
+
+def upsert_digest(
+    db: StateDB,
+    *,
+    image: str,
+    digest: str,
+    host: str = "localhost",
+    source: str = "registry",
+) -> DigestRow:
+    """Record a digest observation. INSERT on first sight, UPDATE last_seen on repeat."""
+    now = datetime.now(UTC).isoformat()
+    with db._writer_lock:
+        db._writer.execute("BEGIN IMMEDIATE")
+        try:
+            row = db._writer.execute(
+                "SELECT first_seen, source FROM digests "
+                "WHERE image = ? AND digest = ? AND host = ?",
+                (image, digest, host),
+            ).fetchone()
+            if row:
+                db._writer.execute(
+                    "UPDATE digests SET last_seen = ? WHERE image = ? AND digest = ? AND host = ?",
+                    (now, image, digest, host),
+                )
+                first_seen = row[0]
+                stored_source = row[1]
+            else:
+                db._writer.execute(
+                    "INSERT INTO digests "
+                    "(image, digest, host, first_seen, last_seen, source) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (image, digest, host, now, now, source),
+                )
+                first_seen = now
+                stored_source = source
+            db._writer.execute("COMMIT")
+        except BaseException:
+            import contextlib
+
+            with contextlib.suppress(Exception):
+                db._writer.execute("ROLLBACK")
+            raise
+    return DigestRow(
+        image=image,
+        digest=digest,
+        host=host,
+        first_seen=first_seen,
+        last_seen=now,
+        source=stored_source,
+    )
+
+
+def query_digests(
+    db: StateDB,
+    *,
+    image: str,
+    host: str = "localhost",
+) -> list[DigestRow]:
+    """Get all known digests for an image, newest first_seen first."""
+    reader = db._reader_factory()
+    try:
+        rows = reader.execute(
+            "SELECT image, digest, host, first_seen, last_seen, source "
+            "FROM digests WHERE image = ? AND host = ? "
+            "ORDER BY first_seen DESC",
+            (image, host),
+        ).fetchall()
+        return [
+            DigestRow(
+                image=r[0],
+                digest=r[1],
+                host=r[2],
+                first_seen=r[3],
+                last_seen=r[4],
+                source=r[5],
+            )
+            for r in rows
+        ]
+    finally:
+        reader.close()
+
+
+def query_digest_age(
+    db: StateDB,
+    *,
+    image: str,
+    digest: str,
+    host: str = "localhost",
+) -> float | None:
+    """Hours since first seen. None if never seen."""
+    reader = db._reader_factory()
+    try:
+        row = reader.execute(
+            "SELECT first_seen FROM digests WHERE image = ? AND digest = ? AND host = ?",
+            (image, digest, host),
+        ).fetchone()
+        if not row:
+            return None
+        first_seen = datetime.fromisoformat(row[0])
+        return (datetime.now(UTC) - first_seen).total_seconds() / 3600.0
+    finally:
+        reader.close()

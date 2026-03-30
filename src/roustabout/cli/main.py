@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json as _json
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -58,7 +59,7 @@ def _output_result(text: str, output: str | None) -> None:
         click.echo(text)
 
 
-def _state_path_option():  # noqa: ANN202
+def _state_path_option() -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     return click.option(
         "--state-file",
         type=click.Path(),
@@ -894,11 +895,18 @@ def file_write_cmd(
 @click.option("--services", default=None, help="Comma-separated service names to include.")
 @click.option("--include-stopped", is_flag=True, default=False, help="Include stopped containers.")
 @click.option("--dry-run", is_flag=True, default=False, help="Preview without writing files.")
+@click.option(
+    "--source-env",
+    default=None,
+    type=click.Path(),
+    help="Source .env file for reverse-mapping variable names.",
+)
 def migrate(
     output_dir: str,
     services: str | None,
     include_stopped: bool,
     dry_run: bool,
+    source_env: str | None,
 ) -> None:
     """Generate compose file with secrets extracted to .env."""
     backend = _backend()
@@ -908,18 +916,54 @@ def migrate(
             services=services,
             include_stopped=include_stopped,
             dry_run=dry_run,
+            source_env=source_env,
         )
     except RuntimeError as exc:
         raise click.ClickException(str(exc))
 
     click.echo(f"Services: {', '.join(result.get('services', []))}")
     click.echo(f"Secrets extracted: {result.get('secrets_extracted', 0)}")
+    reverse_mapped = result.get("reverse_mapped", 0)
+    if reverse_mapped:
+        click.echo(f"Reverse-mapped: {reverse_mapped}")
     click.echo(f"Compose: {result.get('compose_path', '')}")
     click.echo(f"Env file: {result.get('env_file_path', '')}")
     for w in result.get("warnings", []):
         click.echo(f"  ⚠ {w}", err=True)
     if result.get("dry_run"):
         click.echo("(dry run — no files written)")
+
+
+@main.command("predeploy")
+@click.argument("compose_path")
+@click.option("--cooldown", default=24.0, type=float, help="Minimum digest age in hours.")
+def predeploy(compose_path: str, cooldown: float) -> None:
+    """Audit a compose file before deployment."""
+    backend = _backend()
+    try:
+        result = backend.predeploy(compose_path, cooldown_hours=cooldown)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+
+    if "error" in result:
+        raise click.ClickException(result["error"])
+
+    passed = result.get("passed", False)
+    click.echo(f"Passed: {'yes' if passed else 'NO'}")
+
+    findings = result.get("findings", [])
+    if findings:
+        click.echo(f"\nFindings ({len(findings)}):")
+        for f in findings:
+            click.echo(f"  [{f['severity']}] {f['service']}: {f['explanation']}")
+
+    digests = result.get("digest_results", [])
+    if digests:
+        click.echo(f"\nDigest checks ({len(digests)}):")
+        for d in digests:
+            status = "ok" if d["meets_cooldown"] else "FAIL"
+            age = f"{d['age_hours']:.1f}h" if d["age_hours"] is not None else "unknown"
+            click.echo(f"  [{status}] {d['service']}: {d['image']} (age: {age})")
 
 
 @main.command("version")

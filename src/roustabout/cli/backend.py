@@ -69,6 +69,13 @@ class Backend(Protocol):
         services: str | None = None,
         include_stopped: bool = False,
         dry_run: bool = True,
+        source_env: str | None = None,
+    ) -> dict[str, Any]: ...
+    def predeploy(
+        self,
+        compose_path: str,
+        *,
+        cooldown_hours: float = 24.0,
     ) -> dict[str, Any]: ...
 
 

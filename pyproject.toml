@@ -26,6 +26,7 @@ dependencies = [
     "ruamel.yaml>=0.18",
     "secretscreen>=0.1.0",
     "httpx>=0.24",
+    "structlog>=24.1",
 ]
 
 [project.urls]

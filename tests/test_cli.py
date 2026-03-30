@@ -565,7 +565,7 @@ class TestMigrateCommand:
         assert "nginx" in result.output
         assert "dry run" in result.output
         mock_backend.migrate.assert_called_once_with(
-            "/out", services=None, include_stopped=False, dry_run=False
+            "/out", services=None, include_stopped=False, dry_run=False, source_env=None
         )
 
     def test_migrate_with_options(self, runner, mock_backend):
@@ -582,6 +582,27 @@ class TestMigrateCommand:
         )
         assert result.exit_code == 0
 
+    def test_migrate_with_source_env(self, runner, mock_backend):
+        mock_backend.migrate.return_value = {
+            "services": ["db"],
+            "secrets_extracted": 1,
+            "reverse_mapped": 1,
+            "compose_path": "/out/compose.yml",
+            "env_file_path": "/out/.env",
+            "dry_run": False,
+            "warnings": [],
+        }
+        result = runner.invoke(main, ["migrate", "-o", "/out", "--source-env", "/path/.env"])
+        assert result.exit_code == 0
+        assert "Reverse-mapped: 1" in result.output
+        mock_backend.migrate.assert_called_once_with(
+            "/out",
+            services=None,
+            include_stopped=False,
+            dry_run=False,
+            source_env="/path/.env",
+        )
+
 
 class TestConnectionManagement:
     def test_connect_help(self, runner):
@@ -594,6 +615,61 @@ class TestConnectionManagement:
             result = runner.invoke(main, ["disconnect"])
         assert result.exit_code == 0
         assert "No saved connection" in result.output
+
+
+class TestPredeployCommand:
+    def test_predeploy_passed(self, runner, mock_backend):
+        mock_backend.predeploy.return_value = {
+            "passed": True,
+            "findings": [],
+            "digest_results": [
+                {
+                    "service": "web",
+                    "image": "nginx:1.25",
+                    "digest": "sha256:abc",
+                    "age_hours": 48.5,
+                    "meets_cooldown": True,
+                }
+            ],
+        }
+        result = runner.invoke(main, ["predeploy", "compose.yml"])
+        assert result.exit_code == 0
+        assert "Passed: yes" in result.output
+        mock_backend.predeploy.assert_called_once_with("compose.yml", cooldown_hours=24.0)
+
+    def test_predeploy_failed(self, runner, mock_backend):
+        mock_backend.predeploy.return_value = {
+            "passed": False,
+            "findings": [
+                {
+                    "severity": "critical",
+                    "category": "privileged",
+                    "service": "app",
+                    "explanation": "Privileged mode",
+                }
+            ],
+            "digest_results": [],
+        }
+        result = runner.invoke(main, ["predeploy", "compose.yml"])
+        assert result.exit_code == 0
+        assert "Passed: NO" in result.output
+        assert "Privileged mode" in result.output
+
+    def test_predeploy_custom_cooldown(self, runner, mock_backend):
+        mock_backend.predeploy.return_value = {
+            "passed": True,
+            "findings": [],
+            "digest_results": [],
+        }
+        result = runner.invoke(main, ["predeploy", "compose.yml", "--cooldown", "48"])
+        assert result.exit_code == 0
+        mock_backend.predeploy.assert_called_once_with("compose.yml", cooldown_hours=48.0)
+
+    def test_predeploy_error(self, runner, mock_backend):
+        mock_backend.predeploy.return_value = {"error": "file not found: missing.yml"}
+        result = runner.invoke(main, ["predeploy", "missing.yml"])
+        assert result.exit_code != 0
+        assert "file not found" in result.output
 
 
 class TestDiffCommand:

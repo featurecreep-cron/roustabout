@@ -2,6 +2,54 @@
 
 <!-- version list -->
 
+## v0.14.0 (2026-03-30)
+
+### Bug Fixes
+
+- Add return type annotation to _state_path_option
+  ([`1c5dab5`](https://github.com/featurecreep-cron/roustabout/commit/1c5dab5b11482bd6af9d53927824ae35ae9b7d08))
+
+- Add structlog to dependencies
+  ([`2aa0373`](https://github.com/featurecreep-cron/roustabout/commit/2aa0373c0a873586bd831090887b56d7f0499227))
+
+- Handle PermissionError in file_ops.read_file
+  ([`743153b`](https://github.com/featurecreep-cron/roustabout/commit/743153b4bd73b60e4e320e63bf6ba03312e254bd))
+
+- Line length lint in test_import_constraints
+  ([`e1aff0f`](https://github.com/featurecreep-cron/roustabout/commit/e1aff0f7a7098d6bb03e0fe8b5b20eb5fc77cac4))
+
+### Features
+
+- Add API audit logging for all authenticated requests
+  ([`0e0a776`](https://github.com/featurecreep-cron/roustabout/commit/0e0a776847069930ac2de131665e83695f6ff34c))
+
+- Add API endpoints for exec, file ops, stats; wire all CLI commands
+  ([`4d27f8e`](https://github.com/featurecreep-cron/roustabout/commit/4d27f8ef0a3eaa649525bd38b2b04c47fdeebd72))
+
+- Add exec, file-read, and file-write CLI commands
+  ([`d0a1e16`](https://github.com/featurecreep-cron/roustabout/commit/d0a1e162181745eb132e6ed9ad56d1cffb8d5af9))
+
+- Complete CLI migration to HTTP-only (Rule 0)
+  ([`58ad74a`](https://github.com/featurecreep-cron/roustabout/commit/58ad74a876f091c240bfefcf4a445282ef091d1c))
+
+- Enforce Rule 0 client/server security boundary
+  ([`c39b133`](https://github.com/featurecreep-cron/roustabout/commit/c39b133e3cf14913fc8d3182fb0686104e19341f))
+
+- First-seen digest tracking and pre-deploy compose audit
+  ([#26](https://github.com/featurecreep-cron/roustabout/pull/26),
+  [`9f56ed7`](https://github.com/featurecreep-cron/roustabout/commit/9f56ed7faf30eb70c928f45028e34359d9800e78))
+
+- Harden file ops and exec safety boundaries
+  ([`6a83ded`](https://github.com/featurecreep-cron/roustabout/commit/6a83dede7fe980c41fe034c99f293aea0c51c9de))
+
+- Reverse-map env vars to source .env names during migration
+  ([#27](https://github.com/featurecreep-cron/roustabout/pull/27),
+  [`aa2b3f1`](https://github.com/featurecreep-cron/roustabout/commit/aa2b3f14060f9e604ebdcf0bf9ced38023dc88e8))
+
+- **api,cli**: Wire predeploy audit endpoint and CLI command
+  ([`a6fbc02`](https://github.com/featurecreep-cron/roustabout/commit/a6fbc02d165f1fcb7b6a463128dbe0aa2d30e1bf))
+
+
 ## v0.13.1 (2026-03-29)
 
 ### Bug Fixes

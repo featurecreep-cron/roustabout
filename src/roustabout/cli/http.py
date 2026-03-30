@@ -230,3 +230,17 @@ class HTTPBackend:
         if services:
             body["services"] = services.split(",")
         return self._post("/v1/supply-chain/migrate", json=body)
+
+    def predeploy(
+        self,
+        compose_path: str,
+        *,
+        cooldown_hours: float = 24.0,
+    ) -> dict[str, Any]:
+        return self._post(
+            "/v1/predeploy/audit",
+            json={
+                "compose_path": compose_path,
+                "cooldown_hours": cooldown_hours,
+            },
+        )

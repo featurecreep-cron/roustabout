@@ -2,7 +2,7 @@
 # Produces a hardened image with Docker socket access for container management.
 
 # --- Build stage ---
-FROM python:3.14-slim@sha256:bc389f7dfcb21413e72a28f491985326994795e34d2b86c8ae2f417b4e7818aa AS builder
+FROM python:3.14-slim@sha256:5b3879b6f3cb77e712644d50262d05a7c146b7312d784a18eff7ff5462e77033 AS builder
 
 WORKDIR /build
 COPY pyproject.toml README.md ./
@@ -11,7 +11,7 @@ COPY src/ src/
 RUN pip install --no-cache-dir --prefix=/install ".[server,mcp]"
 
 # --- Runtime stage ---
-FROM python:3.14-slim@sha256:bc389f7dfcb21413e72a28f491985326994795e34d2b86c8ae2f417b4e7818aa
+FROM python:3.14-slim@sha256:5b3879b6f3cb77e712644d50262d05a7c146b7312d784a18eff7ff5462e77033
 
 RUN mkdir -p /data
 

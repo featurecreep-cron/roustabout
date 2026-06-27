@@ -1,6 +1,6 @@
 """Tests for the security auditor."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from roustabout.audit_renderer import render_findings
 from roustabout.auditor import (
@@ -789,7 +789,7 @@ class TestImageAge:
         assert "days ago" in f.explanation
 
     def test_recent_image_clean(self):
-        recent = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        recent = (datetime.now(UTC) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
         env = _env(image_created=recent)
         findings = audit(env)
         assert _find(findings, "image-age") is None

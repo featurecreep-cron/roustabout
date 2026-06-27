@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import docker.errors
-import requests.exceptions  # type: ignore[import-untyped]
+import requests.exceptions
 
 from roustabout.permissions import FrictionMechanism
 from roustabout.redactor import sanitize

@@ -7,6 +7,9 @@ FROM python:3.14-slim@sha256:cae66f2ef0ec51a9891263eeee7f987dacf0a9879e8aa9353d5
 WORKDIR /build
 COPY pyproject.toml README.md ./
 COPY src/ src/
+# setuptools-scm derives the version from the git tag, so the build needs history.
+# Builder stage only — .git never reaches the runtime image.
+COPY .git/ .git/
 
 RUN pip install --no-cache-dir --prefix=/install ".[server,mcp]"
 

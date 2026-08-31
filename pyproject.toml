@@ -24,7 +24,7 @@ classifiers = [
 dependencies = [
     "click>=8.0",
     "ruamel.yaml>=0.18",
-    "secretscreen>=0.1.0",
+    "secretscreen>=0.5.1,<0.6",
     "httpx>=0.24",
     "structlog>=24.1",
 ]

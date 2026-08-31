@@ -9,9 +9,10 @@ from __future__ import annotations
 import json
 import os
 import sys
+from importlib.metadata import PackageNotFoundError, version
 
 import httpx
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 _RESPONSE_ENVELOPE = "[roustabout]"
 
@@ -38,7 +39,7 @@ def _format_error(status: int, resp: httpx.Response) -> str:
     return messages.get(status, f"Unexpected error ({status}): {detail}")
 
 
-def create_mcp_server(api_url: str, api_key: str) -> FastMCP:
+def create_mcp_server(api_url: str, api_key: str) -> MCPServer:
     """Create MCP server that proxies all calls to the REST API."""
     client = httpx.AsyncClient(
         base_url=api_url,
@@ -46,7 +47,12 @@ def create_mcp_server(api_url: str, api_key: str) -> FastMCP:
         timeout=30.0,
     )
 
-    mcp = FastMCP("roustabout")
+    try:
+        pkg_version = version("roustabout")
+    except PackageNotFoundError:  # running from a source tree without an install
+        pkg_version = "0.0.0"
+
+    server = MCPServer("roustabout", version=pkg_version)
 
     async def _get(path: str, **params: str | int | bool) -> str:
         resp = await client.get(path, params=params or None)
@@ -62,66 +68,66 @@ def create_mcp_server(api_url: str, api_key: str) -> FastMCP:
 
     # Read tools (Observe tier)
 
-    @mcp.tool()
+    @server.tool()
     async def docker_snapshot() -> str:
         """Get a redacted snapshot of all Docker containers."""
         return await _get("/v1/snapshot")
 
-    @mcp.tool()
+    @server.tool()
     async def docker_audit() -> str:
         """Run security audit checks against the Docker environment."""
         return await _get("/v1/audit")
 
-    @mcp.tool()
+    @server.tool()
     async def docker_container(name: str) -> str:
         """Get detail for a specific container (image, status, ports, networks)."""
         return await _get(f"/v1/containers/{name}")
 
-    @mcp.tool()
+    @server.tool()
     async def docker_health(name: str) -> str:
         """Get health status for a specific container."""
         return await _get(f"/v1/health/{name}")
 
-    @mcp.tool()
+    @server.tool()
     async def docker_logs(name: str, tail: int = 100) -> str:
         """Get recent logs for a specific container."""
         return await _get(f"/v1/logs/{name}", tail=tail)
 
-    @mcp.tool()
+    @server.tool()
     async def docker_dr_plan() -> str:
         """Generate a disaster recovery plan from running containers."""
         return await _get("/v1/dr-plan")
 
-    @mcp.tool()
+    @server.tool()
     async def docker_capabilities() -> str:
         """List available capabilities for the configured API key."""
         return await _get("/v1/capabilities")
 
     # Network tools (Observe tier)
 
-    @mcp.tool()
+    @server.tool()
     async def docker_net_check() -> str:
         """Network connectivity overview across all containers."""
         return await _get("/v1/net-check")
 
-    @mcp.tool()
+    @server.tool()
     async def docker_network_inspect(name: str) -> str:
         """Get network detail for a specific container (DNS, aliases, connectivity)."""
         return await _get(f"/v1/containers/{name}/network")
 
-    @mcp.tool()
+    @server.tool()
     async def docker_ports(name: str) -> str:
         """Get port mappings for a specific container."""
         return await _get(f"/v1/containers/{name}/ports")
 
     # Diagnostic probes (Elevate tier — server enforces)
 
-    @mcp.tool()
+    @server.tool()
     async def docker_probe_dns(source: str, hostname: str) -> str:
         """Resolve a hostname from inside a container. Requires elevate tier."""
         return await _post(f"/v1/containers/{source}/probe/dns", hostname=hostname)
 
-    @mcp.tool()
+    @server.tool()
     async def docker_probe_connectivity(source: str, target_host: str, port: int) -> str:
         """Test TCP connectivity from inside a container. Requires elevate tier."""
         return await _post(
@@ -132,7 +138,7 @@ def create_mcp_server(api_url: str, api_key: str) -> FastMCP:
 
     # Deep health (Observe tier)
 
-    @mcp.tool()
+    @server.tool()
     async def docker_deep_health(name: str | None = None) -> str:
         """Get deep health analysis for one or all containers."""
         if name:
@@ -141,34 +147,34 @@ def create_mcp_server(api_url: str, api_key: str) -> FastMCP:
 
     # Generation (Observe tier)
 
-    @mcp.tool()
+    @server.tool()
     async def docker_generate(include_stopped: bool = False) -> str:
         """Generate docker-compose.yml from running container state."""
         return await _get("/v1/generate", include_stopped=include_stopped)
 
     # Mutation tools (Operate tier)
 
-    @mcp.tool()
+    @server.tool()
     async def docker_start(name: str) -> str:
         """Start a stopped Docker container through the safety gateway."""
         return await _post(f"/v1/containers/{name}/start")
 
-    @mcp.tool()
+    @server.tool()
     async def docker_stop(name: str) -> str:
         """Stop a running Docker container through the safety gateway."""
         return await _post(f"/v1/containers/{name}/stop")
 
-    @mcp.tool()
+    @server.tool()
     async def docker_restart(name: str) -> str:
         """Restart a Docker container through the safety gateway."""
         return await _post(f"/v1/containers/{name}/restart")
 
-    @mcp.tool()
+    @server.tool()
     async def docker_recreate(name: str) -> str:
         """Recreate a Docker container through the safety gateway."""
         return await _post(f"/v1/containers/{name}/recreate")
 
-    return mcp
+    return server
 
 
 def main() -> None:

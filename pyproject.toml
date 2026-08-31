@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68.0"]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "roustabout"
-version = "0.14.0"
+dynamic = ["version"]
 description = "Docker environment documentation, security auditing, and safe MCP server"
 license = "MIT"
 requires-python = ">=3.12"
@@ -57,6 +57,10 @@ roustabout = "roustabout.cli:main"
 roustabout-mcp = "roustabout.mcp_proxy.server:main"
 roustabout-server = "roustabout.api.server:main"
 
+[tool.setuptools_scm]
+# The git tag is the single source of the version. Nothing writes it into a file,
+# so pyproject and the tag cannot drift apart the way they did in Aug 2026.
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -86,7 +90,6 @@ disallow_untyped_decorators = false
 testpaths = ["tests"]
 
 [tool.semantic_release]
-version_toml = ["pyproject.toml:project.version"]
 commit_parser = "conventional"
 
 tag_format = "v{version}"

@@ -4,6 +4,9 @@ on:
   push:
     branches: [develop, main]
     tags: ["v*"]
+  # Rebuild on demand. Without this the image can only be built by landing a
+  # commit, which makes a failed build impossible to retest directly.
+  workflow_dispatch:
 
 permissions:
   contents: read

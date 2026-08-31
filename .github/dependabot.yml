@@ -1,5 +1,14 @@
 version: 2
 updates:
+  # Python dependencies ship to users in the wheel's metadata, so an update to one
+  # is a user-facing change: "deps:" is a patch-producing type (see
+  # [tool.semantic_release.commit_parser_options] in pyproject.toml).
+  #
+  # requirements.txt is the lockfile. It exists so Dependabot can see Python
+  # dependencies at all — with floors-only constraints and no lock, every new
+  # release already satisfies pyproject.toml, so Dependabot has nothing to
+  # propose and stays silent. It did, for the life of the project: 27 PRs, none
+  # for pip, while secretscreen drifted 0.1.0 -> 0.5.1 unnoticed.
   - package-ecosystem: pip
     directory: /
     schedule:
@@ -9,20 +18,26 @@ updates:
       semver-minor-days: 7
       semver-patch-days: 3
     groups:
+      # Patches only. Minors stay ungrouped on purpose: a grouped PR that fails
+      # CI names the group, not the package, and blocks every good update in it
+      # behind the one bad one.
       pip-patches:
         update-types: ["patch"]
-      pip-minors:
-        update-types: ["minor"]
     commit-message:
-      prefix: chore
-      include: scope
+      prefix: deps
     labels:
       - dependencies
 
+  # CI tooling never reaches a user, so these must not cut a release.
+  # "chore(deps):" is excluded from the changelog and produces no version bump.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
     groups:
       actions:
         patterns: ["*"]
@@ -32,15 +47,19 @@ updates:
     labels:
       - dependencies
 
+  # The base image ships in the published GHCR image, so it is user-facing.
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
     ignore:
       - dependency-name: python
         update-types: ["version-update:semver-major"]
     commit-message:
-      prefix: chore
-      include: scope
+      prefix: deps
     labels:
       - dependencies

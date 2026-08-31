@@ -4,6 +4,9 @@ on:
   push:
     branches: [develop, main]
     tags: ["v*"]
+  # Rebuild on demand. Without this the image can only be built by landing a
+  # commit, which makes a failed build impossible to retest directly.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,15 +22,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
+        with:
+          # setuptools-scm derives the version from the nearest tag.
+          fetch-depth: 0
+
+      - name: Compute version
+        id: version
+        run: |
+          python3 -m pip install --quiet "setuptools-scm>=8.0"
+          echo "version=$(python3 -m setuptools_scm)" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8  # v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7  # v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -48,6 +60,8 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7
         with:
           context: .
+          build-args: |
+            SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ROUSTABOUT=${{ steps.version.outputs.version }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -62,6 +76,9 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
+        with:
+          # setuptools-scm derives the version from the nearest tag.
+          fetch-depth: 0
 
       - name: Lowercase image name
         id: image
@@ -81,6 +98,6 @@ jobs:
           severity: CRITICAL,HIGH
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81  # v4
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938  # v4
         with:
           sarif_file: trivy-results.sarif

@@ -23,6 +23,12 @@ jobs:
           # setuptools-scm derives the version from the nearest tag.
           fetch-depth: 0
 
+      - name: Compute version
+        id: version
+        run: |
+          python3 -m pip install --quiet "setuptools-scm>=8.0"
+          echo "version=$(python3 -m setuptools_scm)" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8  # v4
 
@@ -51,6 +57,8 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7
         with:
           context: .
+          build-args: |
+            SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ROUSTABOUT=${{ steps.version.outputs.version }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

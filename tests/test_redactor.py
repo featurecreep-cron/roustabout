@@ -14,6 +14,7 @@ from roustabout.models import (
 from roustabout.redactor import (
     DEFAULT_PATTERNS,
     REDACTED,
+    URL_REDACTED,
     is_secret_key,
     redact,
     redact_value,
@@ -118,17 +119,36 @@ class TestUrlHandling:
         val = dict(result.containers[0].env)["DATABASE_URL"]
         assert "user" in val
         assert "pass" not in val
-        assert REDACTED in val
+        assert URL_REDACTED in val
         assert "localhost:5432/db" in val
 
     def test_url_partial_redaction_format(self):
-        """Verify exact format: ://user:[REDACTED]@host."""
+        """Verify exact format: ://user:REDACTED@host."""
         val = redact_value(
             "DATABASE_URL",
             "postgresql://myuser:s3cret@db.host:5432/mydb",
             DEFAULT_PATTERNS,
         )
-        assert val == f"postgresql://myuser:{REDACTED}@db.host:5432/mydb"
+        assert val == f"postgresql://myuser:{URL_REDACTED}@db.host:5432/mydb"
+
+    def test_redacted_url_still_parses(self):
+        """The reason the in-URL token has no brackets.
+
+        urlsplit reads "[...]" in a netloc as an IPv6 literal and raises, so a
+        bracketed placeholder would leave a URL that no downstream consumer can
+        parse. Guards the property, not the spelling.
+        """
+        from urllib.parse import urlsplit
+
+        val = redact_value(
+            "DATABASE_URL",
+            "postgresql://myuser:s3cret@db.host:5432/mydb",
+            DEFAULT_PATTERNS,
+        )
+        parts = urlsplit(val)
+        assert parts.hostname == "db.host"
+        assert parts.port == 5432
+        assert "s3cret" not in val
 
     def test_preserves_url_without_credentials(self):
         """URL key + no credentials → preserve entirely."""
@@ -143,7 +163,7 @@ class TestUrlHandling:
         val = dict(result.containers[0].env)["REDIS_URL"]
         assert "default" in val
         assert "mypassword" not in val
-        assert REDACTED in val
+        assert URL_REDACTED in val
 
     def test_preserves_safe_url_with_no_pattern_match(self):
         """No pattern match + _url suffix + no credentials → preserve."""
@@ -438,7 +458,7 @@ class TestUrlParsingEdgeCases:
         """postgres://:password@host should still redact."""
         val = redact_value("DATABASE_URL", "postgres://:secret@host/db", DEFAULT_PATTERNS)
         assert "secret" not in val
-        assert REDACTED in val
+        assert URL_REDACTED in val
         assert "host" in val
 
     def test_url_with_special_chars_in_password(self):
@@ -449,7 +469,7 @@ class TestUrlParsingEdgeCases:
             DEFAULT_PATTERNS,
         )
         assert "p%40ss" not in val
-        assert REDACTED in val
+        assert URL_REDACTED in val
         assert "host:5432/db" in val
 
     def test_passphrase_pattern(self):

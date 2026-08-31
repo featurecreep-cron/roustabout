@@ -23,6 +23,12 @@ from roustabout.models import ContainerInfo, DockerEnvironment, make_environment
 
 REDACTED = "[REDACTED]"
 
+# secretscreen writes a bracket-free token into a URL's userinfo: "[" and "]"
+# inside a netloc make urlsplit read an IPv6 literal and raise, so the redacted
+# URL would no longer parse. The secret is removed either way — only the
+# placeholder text differs from REDACTED.
+URL_REDACTED = "REDACTED"
+
 # Sanitization patterns (NFR-01)
 
 # ASCII control characters except \n (0x0A) and \t (0x09), plus C1 codes

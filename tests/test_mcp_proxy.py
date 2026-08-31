@@ -5,6 +5,7 @@ All tests mock httpx.AsyncClient responses. No Docker or server required.
 
 from __future__ import annotations
 
+from importlib.metadata import version as metadata_version
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -206,3 +207,55 @@ class TestMainEntryPoint:
                 from roustabout.mcp_proxy.server import main
 
                 main()
+
+
+class TestPublicToolRegistration:
+    """Exercise the MCP SDK's public surface.
+
+    The tests above reach into ``_tool_manager``, which is private SDK API and can
+    be renamed by any release. These assertions go through ``list_tools()`` so a
+    genuine registration break is distinguishable from an internals rename.
+    """
+
+    @pytest.fixture
+    def mcp(self):
+        with patch("roustabout.mcp_proxy.server.httpx.AsyncClient", return_value=AsyncMock()):
+            return create_mcp_server("http://localhost:8077", "sk-test")
+
+    @pytest.mark.anyio
+    async def test_every_tool_is_registered(self, mcp):
+        names = {t.name for t in await mcp.list_tools()}
+        assert names == {
+            "docker_snapshot",
+            "docker_audit",
+            "docker_container",
+            "docker_health",
+            "docker_logs",
+            "docker_dr_plan",
+            "docker_capabilities",
+            "docker_net_check",
+            "docker_network_inspect",
+            "docker_ports",
+            "docker_probe_dns",
+            "docker_probe_connectivity",
+            "docker_deep_health",
+            "docker_generate",
+            "docker_start",
+            "docker_stop",
+            "docker_restart",
+            "docker_recreate",
+        }
+
+    @pytest.mark.anyio
+    async def test_every_tool_has_a_description(self, mcp):
+        for tool in await mcp.list_tools():
+            assert tool.description, f"{tool.name} has no description"
+
+    def test_server_reports_its_package_version(self, mcp):
+        """An empty version string tells a connecting client nothing.
+
+        MCPServer defaults ``version`` to "", which is what the server advertised
+        in ``initialize``'s serverInfo before this was set explicitly.
+        """
+        assert mcp.version == metadata_version("roustabout")
+        assert mcp.version, "server advertised an empty version to clients"

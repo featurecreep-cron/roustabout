@@ -1,0 +1,67 @@
+name: App Self-Approval Probe
+
+# TEMPORARY. Answers one question: can our GitHub App approve a pull request it
+# opened itself? If it can, the promotion PR can be created AND approved by the
+# app, and `can_approve_pull_request_reviews` can stay disabled.
+# Removed once the answer is recorded.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate token
+        id: t
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
+        with:
+          fetch-depth: 0
+          token: ${{ steps.t.outputs.token }}
+
+      - name: Probe
+        env:
+          GH_TOKEN: ${{ steps.t.outputs.token }}
+        run: |
+          set -uo pipefail
+          br="probe/app-selfapproval-$GITHUB_RUN_ID"
+          git config user.name "featurecreep-automerge[bot]"
+          git config user.email "featurecreep-automerge[bot]@users.noreply.github.com"
+          git checkout -b "$br"
+          echo "probe $GITHUB_RUN_ID" > .probe
+          git add .probe && git commit -qm "chore: self-approval probe"
+          git push -q origin "$br"
+
+          echo "--- 1. can the APP create a PR? ---"
+          if url=$(gh pr create --base develop --head "$br" \
+                     --title "chore: app self-approval probe" \
+                     --body "Temporary probe. Closed automatically." 2>&1); then
+            echo "CREATE: OK -> $url"
+            num=$(echo "$url" | grep -oE '[0-9]+$')
+          else
+            echo "CREATE: FAILED -> $url"
+            git push -q origin --delete "$br" || true
+            exit 0
+          fi
+
+          echo "--- 2. who authored it? ---"
+          gh pr view "$num" --json author --jq '.author.login'
+
+          echo "--- 3. can the APP approve its own PR? ---"
+          if out=$(gh pr review "$num" --approve --body "probe" 2>&1); then
+            echo "APPROVE: OK"
+            gh pr view "$num" --json reviewDecision --jq '"reviewDecision=\(.reviewDecision)"'
+          else
+            echo "APPROVE: FAILED -> $out"
+          fi
+
+          echo "--- cleanup ---"
+          gh pr close "$num" --delete-branch || git push -q origin --delete "$br" || true

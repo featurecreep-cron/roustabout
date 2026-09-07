@@ -126,11 +126,11 @@ rpds-py==2026.6.3
     #   referencing
 ruamel-yaml==0.19.1
     # via roustabout (pyproject.toml)
-ruff==0.16.5
+ruff==0.16.6
     # via roustabout (pyproject.toml)
 secretscreen==0.5.1
     # via roustabout (pyproject.toml)
-sse-starlette==3.4.8
+sse-starlette==3.4.10
     # via mcp
 starlette==1.6.0
     # via

@@ -8,14 +8,14 @@ annotated-doc==0.0.5
     # via fastapi
 annotated-types==0.8.0
     # via pydantic
-anyio==4.14.2
+anyio==4.15.1
     # via
     #   httpx
     #   httpx2
     #   mcp
     #   sse-starlette
     #   starlette
-ast-serialize==0.8.0
+ast-serialize==0.9.0
     # via mypy
 attrs==26.1.0
     # via
@@ -126,11 +126,11 @@ rpds-py==2026.6.3
     #   referencing
 ruamel-yaml==0.19.1
     # via roustabout (pyproject.toml)
-ruff==0.16.5
+ruff==0.16.6
     # via roustabout (pyproject.toml)
 secretscreen==0.5.1
     # via roustabout (pyproject.toml)
-sse-starlette==3.4.8
+sse-starlette==3.4.11
     # via mcp
 starlette==1.6.0
     # via

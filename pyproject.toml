@@ -24,7 +24,7 @@ classifiers = [
 dependencies = [
     "click==8.5.0",
     "ruamel.yaml==0.19.1",
-    "secretscreen==0.5.1",
+    "secretscreen==0.6.0",
     "httpx==0.28.1",
     "structlog==26.1.0",
 ]
@@ -36,7 +36,7 @@ Issues = "https://github.com/featurecreep-cron/roustabout/issues"
 
 [project.optional-dependencies]
 mcp = [
-    "mcp==2.1.1",
+    "mcp==2.2.0",
 ]
 server = [
     "docker==7.2.0",

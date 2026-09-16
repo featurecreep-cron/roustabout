@@ -15,7 +15,7 @@ anyio==4.15.1
     #   mcp
     #   sse-starlette
     #   starlette
-ast-serialize==0.11.0
+ast-serialize==0.11.1
     # via mypy
 attrs==26.1.0
     # via

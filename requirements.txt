@@ -15,7 +15,7 @@ anyio==4.15.1
     #   mcp
     #   sse-starlette
     #   starlette
-ast-serialize==0.11.1
+ast-serialize==0.11.2
     # via mypy
 attrs==26.1.0
     # via
@@ -34,7 +34,7 @@ click==8.5.0
     # via
     #   roustabout (pyproject.toml)
     #   uvicorn
-coverage==7.16.0
+coverage==7.16.1
     # via pytest-cov
 cryptography==50.0.1
     # via pyjwt

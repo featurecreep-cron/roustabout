@@ -49,11 +49,11 @@ h11==0.16.0
     #   uvicorn
 httpcore==1.0.9
     # via httpx
-httpcore2==2.12.0
+httpcore2==2.13.0
     # via httpx2
 httpx==0.28.1
     # via roustabout (pyproject.toml)
-httpx2==2.12.0
+httpx2==2.13.0
     # via mcp
 idna==3.19
     # via
@@ -162,7 +162,7 @@ urllib3==2.7.0
     # via
     #   docker
     #   requests
-uvicorn==0.52.4
+uvicorn==0.53.0
     # via
     #   mcp
     #   roustabout (pyproject.toml)

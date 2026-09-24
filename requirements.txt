@@ -55,7 +55,7 @@ httpx==0.28.1
     # via roustabout (pyproject.toml)
 httpx2==2.13.0
     # via mcp
-idna==3.19
+idna==3.20
     # via
     #   anyio
     #   httpx

@@ -48,9 +48,9 @@ jobs:
       # the normal PR path with nothing exempt from main-protection.
       - name: Generate promoter token
         id: promoter
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
         with:
-          app-id: ${{ secrets.PROMOTER_APP_ID }}
+          client-id: ${{ secrets.PROMOTER_CLIENT_ID }}
           private-key: ${{ secrets.PROMOTER_PRIVATE_KEY }}
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
@@ -117,7 +117,7 @@ jobs:
       # branch and no bypass actor anywhere. Rulesets cover branches, not tags.
       - name: Python Semantic Release
         id: release
-        uses: python-semantic-release/python-semantic-release@9a026e9303981c866c3425723009becb2437c757  # v10.6.2
+        uses: python-semantic-release/python-semantic-release@b700dbeb1f431a0fcc30a79f3f0869407fe07278  # v10.7.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           force: ${{ github.event.inputs.force || '' }}

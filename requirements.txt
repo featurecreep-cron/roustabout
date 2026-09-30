@@ -34,7 +34,7 @@ click==8.5.0
     # via
     #   roustabout (pyproject.toml)
     #   uvicorn
-coverage==7.16.1
+coverage==7.16.2
     # via pytest-cov
 cryptography==50.0.1
     # via pyjwt

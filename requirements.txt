@@ -98,7 +98,7 @@ pydantic-core==2.49.0
     # via pydantic
 pygments==2.21.0
     # via pytest
-pyjwt==2.14.0
+pyjwt==2.15.0
     # via mcp
 pytest==9.1.1
     # via
@@ -132,7 +132,7 @@ secretscreen==0.6.0
     # via roustabout (pyproject.toml)
 sse-starlette==3.4.11
     # via mcp
-starlette==1.6.0
+starlette==1.7.0
     # via
     #   fastapi
     #   mcp

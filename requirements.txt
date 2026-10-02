@@ -77,7 +77,7 @@ mypy==2.3.1
     # via roustabout (pyproject.toml)
 mypy-extensions==1.1.0
     # via mypy
-opentelemetry-api==1.44.0
+opentelemetry-api==1.45.0
     # via mcp
 packaging==26.3
     # via pytest
@@ -162,7 +162,7 @@ urllib3==2.8.0
     # via
     #   docker
     #   requests
-uvicorn==0.53.0
+uvicorn==0.54.0
     # via
     #   mcp
     #   roustabout (pyproject.toml)

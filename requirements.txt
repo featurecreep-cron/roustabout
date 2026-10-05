@@ -34,7 +34,7 @@ click==8.5.0
     # via
     #   roustabout (pyproject.toml)
     #   uvicorn
-coverage==7.16.1
+coverage==7.16.2
     # via pytest-cov
 cryptography==50.0.1
     # via pyjwt
@@ -49,11 +49,11 @@ h11==0.16.0
     #   uvicorn
 httpcore==1.0.9
     # via httpx
-httpcore2==2.13.0
+httpcore2==2.13.1
     # via httpx2
 httpx==0.28.1
     # via roustabout (pyproject.toml)
-httpx2==2.13.0
+httpx2==2.13.1
     # via mcp
 idna==3.20
     # via
@@ -77,7 +77,7 @@ mypy==2.3.1
     # via roustabout (pyproject.toml)
 mypy-extensions==1.1.0
     # via mypy
-opentelemetry-api==1.44.0
+opentelemetry-api==1.45.0
     # via mcp
 packaging==26.3
     # via pytest
@@ -98,7 +98,7 @@ pydantic-core==2.49.0
     # via pydantic
 pygments==2.21.0
     # via pytest
-pyjwt==2.14.0
+pyjwt==2.15.1
     # via mcp
 pytest==9.1.1
     # via
@@ -126,13 +126,13 @@ rpds-py==2026.6.3
     #   referencing
 ruamel-yaml==0.19.1
     # via roustabout (pyproject.toml)
-ruff==0.16.8
+ruff==0.16.9
     # via roustabout (pyproject.toml)
 secretscreen==0.6.0
     # via roustabout (pyproject.toml)
 sse-starlette==3.4.11
     # via mcp
-starlette==1.6.0
+starlette==1.7.0
     # via
     #   fastapi
     #   mcp
@@ -162,7 +162,7 @@ urllib3==2.8.0
     # via
     #   docker
     #   requests
-uvicorn==0.53.0
+uvicorn==0.54.0
     # via
     #   mcp
     #   roustabout (pyproject.toml)

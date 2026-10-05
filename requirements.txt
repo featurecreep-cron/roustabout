@@ -110,7 +110,7 @@ pytest-asyncio==1.4.0
     # via roustabout (pyproject.toml)
 pytest-cov==7.1.0
     # via roustabout (pyproject.toml)
-pytest-mock==3.15.1
+pytest-mock==3.16.0
     # via roustabout (pyproject.toml)
 python-multipart==0.0.32
     # via mcp
@@ -130,7 +130,7 @@ ruff==0.16.10
     # via roustabout (pyproject.toml)
 secretscreen==0.6.0
     # via roustabout (pyproject.toml)
-sse-starlette==3.4.11
+sse-starlette==3.5.0
     # via mcp
 starlette==1.7.0
     # via

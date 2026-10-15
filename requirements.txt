@@ -40,7 +40,7 @@ cryptography==50.0.2
     # via pyjwt
 docker==7.2.0
     # via roustabout (pyproject.toml)
-fastapi==0.142.4
+fastapi==0.143.0
     # via roustabout (pyproject.toml)
 h11==0.16.0
     # via
@@ -87,14 +87,14 @@ pluggy==1.6.0
     # via
     #   pytest
     #   pytest-cov
-pycparser==3.0
+pycparser==3.1
     # via cffi
-pydantic==2.13.5
+pydantic==2.14.0
     # via
     #   fastapi
     #   mcp
     #   mcp-types
-pydantic-core==2.49.0
+pydantic-core==2.50.0
     # via pydantic
 pygments==2.21.0
     # via pytest

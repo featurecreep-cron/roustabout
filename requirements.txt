@@ -89,12 +89,12 @@ pluggy==1.6.0
     #   pytest-cov
 pycparser==3.1
     # via cffi
-pydantic==2.14.0
+pydantic==2.14.1
     # via
     #   fastapi
     #   mcp
     #   mcp-types
-pydantic-core==2.50.0
+pydantic-core==2.50.1
     # via pydantic
 pygments==2.21.0
     # via pytest
@@ -139,7 +139,7 @@ starlette==1.7.0
     #   sse-starlette
 structlog==26.1.0
     # via roustabout (pyproject.toml)
-truststore==0.10.4
+truststore==0.10.5
     # via
     #   httpcore2
     #   httpx2

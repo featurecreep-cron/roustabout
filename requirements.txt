@@ -15,7 +15,7 @@ anyio==4.15.1
     #   mcp
     #   sse-starlette
     #   starlette
-ast-serialize==0.12.0
+ast-serialize==0.12.1
     # via mypy
 attrs==26.1.0
     # via
@@ -40,7 +40,7 @@ cryptography==50.0.2
     # via pyjwt
 docker==7.2.0
     # via roustabout (pyproject.toml)
-fastapi==0.142.2
+fastapi==0.143.0
     # via roustabout (pyproject.toml)
 h11==0.16.0
     # via
@@ -61,7 +61,7 @@ idna==3.20
     #   httpx
     #   httpx2
     #   requests
-iniconfig==2.3.0
+iniconfig==2.3.1
     # via pytest
 jsonschema==4.26.0
     # via mcp
@@ -69,9 +69,9 @@ jsonschema-specifications==2025.9.1
     # via jsonschema
 librt==0.16.0
     # via mypy
-mcp==2.2.0
+mcp==2.3.0
     # via roustabout (pyproject.toml)
-mcp-types==2.2.0
+mcp-types==2.3.0
     # via mcp
 mypy==2.4.0
     # via roustabout (pyproject.toml)
@@ -87,14 +87,14 @@ pluggy==1.6.0
     # via
     #   pytest
     #   pytest-cov
-pycparser==3.0
+pycparser==3.11
     # via cffi
-pydantic==2.13.5
+pydantic==2.14.1
     # via
     #   fastapi
     #   mcp
     #   mcp-types
-pydantic-core==2.49.0
+pydantic-core==2.50.1
     # via pydantic
 pygments==2.21.0
     # via pytest
@@ -120,7 +120,7 @@ referencing==0.37.0
     #   jsonschema-specifications
 requests==2.34.2
     # via docker
-rpds-py==2026.6.3
+rpds-py==2026.9.1
     # via
     #   jsonschema
     #   referencing
@@ -139,7 +139,7 @@ starlette==1.7.0
     #   sse-starlette
 structlog==26.1.0
     # via roustabout (pyproject.toml)
-truststore==0.10.4
+truststore==0.10.5
     # via
     #   httpcore2
     #   httpx2

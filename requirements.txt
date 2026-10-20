@@ -132,7 +132,7 @@ secretscreen==0.6.0
     # via roustabout (pyproject.toml)
 sse-starlette==3.5.0
     # via mcp
-starlette==1.7.0
+starlette==1.8.0
     # via
     #   fastapi
     #   mcp

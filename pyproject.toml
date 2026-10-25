@@ -122,3 +122,22 @@ type = "github"
 [tool.semantic_release.publish]
 upload_to_vcs_release = true
 dist_glob_patterns = ["dist/*"]
+
+[tool.mutmut]
+# Scope: the modules that decide what leaks and what is allowed. The rest of
+# the package would triple the run and fill the report with renderer noise.
+source_paths = ["src/roustabout"]
+only_mutate = [
+    "src/roustabout/redactor.py",
+    "src/roustabout/permissions.py",
+    "src/roustabout/gateway.py",
+    "src/roustabout/lockdown.py",
+]
+pytest_add_cli_args_test_selection = ["tests/"]
+# The default "fork" forks each worker from the process that just ran the whole
+# suite. Here that hung 200 gateway mutants at the wall-clock limit; the same
+# mutants rerun by name finished in under a second, most of them surviving, so
+# the timeouts were hiding gaps. A clean fork server gives 0 timeouts and cuts
+# the run from 23 to 5 minutes. Why the main process is unsafe to fork from is
+# not established.
+process_isolation = "forkserver"

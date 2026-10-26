@@ -21,7 +21,7 @@ attrs==26.1.0
     # via
     #   jsonschema
     #   referencing
-certifi==2026.7.22
+certifi==2026.10.18
     # via
     #   httpcore
     #   httpx
@@ -40,7 +40,7 @@ cryptography==50.0.2
     # via pyjwt
 docker==7.2.0
     # via roustabout (pyproject.toml)
-fastapi==0.143.5
+fastapi==0.149.0
     # via roustabout (pyproject.toml)
 h11==0.16.0
     # via
@@ -49,11 +49,11 @@ h11==0.16.0
     #   uvicorn
 httpcore==1.0.9
     # via httpx
-httpcore2==2.13.1
+httpcore2==2.14.0
     # via httpx2
 httpx==0.28.1
     # via roustabout (pyproject.toml)
-httpx2==2.13.1
+httpx2==2.14.0
     # via mcp
 idna==3.20
     # via
@@ -110,7 +110,7 @@ pytest-asyncio==1.4.0
     # via roustabout (pyproject.toml)
 pytest-cov==7.1.0
     # via roustabout (pyproject.toml)
-pytest-mock==3.16.1
+pytest-mock==3.17.0
     # via roustabout (pyproject.toml)
 python-multipart==0.0.32
     # via mcp
@@ -132,7 +132,7 @@ secretscreen==0.6.0
     # via roustabout (pyproject.toml)
 sse-starlette==3.5.0
     # via mcp
-starlette==1.8.0
+starlette==1.9.0
     # via
     #   fastapi
     #   mcp

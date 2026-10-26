@@ -126,7 +126,7 @@ rpds-py==2026.9.1
     #   referencing
 ruamel-yaml==0.19.1
     # via roustabout (pyproject.toml)
-ruff==0.17.1
+ruff==0.17.2
     # via roustabout (pyproject.toml)
 secretscreen==0.6.0
     # via roustabout (pyproject.toml)

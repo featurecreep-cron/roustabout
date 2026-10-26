@@ -15,7 +15,7 @@ anyio==4.15.1
     #   mcp
     #   sse-starlette
     #   starlette
-ast-serialize==0.12.1
+ast-serialize==0.13.1
     # via mypy
 attrs==26.1.0
     # via
@@ -40,7 +40,7 @@ cryptography==50.0.2
     # via pyjwt
 docker==7.2.0
     # via roustabout (pyproject.toml)
-fastapi==0.143.0
+fastapi==0.143.5
     # via roustabout (pyproject.toml)
 h11==0.16.0
     # via
@@ -83,7 +83,7 @@ packaging==26.3
     # via pytest
 pathspec==1.1.1
     # via mypy
-pluggy==1.6.0
+pluggy==1.7.0
     # via
     #   pytest
     #   pytest-cov
@@ -110,7 +110,7 @@ pytest-asyncio==1.4.0
     # via roustabout (pyproject.toml)
 pytest-cov==7.1.0
     # via roustabout (pyproject.toml)
-pytest-mock==3.16.0
+pytest-mock==3.16.1
     # via roustabout (pyproject.toml)
 python-multipart==0.0.32
     # via mcp
@@ -126,13 +126,13 @@ rpds-py==2026.9.1
     #   referencing
 ruamel-yaml==0.19.1
     # via roustabout (pyproject.toml)
-ruff==0.16.10
+ruff==0.17.1
     # via roustabout (pyproject.toml)
 secretscreen==0.6.0
     # via roustabout (pyproject.toml)
 sse-starlette==3.5.0
     # via mcp
-starlette==1.7.0
+starlette==1.8.0
     # via
     #   fastapi
     #   mcp

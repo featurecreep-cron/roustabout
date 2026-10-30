@@ -21,7 +21,7 @@ attrs==26.1.0
     # via
     #   jsonschema
     #   referencing
-certifi==2026.10.19
+certifi==2026.10.23
     # via
     #   httpcore
     #   httpx
@@ -106,7 +106,7 @@ pytest==9.1.1
     #   pytest-cov
     #   pytest-mock
     #   roustabout (pyproject.toml)
-pytest-asyncio==1.4.0
+pytest-asyncio==1.4.1
     # via roustabout (pyproject.toml)
 pytest-cov==7.1.0
     # via roustabout (pyproject.toml)
@@ -126,11 +126,11 @@ rpds-py==2026.9.1
     #   referencing
 ruamel-yaml==0.19.1
     # via roustabout (pyproject.toml)
-ruff==0.17.2
+ruff==0.17.3
     # via roustabout (pyproject.toml)
 secretscreen==0.6.0
     # via roustabout (pyproject.toml)
-sse-starlette==3.5.0
+sse-starlette==3.5.1
     # via mcp
 starlette==1.9.0
     # via

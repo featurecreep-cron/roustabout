@@ -40,7 +40,7 @@ cryptography==50.0.2
     # via pyjwt
 docker==7.2.0
     # via roustabout (pyproject.toml)
-fastapi==0.161.1
+fastapi==0.162.0
     # via roustabout (pyproject.toml)
 h11==0.16.0
     # via
@@ -130,9 +130,9 @@ ruff==0.17.3
     # via roustabout (pyproject.toml)
 secretscreen==0.6.0
     # via roustabout (pyproject.toml)
-sse-starlette==3.5.1
+sse-starlette==3.6.0
     # via mcp
-starlette==1.9.0
+starlette==1.10.0
     # via
     #   fastapi
     #   mcp

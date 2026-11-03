@@ -112,7 +112,7 @@ pytest-cov==7.1.0
     # via roustabout (pyproject.toml)
 pytest-mock==3.17.0
     # via roustabout (pyproject.toml)
-python-multipart==0.0.32
+python-multipart==0.0.33
     # via mcp
 referencing==0.37.0
     # via

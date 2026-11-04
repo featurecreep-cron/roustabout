@@ -100,7 +100,7 @@ pygments==2.21.0
     # via pytest
 pyjwt==2.15.1
     # via mcp
-pytest==9.1.1
+pytest==9.2.0
     # via
     #   pytest-asyncio
     #   pytest-cov

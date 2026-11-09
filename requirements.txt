@@ -30,11 +30,11 @@ cffi==2.1.1
     # via cryptography
 charset-normalizer==3.5.2
     # via requests
-click==8.5.0
+click==8.5.1
     # via
     #   roustabout (pyproject.toml)
     #   uvicorn
-coverage==7.17.1
+coverage==7.17.2
     # via pytest-cov
 cryptography==50.0.2
     # via pyjwt
@@ -89,12 +89,12 @@ pluggy==1.7.0
     #   pytest-cov
 pycparser==3.12
     # via cffi
-pydantic==2.14.2
+pydantic==2.14.3
     # via
     #   fastapi
     #   mcp
     #   mcp-types
-pydantic-core==2.50.2
+pydantic-core==2.50.4
     # via pydantic
 pygments==2.21.0
     # via pytest
@@ -126,7 +126,7 @@ rpds-py==2026.9.1
     #   referencing
 ruamel-yaml==0.19.1
     # via roustabout (pyproject.toml)
-ruff==0.17.3
+ruff==0.17.4
     # via roustabout (pyproject.toml)
 secretscreen==0.6.0
     # via roustabout (pyproject.toml)
@@ -153,7 +153,7 @@ typing-extensions==4.16.0
     #   pydantic
     #   pydantic-core
     #   typing-inspection
-typing-inspection==0.4.4
+typing-inspection==0.4.5
     # via
     #   fastapi
     #   mcp

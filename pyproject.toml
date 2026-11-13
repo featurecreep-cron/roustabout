@@ -40,7 +40,7 @@ mcp = [
 ]
 server = [
     "docker==7.2.0",
-    "fastapi==0.162.2",
+    "fastapi==0.162.4",
     "uvicorn==0.54.0",
 ]
 dev = [

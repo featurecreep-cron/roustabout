@@ -4,7 +4,7 @@
 #
 #    pip-compile --extra=dev --extra=mcp --extra=server --output-file=requirements.txt --strip-extras pyproject.toml
 #
-annotated-doc==0.0.5
+annotated-doc==0.0.6
     # via fastapi
 annotated-types==0.8.0
     # via pydantic
@@ -34,13 +34,13 @@ click==8.5.1
     # via
     #   roustabout (pyproject.toml)
     #   uvicorn
-coverage==7.17.2
+coverage==7.17.3
     # via pytest-cov
 cryptography==50.0.2
     # via pyjwt
 docker==7.2.0
     # via roustabout (pyproject.toml)
-fastapi==0.162.4
+fastapi==0.162.7
     # via roustabout (pyproject.toml)
 h11==0.16.0
     # via
@@ -126,7 +126,7 @@ rpds-py==2026.9.1
     #   referencing
 ruamel-yaml==0.19.1
     # via roustabout (pyproject.toml)
-ruff==0.17.4
+ruff==0.17.5
     # via roustabout (pyproject.toml)
 secretscreen==0.6.0
     # via roustabout (pyproject.toml)

@@ -130,7 +130,7 @@ ruff==0.17.4
     # via roustabout (pyproject.toml)
 secretscreen==0.6.0
     # via roustabout (pyproject.toml)
-sse-starlette==3.6.0
+sse-starlette==3.7.0
     # via mcp
 starlette==1.10.0
     # via

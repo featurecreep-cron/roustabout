@@ -40,7 +40,7 @@ mcp = [
 ]
 server = [
     "docker==7.2.0",
-    "fastapi==0.162.4",
+    "fastapi==0.162.7",
     "uvicorn==0.54.0",
 ]
 dev = [
@@ -48,7 +48,7 @@ dev = [
     "pytest-asyncio==1.4.1.post1",
     "pytest-mock==3.17.0",
     "pytest-cov==7.1.0",
-    "ruff==0.17.4",
+    "ruff==0.17.5",
     "mypy==2.4.1",
 ]
 

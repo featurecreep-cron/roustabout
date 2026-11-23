@@ -25,3 +25,21 @@ default_tier = "operate"
 # "sk-mcp-abc123" = { tier = "operate", label = "mcp-proxy" }
 # "sk-ha-def456" = { tier = "observe", label = "home-assistant" }
 # "sk-admin-ghi789" = { tier = "elevate", label = "admin" }
+#
+# A key can also be granted exec in named containers, whatever its tier.
+# A granted key can run only what that container's [exec.<name>] section
+# allows, as the user set there. Without a grant, only elevate keys can exec.
+# "sk-dags-jkl012" = { tier = "observe", label = "dag-trigger", exec = ["airflow-scheduler"] }
+
+# Per-container exec allowlists.
+# An entry must match the command exactly, argument for argument. End an
+# entry with * to allow extra arguments after it.
+# Elevate keys are also held to this list when a container has one; elevate
+# keys can exec into containers without a section (minus a built-in denylist).
+# [exec.airflow-scheduler]
+# allowed = [
+#     "airflow dags trigger nightly_report",   # exactly this, nothing appended
+#     "airflow dags list *",                   # any further arguments
+# ]
+# user = "airflow"    # granted keys run as this user; omit for the container default
+# timeout = 30        # seconds; granted keys cannot raise it

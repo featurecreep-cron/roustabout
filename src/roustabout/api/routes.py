@@ -27,6 +27,17 @@ def set_rate_limiter(limiter: RateLimiter) -> None:
     _rate_limiter = limiter
 
 
+# Exec gets its own limiter so that exec traffic cannot spend the budget
+# mutations depend on: a key that may only exec must not be able to block a restart.
+_exec_rate_limiter: RateLimiter | None = None
+
+
+def set_exec_rate_limiter(limiter: RateLimiter) -> None:
+    """Set the server-wide exec rate limiter. Called once at startup."""
+    global _exec_rate_limiter  # noqa: PLW0603
+    _exec_rate_limiter = limiter
+
+
 def _has_tier(key_tier: str, required: str) -> bool:
     """Check if key's tier meets or exceeds the required tier."""
     return _TIER_ORDER.get(key_tier, -1) >= _TIER_ORDER.get(required, 99)
@@ -880,12 +891,12 @@ async def exec_route(name: str, request: Request) -> JSONResponse:
             execute,
             load_exec_config,
         )
-        from roustabout.session import DockerSession
+        from roustabout.session import DockerSession, RateLimitExceeded
 
         try:
             lockdown.check()
         except lockdown.LockdownError as exc:
-            return 423, {"error": str(exc), "lockdown": True}, "locked"
+            return 503, {"error": str(exc), "lockdown": True}, "locked"
 
         requested = ExecCommand(
             target=name,
@@ -903,14 +914,35 @@ async def exec_route(name: str, request: Request) -> JSONResponse:
             )
             # Refuse before connecting: a denied command never reaches Docker.
             check_command(cmd, friction)
-            client = connect(_load_cfg_simple())
+
+            # Reserved only once the command is known to be permitted, so
+            # refused attempts cannot use up the budget of legitimate ones.
+            limiter = _exec_rate_limiter
+            reservation = limiter.reserve(name) if limiter is not None else None
             try:
-                docker_session = DockerSession(
-                    client=client, host=_load_cfg_simple() or "localhost"
-                )
-                result = execute(docker_session, cmd, friction=friction)
-            finally:
-                client.close()
+                client = connect(_load_cfg_simple())
+                try:
+                    docker_session = DockerSession(
+                        client=client, host=_load_cfg_simple() or "localhost"
+                    )
+                    result = execute(docker_session, cmd, friction=friction)
+                finally:
+                    client.close()
+            except BaseException:
+                # Nothing ran — hand the token back before the error propagates.
+                if limiter is not None and reservation is not None:
+                    limiter.release(reservation)
+                raise
+            if result.exit_code is None and not result.timed_out:
+                # Container missing or stopped, or Docker refused: nothing ran.
+                if limiter is not None and reservation is not None:
+                    limiter.release(reservation)
+        except RateLimitExceeded as exc:
+            return (
+                429,
+                {"error": str(exc), "retry_after": max(1, round(exc.retry_after))},
+                "rate-limited",
+            )
         except ExecConfigError:
             # Refuse rather than fall back: an unreadable config must not turn
             # an allowlisted container into a denylisted one.
@@ -965,7 +997,8 @@ async def exec_route(name: str, request: Request) -> JSONResponse:
             )
         raise
     _log_exec(key_info, name, command, outcome)
-    return JSONResponse(status_code=status_code, content=data)
+    headers = {"Retry-After": str(data["retry_after"])} if status_code == 429 else None
+    return JSONResponse(status_code=status_code, content=data, headers=headers)
 
 
 @router.post("/containers/{name}/{action}")

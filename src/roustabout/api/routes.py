@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from roustabout.api.auth import KeyInfo
 from roustabout.redactor import sanitize
 from roustabout.session import PermissionTier, RateLimiter, capabilities_for_tier
+from roustabout.state_db import StateDB
 
 router = APIRouter(prefix="/v1")
 
@@ -25,6 +26,27 @@ def set_rate_limiter(limiter: RateLimiter) -> None:
     """Set the server-wide rate limiter. Called once at startup."""
     global _rate_limiter  # noqa: PLW0603
     _rate_limiter = limiter
+
+
+# Exec gets its own limiter so that exec traffic cannot spend the budget
+# mutations depend on: a key that may only exec must not be able to block a restart.
+_exec_rate_limiter: RateLimiter | None = None
+
+
+def set_exec_rate_limiter(limiter: RateLimiter) -> None:
+    """Set the server-wide exec rate limiter. Called once at startup."""
+    global _exec_rate_limiter  # noqa: PLW0603
+    _exec_rate_limiter = limiter
+
+
+# Hash-chained audit trail (state DB). Opened once by server.py at startup.
+_audit_db: StateDB | None = None
+
+
+def set_audit_db(db: StateDB) -> None:
+    """Set the server-wide audit database. Called once at startup."""
+    global _audit_db  # noqa: PLW0603
+    _audit_db = db
 
 
 def _has_tier(key_tier: str, required: str) -> bool:
@@ -789,6 +811,260 @@ async def api_root(request: Request) -> JSONResponse:
     )
 
 
+# --- Container Exec (Rule 0) ---
+# Registered before the generic /containers/{name}/{action} route: routes match
+# in registration order, and that route answers any single trailing segment.
+
+
+def _log_exec(key_info: KeyInfo, target: str, command: list[str], outcome: str) -> None:
+    """Record who tried to run what, and what became of it.
+
+    The request log only carries path and status, and a refused command still
+    returns 200 — without this line there is no record of the command itself.
+    """
+    import logging
+    import shlex
+
+    logging.getLogger("roustabout.audit").info(
+        "exec key=%s tier=%s target=%s outcome=%s command=%s",
+        key_info.label,
+        key_info.tier,
+        target,
+        outcome,
+        sanitize(shlex.join(command))[:500],
+    )
+
+
+@router.post("/containers/{name}/exec")
+async def exec_route(name: str, request: Request) -> JSONResponse:
+    """Execute a command inside a container.
+
+    ELEVATE keys, or any key with an exec grant for this container. Granted
+    keys are limited to the container's allowlist and its configured user.
+    """
+    import anyio
+
+    name = sanitize(name)[:128]
+    key_info: KeyInfo = request.state.key_info
+
+    body = await request.json()
+    command = body.get("command") if isinstance(body, dict) else None
+    if (
+        not command
+        or not isinstance(command, list)
+        or not all(isinstance(part, str) for part in command)
+    ):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "command is required (list of strings)"},
+        )
+
+    user = body.get("user")
+    workdir = body.get("workdir")
+    timeout = body.get("timeout", 30)
+    if (
+        not isinstance(user, str | None)
+        or not isinstance(workdir, str | None)
+        or isinstance(timeout, bool)
+        or not isinstance(timeout, int)
+        or timeout <= 0
+    ):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "user and workdir must be strings; timeout a positive integer",
+            },
+        )
+
+    from roustabout.exec import may_exec
+
+    if not may_exec(tier=key_info.tier, exec_grants=key_info.exec_grants, target=name):
+        _log_exec(key_info, name, command, "forbidden")
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "exec requires the elevate tier or an exec grant for this container",
+                "required_tier": "elevate",
+                "your_tier": key_info.tier,
+            },
+        )
+
+    def _run() -> tuple[int, dict[str, Any], str]:
+        """Returns (status_code, body, audit outcome)."""
+        from roustabout import lockdown
+        from roustabout import state_db as sdb
+        from roustabout.connection import connect
+        from roustabout.exec import (
+            DeniedCommand,
+            ExecCommand,
+            ExecConfigError,
+            authorize_exec,
+            check_command,
+            execute,
+            load_exec_config,
+        )
+        from roustabout.session import DockerSession, RateLimitExceeded
+
+        try:
+            lockdown.check()
+        except lockdown.LockdownError as exc:
+            return 503, {"error": str(exc), "lockdown": True}, "locked"
+
+        # No command runs unless it can be recorded. Checked before anything
+        # else so an unrecordable exec is refused rather than run and lost.
+        audit_db = _audit_db
+        if audit_db is None:
+            return (
+                503,
+                {"error": "audit trail unavailable (state database not open); exec refused"},
+                "no-audit-trail",
+            )
+
+        requested = ExecCommand(
+            target=name,
+            command=tuple(command),
+            user=user,
+            workdir=workdir,
+            timeout=timeout,
+        )
+        try:
+            cmd, friction = authorize_exec(
+                tier=key_info.tier,
+                exec_grants=key_info.exec_grants,
+                cmd=requested,
+                config=load_exec_config(name),
+            )
+            # Refuse before connecting: a denied command never reaches Docker.
+            check_command(cmd, friction)
+
+            # Reserved only once the command is known to be permitted, so
+            # refused attempts cannot use up the budget of legitimate ones.
+            limiter = _exec_rate_limiter
+            reservation = limiter.reserve(name) if limiter is not None else None
+            try:
+                client = connect(_load_cfg_simple())
+                try:
+                    docker_session = DockerSession(
+                        client=client, host=_load_cfg_simple() or "localhost"
+                    )
+                    result = execute(docker_session, cmd, friction=friction)
+                finally:
+                    client.close()
+            except BaseException:
+                # Nothing ran — hand the token back before the error propagates.
+                if limiter is not None and reservation is not None:
+                    limiter.release(reservation)
+                raise
+            if result.exit_code is None and not result.timed_out:
+                # Container missing or stopped, or Docker refused: nothing ran.
+                if limiter is not None and reservation is not None:
+                    limiter.release(reservation)
+        except RateLimitExceeded as exc:
+            return (
+                429,
+                {"error": str(exc), "retry_after": max(1, round(exc.retry_after))},
+                "rate-limited",
+            )
+        except ExecConfigError:
+            # Refuse rather than fall back: an unreadable config must not turn
+            # an allowlisted container into a denylisted one.
+            return (
+                500,
+                {"error": "exec configuration could not be loaded; exec refused"},
+                "config-error",
+            )
+        except DeniedCommand as exc:
+            return (
+                200,
+                {
+                    "success": False,
+                    "target": name,
+                    "command": list(command),
+                    "exit_code": None,
+                    "stdout": "",
+                    "stderr": "",
+                    "truncated": False,
+                    "error": str(exc),
+                    "timed_out": False,
+                    "denied": True,
+                    "reason": exc.reason,
+                },
+                "denied",
+            )
+
+        outcome = "ran" if result.exit_code is not None else "error"
+
+        if result.success:
+            audit_result = "success"
+        elif result.timed_out:
+            audit_result = "timeout"
+        else:
+            audit_result = "failed"
+        try:
+            # Output is deliberately left out: it can hold anything the
+            # container prints. The command, who ran it and how it ended are
+            # what the trail needs.
+            sdb.log_audit(
+                audit_db,
+                session_id=f"api:{key_info.label}",
+                source="api",
+                action="exec",
+                target=name,
+                host=_load_cfg_simple() or "localhost",
+                pre_state_hash="",
+                post_state_hash=None,
+                result=audit_result,
+                detail={
+                    "command": [sanitize(part) for part in cmd.command],
+                    "key": key_info.label,
+                    "tier": key_info.tier,
+                    "safety": friction.value,
+                    "user": cmd.user,
+                    "exit_code": result.exit_code,
+                    "error": result.error,
+                },
+            )
+        except Exception:  # noqa: BLE001 — any failure to record must surface
+            return (
+                500,
+                {
+                    "error": "command was attempted but could not be written to the audit trail",
+                    "target": name,
+                    "command": list(command),
+                    "exit_code": result.exit_code,
+                },
+                "audit-write-failed",
+            )
+        return (
+            200,
+            {
+                "success": result.success,
+                "target": result.target,
+                "command": list(result.command),
+                "exit_code": result.exit_code,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "truncated": result.truncated,
+                "error": result.error,
+                "timed_out": result.timed_out,
+            },
+            outcome,
+        )
+
+    try:
+        status_code, data, outcome = await anyio.to_thread.run_sync(_run)
+    except Exception as exc:
+        _log_exec(key_info, name, command, "error")
+        if type(exc).__name__ == "NotFound":
+            return JSONResponse(
+                status_code=404, content={"error": f"container '{name}' not found"}
+            )
+        raise
+    _log_exec(key_info, name, command, outcome)
+    headers = {"Retry-After": str(data["retry_after"])} if status_code == 429 else None
+    return JSONResponse(status_code=status_code, content=data, headers=headers)
+
+
 @router.post("/containers/{name}/{action}")
 async def container_mutation(name: str, action: str, request: Request) -> JSONResponse:
     """Execute a container mutation through the gateway."""
@@ -1067,107 +1343,6 @@ async def parse_env_route(
         return JSONResponse(content=result)
     except FileNotFoundError as exc:
         return JSONResponse(status_code=404, content={"error": str(exc)})
-
-
-# --- Container Exec (Rule 0) ---
-
-
-@router.post("/containers/{name}/exec")
-async def exec_route(name: str, request: Request) -> JSONResponse:
-    """Execute a command inside a container. ELEVATE tier."""
-    import anyio
-
-    name = sanitize(name)[:128]
-    key_info: KeyInfo = request.state.key_info
-    if not _has_tier(key_info.tier, "elevate"):
-        return JSONResponse(
-            status_code=403,
-            content={
-                "error": "exec requires elevate tier",
-                "required_tier": "elevate",
-                "your_tier": key_info.tier,
-            },
-        )
-
-    body = await request.json()
-    command = body.get("command")
-    if not command or not isinstance(command, list):
-        return JSONResponse(
-            status_code=400,
-            content={"error": "command is required (list of strings)"},
-        )
-
-    user = body.get("user")
-    workdir = body.get("workdir")
-    timeout = body.get("timeout", 30)
-
-    def _run() -> dict[str, Any]:
-        from roustabout.connection import connect
-        from roustabout.exec import (
-            DeniedCommand,
-            ExecCommand,
-            execute,
-            load_exec_config,
-        )
-        from roustabout.permissions import FrictionMechanism
-        from roustabout.session import DockerSession
-
-        cfg = _load_cfg_simple()
-        client = connect(cfg)
-        docker_session = DockerSession(client=client, host=cfg or "localhost")
-        try:
-            cmd = ExecCommand(
-                target=name,
-                command=tuple(command),
-                user=user,
-                workdir=workdir,
-                timeout=timeout,
-            )
-            # Use allowlist when configured, denylist as fallback
-            exec_config = load_exec_config(name)
-            friction = (
-                FrictionMechanism.ALLOWLIST
-                if exec_config and exec_config.allowed
-                else FrictionMechanism.DENYLIST
-            )
-            result = execute(docker_session, cmd, friction=friction)
-            return {
-                "success": result.success,
-                "target": result.target,
-                "command": list(result.command),
-                "exit_code": result.exit_code,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "truncated": result.truncated,
-                "error": result.error,
-                "timed_out": result.timed_out,
-            }
-        except DeniedCommand as exc:
-            return {
-                "success": False,
-                "target": name,
-                "command": list(command),
-                "exit_code": None,
-                "stdout": "",
-                "stderr": "",
-                "truncated": False,
-                "error": str(exc),
-                "timed_out": False,
-                "denied": True,
-                "reason": exc.reason,
-            }
-        finally:
-            client.close()
-
-    try:
-        data = await anyio.to_thread.run_sync(_run)
-        return JSONResponse(content=data)
-    except Exception as exc:
-        if type(exc).__name__ == "NotFound":
-            return JSONResponse(
-                status_code=404, content={"error": f"container '{name}' not found"}
-            )
-        raise
 
 
 # --- File Operations (Rule 0) ---

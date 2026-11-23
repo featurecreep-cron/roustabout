@@ -20,7 +20,7 @@ def main() -> None:
 
     from roustabout.api.app import create_app
     from roustabout.api.auth import AuthConfig
-    from roustabout.api.routes import set_rate_limiter
+    from roustabout.api.routes import set_audit_db, set_exec_rate_limiter, set_rate_limiter
     from roustabout.config import load_config
     from roustabout.session import RateLimiter
 
@@ -45,6 +45,32 @@ def main() -> None:
         global_max_tokens=config.rate_limit_global,
     )
     set_rate_limiter(rate_limiter)
+
+    # Exec: same limits, separate budget — exec must not be able to exhaust
+    # the tokens that container mutations need.
+    set_exec_rate_limiter(
+        RateLimiter(
+            max_tokens=config.rate_limit_per_container,
+            window_seconds=float(config.rate_limit_window_seconds),
+            global_max_tokens=config.rate_limit_global,
+        )
+    )
+
+    # Hash-chained audit trail. Exec refuses to run without it, so a database
+    # that cannot be opened disables exec rather than the whole server.
+    from pathlib import Path
+
+    from roustabout.state_db import open_db
+
+    db_path = os.environ.get("ROUSTABOUT_STATE_DB") or config.state_db
+    try:
+        set_audit_db(open_db(Path(db_path) if db_path else None))
+    except Exception as exc:  # noqa: BLE001 — sqlite, permissions, bad path: all mean "no trail"
+        logging.getLogger("roustabout.audit").error(
+            "state database unavailable (%s: %s); exec is disabled until it can be opened",
+            type(exc).__name__,
+            exc,
+        )
 
     app = create_app(auth_config=auth_config)
 

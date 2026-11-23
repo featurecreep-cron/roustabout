@@ -765,7 +765,7 @@ def check_circuit(db: StateDB, *, target: str, host: str, threshold: int = 3) ->
                WHERE target = ? AND host = ?
                AND action NOT IN (
                    'audit-complete', 'triage',
-                   'tier-change', 'migrate-state'
+                   'tier-change', 'migrate-state', 'exec'
                )
                ORDER BY id DESC LIMIT ?""",
             (target, host, threshold),

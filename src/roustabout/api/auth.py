@@ -19,16 +19,22 @@ class KeyInfo:
 
     tier: str
     label: str
+    # Containers this key may exec into, limited to each container's allowlist.
+    exec_grants: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class AuthConfig:
     """API key configuration.
 
-    Keys map pre-shared tokens to tier and label.
+    Keys map pre-shared tokens to tier and label, plus an optional ``exec``
+    list of container names the key may exec into:
+
+        [auth.keys]
+        "sk-..." = { tier = "observe", label = "dag-trigger", exec = ["airflow"] }
     """
 
-    keys: dict[str, dict[str, str]] = field(default_factory=dict)
+    keys: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> AuthConfig:
@@ -59,7 +65,10 @@ class AuthConfig:
 def resolve_api_key(key: str | None, config: AuthConfig) -> KeyInfo:
     """Resolve an API key to tier and label.
 
-    Raises AuthError if key is missing, empty, unknown, or has invalid tier.
+    Raises AuthError if key is missing, empty, unknown, has an invalid tier,
+    or has a malformed ``exec`` grant list. A key whose grants cannot be read
+    is rejected rather than resolved without them: silently dropping part of
+    a key's configuration hides the mistake from the operator.
     """
     if key is None:
         raise AuthError("missing API key")
@@ -71,4 +80,8 @@ def resolve_api_key(key: str | None, config: AuthConfig) -> KeyInfo:
     if tier not in _VALID_TIERS:
         raise AuthError(f"invalid tier '{tier}' for key")
     label = entry.get("label", "unknown")
-    return KeyInfo(tier=tier, label=label)
+
+    grants = entry.get("exec", [])
+    if not isinstance(grants, list) or not all(isinstance(g, str) and g for g in grants):
+        raise AuthError("invalid exec grants for key")
+    return KeyInfo(tier=tier, label=label, exec_grants=tuple(grants))

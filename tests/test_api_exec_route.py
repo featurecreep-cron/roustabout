@@ -181,7 +181,7 @@ class TestLockdown:
         locked = LockdownError(LockdownStatus(locked=True, reason="incident", path="/x"))
         with patch("roustabout.lockdown.check", side_effect=locked):
             response = _exec(client, key)
-        assert response.status_code == 423
+        assert response.status_code == 503
         _ran(docker_client).assert_not_called()
 
 
@@ -207,3 +207,106 @@ class TestAuditLog:
             _exec(client, "sk-observe")
         line = next(r.getMessage() for r in caplog.records if "exec " in r.getMessage())
         assert "outcome=forbidden" in line
+
+
+class TestRateLimit:
+    """Exec is rate limited per container, from a budget separate to mutations."""
+
+    @pytest.fixture
+    def limiter(self, monkeypatch):
+        from roustabout.api import routes
+        from roustabout.session import RateLimiter
+
+        limiter = RateLimiter(max_tokens=2, window_seconds=300.0, global_max_tokens=3)
+        monkeypatch.setattr(routes, "_exec_rate_limiter", limiter)
+        return limiter
+
+    def test_exec_beyond_the_limit_is_refused(self, client, docker_client, limiter):
+        assert _exec(client, "sk-granted").status_code == 200
+        assert _exec(client, "sk-granted").status_code == 200
+        response = _exec(client, "sk-granted")
+        assert response.status_code == 429
+        assert int(response.headers["Retry-After"]) > 0
+        assert _ran(docker_client).call_count == 2
+
+    def test_limit_applies_to_elevate_keys_too(self, client, docker_client, limiter):
+        for _ in range(2):
+            _exec(client, "sk-elevate", command=["ls"], config=None)
+        assert _exec(client, "sk-elevate", command=["ls"], config=None).status_code == 429
+
+    def test_limit_is_per_container(self, client, docker_client, limiter):
+        for _ in range(2):
+            _exec(client, "sk-elevate", command=["ls"], config=None)
+        other = _exec(client, "sk-elevate", container="nginx", command=["ls"], config=None)
+        assert other.status_code == 200
+
+    def test_global_limit_spans_containers(self, client, docker_client, limiter):
+        for name in ("a", "b", "c"):
+            assert (
+                _exec(
+                    client, "sk-elevate", container=name, command=["ls"], config=None
+                ).status_code
+                == 200
+            )
+        assert (
+            _exec(client, "sk-elevate", container="d", command=["ls"], config=None).status_code
+            == 429
+        )
+
+    def test_denied_commands_do_not_spend_the_budget(self, client, docker_client, limiter):
+        for _ in range(5):
+            assert _exec(client, "sk-granted", command=["ls", "/"]).json()["denied"] is True
+        assert _exec(client, "sk-granted").status_code == 200
+
+    def test_forbidden_requests_do_not_spend_the_budget(self, client, docker_client, limiter):
+        for _ in range(5):
+            assert _exec(client, "sk-observe").status_code == 403
+        assert _exec(client, "sk-granted").status_code == 200
+
+    def test_docker_failure_returns_the_token(self, client, docker_client, limiter):
+        """A command that never ran should not count against the limit."""
+        with patch("roustabout.connection.connect", side_effect=ConnectionError("no daemon")):
+            for _ in range(5):
+                with pytest.raises(ConnectionError):
+                    _exec(client, "sk-granted")
+        assert _exec(client, "sk-granted").status_code == 200
+
+    def test_exec_does_not_spend_the_mutation_budget(
+        self, client, docker_client, limiter, monkeypatch
+    ):
+        """Otherwise a granted key could block an operator's restart."""
+        from roustabout.api import routes
+        from roustabout.session import RateLimiter
+
+        mutations = RateLimiter(max_tokens=1, window_seconds=300.0, global_max_tokens=1)
+        monkeypatch.setattr(routes, "_rate_limiter", mutations)
+        _exec(client, "sk-granted")
+        mutations.reserve("airflow")  # raises RateLimitExceeded if exec spent it
+
+    def test_rate_limited_request_is_logged(self, client, limiter, caplog):
+        for _ in range(2):
+            _exec(client, "sk-granted")
+        with caplog.at_level(logging.INFO, logger="roustabout.audit"):
+            _exec(client, "sk-granted")
+        assert any("outcome=rate-limited" in r.getMessage() for r in caplog.records)
+
+    def test_no_limiter_means_no_limit(self, client, docker_client):
+        for _ in range(5):
+            assert _exec(client, "sk-granted").status_code == 200
+
+
+class TestServerWiring:
+    def test_server_installs_separate_exec_and_mutation_limiters(self, monkeypatch):
+        from roustabout.api import routes, server
+
+        monkeypatch.setattr(routes, "_rate_limiter", None)
+        monkeypatch.setattr(routes, "_exec_rate_limiter", None)
+        with patch("uvicorn.run"), patch("roustabout.config.load_config") as load:
+            from roustabout.config import Config
+
+            load.return_value = Config(rate_limit_per_container=7, rate_limit_global=9)
+            server.main()
+        assert routes._exec_rate_limiter is not None
+        assert routes._exec_rate_limiter is not routes._rate_limiter
+        assert routes._exec_rate_limiter.max_tokens == 7
+        assert routes._exec_rate_limiter.global_max_tokens == 9

@@ -4,7 +4,7 @@
 #
 #    pip-compile --extra=dev --extra=mcp --extra=server --output-file=requirements.txt --strip-extras pyproject.toml
 #
-annotated-doc==0.0.6
+annotated-doc==0.0.7
     # via fastapi
 annotated-types==0.8.0
     # via pydantic
@@ -89,12 +89,12 @@ pluggy==1.7.0
     #   pytest-cov
 pycparser==3.12
     # via cffi
-pydantic==2.14.3
+pydantic==2.14.4
     # via
     #   fastapi
     #   mcp
     #   mcp-types
-pydantic-core==2.50.4
+pydantic-core==2.50.5
     # via pydantic
 pygments==2.21.0
     # via pytest
@@ -126,7 +126,7 @@ rpds-py==2026.9.1
     #   referencing
 ruamel-yaml==0.19.1
     # via roustabout (pyproject.toml)
-ruff==0.17.5
+ruff==0.17.6
     # via roustabout (pyproject.toml)
 secretscreen==0.6.0
     # via roustabout (pyproject.toml)

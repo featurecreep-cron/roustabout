@@ -129,3 +129,36 @@ class TestAuthConfig:
         env = AuthConfig(keys={"sk-b": {"tier": "operate", "label": "b"}})
         merged = toml.merge(env)
         assert len(merged.keys) == 2
+
+
+class TestExecGrants:
+    """A key may carry exec grants: container names it may exec into,
+    limited to that container's allowlist."""
+
+    def _resolve(self, entry):
+        from roustabout.api.auth import AuthConfig, resolve_api_key
+
+        return resolve_api_key("sk-k", AuthConfig(keys={"sk-k": entry}))
+
+    def test_key_without_grants_has_none(self):
+        assert self._resolve({"tier": "observe", "label": "x"}).exec_grants == ()
+
+    def test_grants_are_resolved(self):
+        info = self._resolve({"tier": "observe", "label": "x", "exec": ["airflow", "nginx"]})
+        assert info.exec_grants == ("airflow", "nginx")
+
+    @pytest.mark.parametrize("bad", ["airflow", [1], [""], {"airflow": True}, [["airflow"]]])
+    def test_malformed_grants_reject_the_key(self, bad):
+        """A grant list that cannot be read must not resolve to a working key."""
+        from roustabout.api.auth import AuthError
+
+        with pytest.raises(AuthError):
+            self._resolve({"tier": "observe", "label": "x", "exec": bad})
+
+    def test_from_dict_preserves_grants(self):
+        from roustabout.api.auth import AuthConfig, resolve_api_key
+
+        config = AuthConfig.from_dict(
+            {"keys": {"sk-k": {"tier": "observe", "label": "x", "exec": ["airflow"]}}}
+        )
+        assert resolve_api_key("sk-k", config).exec_grants == ("airflow",)

@@ -109,5 +109,6 @@ def get_api_info(app: FastAPI, config: dict[str, Any]) -> APIInfo:
             "observe": "snapshot, audit, health, logs, dr-plan, network, ports, drift",
             "operate": "observe + start, stop, restart, recreate",
             "elevate": "operate + exec, probes, image updates, secrets, compose",
+            "exec grant": "any tier: allowlisted exec in the containers named on the key",
         },
     )

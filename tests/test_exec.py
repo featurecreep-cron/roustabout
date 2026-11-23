@@ -203,7 +203,7 @@ class TestAllowlist:
     def test_prefix_match(self):
         from roustabout.exec import ExecConfig, _check_allowlist
 
-        config = ExecConfig(allowed=("pg_dump --schema-only",))
+        config = ExecConfig(allowed=("pg_dump --schema-only *",))
         _check_allowlist(("pg_dump", "--schema-only", "-f", "/out.sql"), config)
 
     def test_prefix_no_match_different_args(self):
@@ -491,3 +491,279 @@ class TestTimeout:
         assert result.success is False
         assert result.timed_out is True
         assert result.exit_code is None
+
+
+# --- Allowlist matches whole argv elements, not a string prefix ---
+
+
+class TestAllowlistArgvMatching:
+    def test_argument_sharing_a_string_prefix_is_denied(self):
+        from roustabout.exec import DeniedCommand, ExecConfig, _check_allowlist
+
+        config = ExecConfig(allowed=("airflow dags trigger my_dag",))
+        with pytest.raises(DeniedCommand, match="does not match"):
+            _check_allowlist(("airflow", "dags", "trigger", "my_dag_v2"), config)
+
+    def test_binary_sharing_a_string_prefix_is_denied(self):
+        from roustabout.exec import DeniedCommand, ExecConfig, _check_allowlist
+
+        config = ExecConfig(allowed=("cat",))
+        with pytest.raises(DeniedCommand, match="does not match"):
+            _check_allowlist(("catastrophe",), config)
+
+    def test_path_prefix_is_denied(self):
+        from roustabout.exec import DeniedCommand, ExecConfig, _check_allowlist
+
+        config = ExecConfig(allowed=("cat /etc/nginx",))
+        with pytest.raises(DeniedCommand, match="does not match"):
+            _check_allowlist(("cat", "/etc/nginx/../shadow"), config)
+
+    def test_trailing_arguments_are_denied_without_a_wildcard(self):
+        """`cat /config/app.log` must not also permit a second file."""
+        from roustabout.exec import DeniedCommand, ExecConfig, _check_allowlist
+
+        config = ExecConfig(allowed=("cat /config/app.log",))
+        with pytest.raises(DeniedCommand, match="does not match"):
+            _check_allowlist(("cat", "/config/app.log", "/etc/shadow"), config)
+
+    def test_trailing_wildcard_allows_extra_arguments(self):
+        from roustabout.exec import ExecConfig, _check_allowlist
+
+        config = ExecConfig(allowed=("airflow dags trigger *",))
+        _check_allowlist(("airflow", "dags", "trigger", "my_dag", "--conf", "{}"), config)
+
+    def test_trailing_wildcard_allows_no_extra_arguments(self):
+        from roustabout.exec import ExecConfig, _check_allowlist
+
+        config = ExecConfig(allowed=("nginx -t *",))
+        _check_allowlist(("nginx", "-t"), config)
+
+    def test_wildcard_does_not_loosen_the_fixed_arguments(self):
+        from roustabout.exec import DeniedCommand, ExecConfig, _check_allowlist
+
+        config = ExecConfig(allowed=("airflow dags trigger *",))
+        with pytest.raises(DeniedCommand, match="does not match"):
+            _check_allowlist(("airflow", "db", "reset"), config)
+
+    def test_wildcard_is_literal_unless_last(self):
+        from roustabout.exec import DeniedCommand, ExecConfig, _check_allowlist
+
+        config = ExecConfig(allowed=("ls * /tmp",))
+        with pytest.raises(DeniedCommand, match="does not match"):
+            _check_allowlist(("ls", "-la", "/tmp"), config)
+        _check_allowlist(("ls", "*", "/tmp"), config)
+
+    def test_bare_wildcard_matches_nothing(self):
+        """`*` alone would turn the allowlist into allow-everything."""
+        from roustabout.exec import DeniedCommand, ExecConfig, _check_allowlist
+
+        config = ExecConfig(allowed=("*",))
+        with pytest.raises(DeniedCommand):
+            _check_allowlist(("ls",), config)
+
+    def test_one_element_holding_the_whole_entry_is_denied(self):
+        """A single argv element that merely spells the entry is not the entry."""
+        from roustabout.exec import DeniedCommand, ExecConfig, _check_allowlist
+
+        config = ExecConfig(allowed=("airflow dags trigger *",))
+        with pytest.raises(DeniedCommand, match="does not match"):
+            _check_allowlist(("airflow dags trigger",), config)
+
+    def test_quoted_entry_is_one_element(self):
+        from roustabout.exec import ExecConfig, _check_allowlist
+
+        config = ExecConfig(allowed=('psql -c "select 1"',))
+        _check_allowlist(("psql", "-c", "select 1"), config)
+
+    def test_blank_entry_matches_nothing(self):
+        from roustabout.exec import DeniedCommand, ExecConfig, _check_allowlist
+
+        config = ExecConfig(allowed=("  ",))
+        with pytest.raises(DeniedCommand):
+            _check_allowlist(("ls",), config)
+
+
+# --- Config loading fails closed ---
+
+
+class TestLoadExecConfig:
+    def _cfg(self, raw):
+        from roustabout.config import Config
+
+        return Config(raw=raw)
+
+    def test_no_section_returns_none(self):
+        from roustabout.exec import load_exec_config
+
+        with patch("roustabout.config.load_config", return_value=self._cfg({})):
+            assert load_exec_config("app") is None
+
+    def test_section_is_loaded(self):
+        from roustabout.exec import ExecConfig, load_exec_config
+
+        raw = {"exec": {"app": {"allowed": ["nginx -t"], "user": "nobody", "timeout": 10}}}
+        with patch("roustabout.config.load_config", return_value=self._cfg(raw)):
+            assert load_exec_config("app") == ExecConfig(
+                allowed=("nginx -t",), user="nobody", timeout=10
+            )
+
+    def test_unreadable_config_raises_instead_of_returning_none(self):
+        """None means "no allowlist", which unlocks denylist mode. A config
+        that cannot be read must not look like that."""
+        from roustabout.exec import ExecConfigError, load_exec_config
+
+        with patch("roustabout.config.load_config", side_effect=ValueError("bad toml")):
+            with pytest.raises(ExecConfigError):
+                load_exec_config("app")
+
+    @pytest.mark.parametrize(
+        "section",
+        [
+            "nginx -t",
+            {"allowed": "nginx -t"},
+            {"allowed": ["nginx -t", 5]},
+            {"allowed": ["nginx -t"], "user": 0},
+            {"allowed": ["nginx -t"], "timeout": "10"},
+        ],
+    )
+    def test_malformed_section_raises(self, section):
+        from roustabout.exec import ExecConfigError, load_exec_config
+
+        raw = {"exec": {"app": section}}
+        with patch("roustabout.config.load_config", return_value=self._cfg(raw)):
+            with pytest.raises(ExecConfigError):
+                load_exec_config("app")
+
+    def test_exec_table_that_is_not_a_table_raises(self):
+        from roustabout.exec import ExecConfigError, load_exec_config
+
+        with patch("roustabout.config.load_config", return_value=self._cfg({"exec": []})):
+            with pytest.raises(ExecConfigError):
+                load_exec_config("app")
+
+
+# --- Who may exec, and under which safety model ---
+
+
+class TestAuthorizeExec:
+    def _cmd(self, **kw):
+        from roustabout.exec import ExecCommand
+
+        return ExecCommand(target="airflow", command=("airflow", "dags", "trigger", "d"), **kw)
+
+    def _config(self, **kw):
+        from roustabout.exec import ExecConfig
+
+        return ExecConfig(allowed=("airflow dags trigger *",), **kw)
+
+    def test_observe_without_grant_is_refused(self):
+        from roustabout.exec import ExecNotPermitted, authorize_exec
+
+        with pytest.raises(ExecNotPermitted):
+            authorize_exec(tier="observe", exec_grants=(), cmd=self._cmd(), config=self._config())
+
+    def test_grant_for_another_container_is_refused(self):
+        from roustabout.exec import ExecNotPermitted, authorize_exec
+
+        with pytest.raises(ExecNotPermitted):
+            authorize_exec(
+                tier="observe", exec_grants=("postgres",), cmd=self._cmd(), config=self._config()
+            )
+
+    def test_unknown_tier_is_refused(self):
+        from roustabout.exec import ExecNotPermitted, authorize_exec
+
+        with pytest.raises(ExecNotPermitted):
+            authorize_exec(tier="root", exec_grants=(), cmd=self._cmd(), config=self._config())
+
+    def test_observe_with_grant_gets_allowlist(self):
+        from roustabout.exec import authorize_exec
+
+        _, friction = authorize_exec(
+            tier="observe", exec_grants=("airflow",), cmd=self._cmd(), config=self._config()
+        )
+        assert friction is FrictionMechanism.ALLOWLIST
+
+    def test_grant_never_unlocks_denylist_mode(self):
+        """A granted container with no allowlist stays in allowlist mode,
+        where execute() refuses everything."""
+        from roustabout.exec import authorize_exec
+
+        _, friction = authorize_exec(
+            tier="observe", exec_grants=("airflow",), cmd=self._cmd(), config=None
+        )
+        assert friction is FrictionMechanism.ALLOWLIST
+
+    def test_operate_without_grant_is_refused(self):
+        """An allowlist alone grants nothing: the key must name the container."""
+        from roustabout.exec import ExecNotPermitted, authorize_exec
+
+        with pytest.raises(ExecNotPermitted):
+            authorize_exec(tier="operate", exec_grants=(), cmd=self._cmd(), config=self._config())
+
+    def test_operate_with_grant_gets_allowlist(self):
+        from roustabout.exec import authorize_exec
+
+        _, friction = authorize_exec(
+            tier="operate", exec_grants=("airflow",), cmd=self._cmd(), config=self._config()
+        )
+        assert friction is FrictionMechanism.ALLOWLIST
+
+    def test_restricted_caller_gets_the_configured_timeout(self):
+        from roustabout.exec import authorize_exec
+
+        cmd, _ = authorize_exec(
+            tier="observe",
+            exec_grants=("airflow",),
+            cmd=self._cmd(timeout=3600),
+            config=self._config(timeout=10),
+        )
+        assert cmd.timeout == 10
+
+    def test_elevate_without_allowlist_gets_denylist(self):
+        from roustabout.exec import authorize_exec
+
+        _, friction = authorize_exec(tier="elevate", exec_grants=(), cmd=self._cmd(), config=None)
+        assert friction is FrictionMechanism.DENYLIST
+
+    def test_elevate_is_bound_by_a_configured_allowlist(self):
+        from roustabout.exec import authorize_exec
+
+        _, friction = authorize_exec(
+            tier="elevate", exec_grants=(), cmd=self._cmd(), config=self._config()
+        )
+        assert friction is FrictionMechanism.ALLOWLIST
+
+    @pytest.mark.parametrize("override", [{"user": "root"}, {"workdir": "/"}])
+    def test_restricted_caller_cannot_choose_user_or_workdir(self, override):
+        from roustabout.exec import DeniedCommand, authorize_exec
+
+        with pytest.raises(DeniedCommand, match="user and workdir"):
+            authorize_exec(
+                tier="observe",
+                exec_grants=("airflow",),
+                cmd=self._cmd(**override),
+                config=self._config(),
+            )
+
+    def test_restricted_caller_runs_as_the_configured_user(self):
+        from roustabout.exec import authorize_exec
+
+        cmd, _ = authorize_exec(
+            tier="operate",
+            exec_grants=("airflow",),
+            cmd=self._cmd(),
+            config=self._config(user="airflow"),
+        )
+        assert cmd.user == "airflow"
+
+    def test_elevate_keeps_its_own_user_and_workdir(self):
+        from roustabout.exec import authorize_exec
+
+        cmd, _ = authorize_exec(
+            tier="elevate",
+            exec_grants=(),
+            cmd=self._cmd(user="root", workdir="/tmp"),
+            config=self._config(user="airflow"),
+        )
+        assert (cmd.user, cmd.workdir) == ("root", "/tmp")

@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from roustabout.api.auth import KeyInfo
 from roustabout.redactor import sanitize
 from roustabout.session import PermissionTier, RateLimiter, capabilities_for_tier
+from roustabout.state_db import StateDB
 
 router = APIRouter(prefix="/v1")
 
@@ -36,6 +37,16 @@ def set_exec_rate_limiter(limiter: RateLimiter) -> None:
     """Set the server-wide exec rate limiter. Called once at startup."""
     global _exec_rate_limiter  # noqa: PLW0603
     _exec_rate_limiter = limiter
+
+
+# Hash-chained audit trail (state DB). Opened once by server.py at startup.
+_audit_db: StateDB | None = None
+
+
+def set_audit_db(db: StateDB) -> None:
+    """Set the server-wide audit database. Called once at startup."""
+    global _audit_db  # noqa: PLW0603
+    _audit_db = db
 
 
 def _has_tier(key_tier: str, required: str) -> bool:
@@ -881,6 +892,7 @@ async def exec_route(name: str, request: Request) -> JSONResponse:
     def _run() -> tuple[int, dict[str, Any], str]:
         """Returns (status_code, body, audit outcome)."""
         from roustabout import lockdown
+        from roustabout import state_db as sdb
         from roustabout.connection import connect
         from roustabout.exec import (
             DeniedCommand,
@@ -897,6 +909,16 @@ async def exec_route(name: str, request: Request) -> JSONResponse:
             lockdown.check()
         except lockdown.LockdownError as exc:
             return 503, {"error": str(exc), "lockdown": True}, "locked"
+
+        # No command runs unless it can be recorded. Checked before anything
+        # else so an unrecordable exec is refused rather than run and lost.
+        audit_db = _audit_db
+        if audit_db is None:
+            return (
+                503,
+                {"error": "audit trail unavailable (state database not open); exec refused"},
+                "no-audit-trail",
+            )
 
         requested = ExecCommand(
             target=name,
@@ -971,6 +993,48 @@ async def exec_route(name: str, request: Request) -> JSONResponse:
             )
 
         outcome = "ran" if result.exit_code is not None else "error"
+
+        if result.success:
+            audit_result = "success"
+        elif result.timed_out:
+            audit_result = "timeout"
+        else:
+            audit_result = "failed"
+        try:
+            # Output is deliberately left out: it can hold anything the
+            # container prints. The command, who ran it and how it ended are
+            # what the trail needs.
+            sdb.log_audit(
+                audit_db,
+                session_id=f"api:{key_info.label}",
+                source="api",
+                action="exec",
+                target=name,
+                host=_load_cfg_simple() or "localhost",
+                pre_state_hash="",
+                post_state_hash=None,
+                result=audit_result,
+                detail={
+                    "command": [sanitize(part) for part in cmd.command],
+                    "key": key_info.label,
+                    "tier": key_info.tier,
+                    "safety": friction.value,
+                    "user": cmd.user,
+                    "exit_code": result.exit_code,
+                    "error": result.error,
+                },
+            )
+        except Exception:  # noqa: BLE001 — any failure to record must surface
+            return (
+                500,
+                {
+                    "error": "command was attempted but could not be written to the audit trail",
+                    "target": name,
+                    "command": list(command),
+                    "exit_code": result.exit_code,
+                },
+                "audit-write-failed",
+            )
         return (
             200,
             {

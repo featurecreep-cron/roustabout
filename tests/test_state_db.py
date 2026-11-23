@@ -783,3 +783,27 @@ class TestArchitecturalLint:
                     ):
                         violations.append(py_file.name)
         assert violations == [], f"sqlite3 imported outside state_db.py: {violations}"
+
+
+class TestCircuitIgnoresExec:
+    def test_failed_execs_do_not_open_the_circuit(self, tmp_path: Path) -> None:
+        """Exec is not a mutation. A key that may only exec must not be able
+        to trip the breaker that guards restarts."""
+        db = state_db.open_db(tmp_path / "test.db", toml_search_paths=())
+        for _ in range(5):
+            state_db.log_audit(
+                db,
+                session_id="api:dag-trigger",
+                source="api",
+                action="exec",
+                target="airflow",
+                host="localhost",
+                pre_state_hash="",
+                post_state_hash=None,
+                result="failed",
+                detail={"command": ["false"]},
+            )
+        circuit = state_db.check_circuit(db, target="airflow", host="localhost")
+        assert circuit.open is False
+        assert circuit.consecutive_failures == 0
+        state_db.close_db(db)

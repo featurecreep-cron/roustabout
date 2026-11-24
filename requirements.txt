@@ -34,13 +34,13 @@ click==8.5.1
     # via
     #   roustabout (pyproject.toml)
     #   uvicorn
-coverage==7.17.3
+coverage==7.17.4
     # via pytest-cov
 cryptography==50.0.2
     # via pyjwt
 docker==7.2.0
     # via roustabout (pyproject.toml)
-fastapi==0.163.1
+fastapi==0.163.2
     # via roustabout (pyproject.toml)
 h11==0.16.0
     # via

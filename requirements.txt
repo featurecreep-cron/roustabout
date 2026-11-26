@@ -28,13 +28,13 @@ certifi==2026.10.23
     #   requests
 cffi==2.1.1
     # via cryptography
-charset-normalizer==3.5.2
+charset-normalizer==3.5.3
     # via requests
 click==8.5.1
     # via
     #   roustabout (pyproject.toml)
     #   uvicorn
-coverage==7.17.4
+coverage==7.17.5
     # via pytest-cov
 cryptography==50.0.2
     # via pyjwt
@@ -130,7 +130,7 @@ ruff==0.17.6
     # via roustabout (pyproject.toml)
 secretscreen==0.6.0
     # via roustabout (pyproject.toml)
-sse-starlette==3.7.0
+sse-starlette==3.7.1
     # via mcp
 starlette==1.10.0
     # via
